@@ -1,0 +1,187 @@
+{
+  "app_name": "Konphlux",
+  "personality": "3 Editorial Mobile with custom Steampunk/Parchment fusion",
+  "personality_one_liner": "Warm, ornate, industrial-elegant steampunk aesthetic using parchment, brass, wood, and glowing aether motifs.",
+  "color": {
+    "surface": "#F6F1E7",
+    "onSurface": "#3B3229",
+    "surfaceSecondary": "#FCF9F2",
+    "onSurfaceSecondary": "#3B3229",
+    "surfaceTertiary": "#EAE3D1",
+    "onSurfaceTertiary": "#3B3229",
+    "surfaceInverse": "#2A2620",
+    "onSurfaceInverse": "#F6F1E7",
+    "brand": "#A67C3D",
+    "brandPrimary": "#C69B54",
+    "onBrandPrimary": "#2A2620",
+    "brandSecondary": "#B06C3A",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#2E7FC9",
+    "onBrandTertiary": "#FFFFFF",
+    "success": "#4A7C59",
+    "onSuccess": "#FFFFFF",
+    "warning": "#B06C3A",
+    "onWarning": "#FFFFFF",
+    "error": "#8B3A3A",
+    "onError": "#FFFFFF",
+    "info": "#2E7FC9",
+    "onInfo": "#FFFFFF",
+    "border": "#DDD2BE",
+    "borderStrong": "#C69B54",
+    "divider": "#E4DBCD",
+    "dark": {
+      "surface": "#2A2620",
+      "onSurface": "#F6F1E7",
+      "surfaceSecondary": "#35302A",
+      "onSurfaceSecondary": "#F6F1E7",
+      "surfaceTertiary": "#403A33",
+      "onSurfaceTertiary": "#F6F1E7",
+      "surfaceInverse": "#F6F1E7",
+      "onSurfaceInverse": "#2A2620",
+      "brand": "#A67C3D",
+      "brandPrimary": "#C69B54",
+      "onBrandPrimary": "#2A2620",
+      "brandSecondary": "#B06C3A",
+      "onBrandSecondary": "#F6F1E7",
+      "brandTertiary": "#4BA0EA",
+      "onBrandTertiary": "#2A2620",
+      "success": "#5D9C70",
+      "onSuccess": "#2A2620",
+      "warning": "#C57E47",
+      "onWarning": "#2A2620",
+      "error": "#AA4A4A",
+      "onError": "#FFFFFF",
+      "info": "#4BA0EA",
+      "onInfo": "#2A2620",
+      "border": "#403A33",
+      "borderStrong": "#A67C3D",
+      "divider": "#35302A"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Cinzel",
+    "textFontFamily": "Karla",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for editorial feel. Intentional padding around cards.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 14,
+    "lg": 24,
+    "pill": 999
+  },
+  "shadow_tier": "2",
+  "navigation": "bottom_tabs",
+  "icon_set": "MaterialCommunityIcons",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": ["Use subtle blur over hero banners and header backdrops", "Apply over decorative spinning gears in hero backgrounds"],
+    "dont's": ["Do not use blur aggressively to override the 'parchment' tactile texture. Keep it selective."]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Social Feed",
+      "purpose": "A central hub for reading updates, viewing stories, and composing new thoughts.",
+      "states": {
+        "loading": "Centered brass-colored spinner with 'Forging...' text.",
+        "empty": "Illustration of an empty parchment page with 'No dispatches yet.'",
+        "error": "Error message with 'Reignite the boiler' retry button."
+      },
+      "layout": "Top row horizontal scroll for 'Stories'. Underneath, a Composer block. Main content is a vertical list of Feed Post Cards. Post Cards use panel layout: surfaceSecondary background, 1px border, md (14px) radius. Microcopy like 'Chatmonger' for comments."
+    },
+    {
+      "name": "Districts Directory",
+      "purpose": "A hub to browse and discover the 22 thematic districts.",
+      "states": {
+        "loading": "Centered spinner over parchment.",
+        "empty": "No districts found.",
+        "error": "Failed to load districts."
+      },
+      "layout": "Grid of District Grid Cards. Wrap with flexDirection: 'row', flexWrap: 'wrap', space-between. Each card width ~48%, containing a featured image, name, and tagline in uppercase tracked-out eyebrow label format."
+    },
+    {
+      "name": "District Detail",
+      "purpose": "Deep-dive into a specific district's features and its chatmonger.",
+      "states": {
+        "loading": "Loading district details...",
+        "empty": "District not available.",
+        "error": "Failed to enter the district."
+      },
+      "layout": "Hero background with decorative spinning gears and gradient plate. Features grid below it. Chatmonger character card (using aether-glow shadow and brass plate). A 'Nearby Districts' horizontal scrolling section at the bottom."
+    },
+    {
+      "name": "Bazaar",
+      "purpose": "Marketplace for browsing and purchasing eclectic goods.",
+      "states": {
+        "loading": "Spinner...",
+        "empty": "The Bazaar is currently empty.",
+        "error": "Failed to load goods."
+      },
+      "layout": "Multi-column grid (2-col) of marketplace product listings. Cards use 1px border and soft 'forge' shadow. Each card features an antique product photo, brass-gradient title (h4 size, Cinzel), and a primary brass-gold CTA button."
+    },
+    {
+      "name": "Profile HQ",
+      "purpose": "User's personal hub and Konphlux ID.",
+      "states": {
+        "loading": "Loading HQ...",
+        "empty": "HQ empty.",
+        "error": "Failed to load HQ."
+      },
+      "layout": "Konphlux ID showcased prominently as a detailed panel card with rivets motif. Settings menu listed vertically below with MaterialCommunityIcons for each row."
+    }
+  ],
+  "images": {
+    "hero_gears_brass": {
+      "url": "https://images.unsplash.com/photo-1777891699620-98471a1042e2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwyfHxzdGVhbXB1bmslMjBnZWFycyUyMGJyYXNzfGVufDB8fHx8MTc4NjkyMTE4OXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Close-up of intricate clockwork gears and clock face"
+    },
+    "bazaar_product": {
+      "url": "https://images.unsplash.com/photo-1605953680110-ed5084aaa8ea?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAxODF8MHwxfHNlYXJjaHwyfHxhbnRpcXVlJTIwcG9ja2V0JTIwd2F0Y2glMjBicmFzc3xlbnwwfHx8fDE3ODY5MjExODl8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "silver pocket watch on brown textile"
+    },
+    "district_architecture": {
+      "url": "https://images.unsplash.com/photo-1563273026-41f9f93e3dc4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwzfHx2aWN0b3JpYW4lMjBzdHJlZXQlMjBhcmNoaXRlY3R1cmV8ZW58MHx8fHwxNzg2OTIxMTg5fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "architectural photography of brown house"
+    },
+    "parchment_texture": {
+      "url": "https://images.unsplash.com/photo-1705837863332-7162639852d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwyfHx2aW50YWdlJTIwcGFyY2htZW50JTIwcGFwZXIlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NjkyMTE5MHww&ixlib=rb-4.1.0&q=85",
+      "alt": "old creased blank paper texture"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly match the steampunk UI motifs requested: 'Panel' cards with 'surfaceSecondary' bg, 1px 'border', 'md' (14px) radius, and soft shadow. Use the 'brandTertiary' (#2E7FC9) as the glow color for 'aether glowing blue' shadows on featured panels.",
+    "Typography: Use 'Cinzel' for headers (H1-H4) and the brand logo with letter-spacing -0.01em. Use 'Karla' for body text. Eyebrow labels should be tiny uppercase with letter-spacing (0.24-0.32em) and muted text ('onSurfaceSecondary' with lower opacity).",
+    "Microcopy matters: Strictly use Victorian whimsy texts for placeholders, empty states, and buttons (e.g. 'Forge your Konphlux ID', 'Enter with your Konphlux ID', 'Chatmonger', 'Artificer').",
+    "Use 'MaterialCommunityIcons' since it provides the best icons for steampunk aesthetics like cogs, compasses, scrolls, and gears.",
+    "Use linear-gradients generously for 'brass gradient plates' on avatars and badges using stops derived from 'brand' and 'brandPrimary'. Apply text gradient masks (using @react-native-masked-view/masked-view + expo-linear-gradient) for large headings to create a 'brass-text' effect.",
+    "All image backgrounds MUST have the standard vertical gradient scrim (transparent to surfaceInverse) to guarantee text contrast. Overlay images with the parchment_texture at 10-15% opacity to add tactile feel if possible.",
+    "Ensure both Light Mode (parchment) and Dark Mode (dark wood/leather) color maps are implemented. The provided token map includes the exact hexes."
+  ]
+}
