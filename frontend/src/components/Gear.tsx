@@ -41,12 +41,14 @@ export function Gear({
   }));
 
   return (
-    <Animated.View style={[styles.wrap, { opacity }, animatedStyle, style]} pointerEvents="none">
+    <Animated.View
+      style={[styles.wrap, { opacity }, animatedStyle, style]}
+    >
       <MaterialCommunityIcons name="cog" size={size} color={colors.brand} />
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: "absolute" },
+  wrap: { position: "absolute", pointerEvents: "none" },
 });
