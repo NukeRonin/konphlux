@@ -21,6 +21,13 @@
 - ✅ Saved screen (3 tabs) reachable from HQ → Bookmarks; save toggles on feed posts, products, and districts.
 - ✅ Verified: 28/28 backend + full frontend flow (incl. the reported Roundtable card navigation).
 
+### 2026-06 (Roundtable — fully functional)
+- ✅ Communities: browse (seeded 4 + user-created), create (name/description/emblem), join/leave (per-user members count).
+- ✅ Threads: list (hub + per community), create (authored by user), upvote toggle (per-user), reply.
+- ✅ Replies with keyboard-aware composer; per-user votes & memberships.
+- ✅ Roundtable district button ("Enter the Roundtable") opens the functional hub (`/roundtable`).
+- ✅ Verified: 16/16 new backend tests + full frontend flow; previous 28/28 intact.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

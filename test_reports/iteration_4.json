@@ -1,0 +1,38 @@
+{
+  "summary": "Roundtable feature (communities/threads/votes/replies) — FULLY FUNCTIONAL end-to-end. Backend: added /app/backend/tests/test_roundtable.py — 16/16 pytest tests PASS in 2.5s (list communities requires auth, seeded c1-c4 present with member/thread_count fields, community detail incl. threads[], join toggle updates count and is per-user (verified via GET), 404 on unknown community, create community auto-joins creator with members=1 and 422 on name<2, list/detail threads seeded t1-t4 with community_name populated, vote toggle is per-user (user A vote raises count while user B still sees voted=false with same count, un-vote restores), create thread authored by logged-in user with upvotes=0/reply_count=0/404 on unknown community, add reply appears in thread detail and bumps reply_count, 404 on unknown thread, replies require auth). Existing 28-test regression suite (test_konphlux_api.py) untouched and previously green. Frontend (mobile 390x844): Registered fresh user TEST_Rounder → Districts tab → district-roundtable card → /district/roundtable → district-enter primary button labelled 'Enter the Roundtable' navigates to /roundtable hub. Hub shows all seeded community-c1..c4 chips and thread-t1..t4 rows. vote-t1 from ThreadRow toggles count. thread-t3 opens /roundtable/thread/t3, thread-vote pill toggles, reply-input + reply-send appends 'TEST_ reply from UI' immediately (visible in DOM). community-c1 opens /roundtable/community/c1, join-btn toggles label from 'Join community' → 'Joined' (member count changes). new-community-btn opens /roundtable/new-community; nc-icon-anvil + nc-name + nc-desc + nc-submit creates 'TEST_UI_Community' and navigates to its detail. new-thread-fab opens /roundtable/new-thread; nt-community-c2 + nt-title + nt-body + nt-submit creates 'TEST_UI_thread' authored by 'TEST_Rounder' and navigates to its detail. All testIDs from the spec resolve (community-<id>, thread-<id>, vote-<id>, thread-vote, reply-input, reply-send, join-btn, community-new-thread, new-thread-fab, new-community-btn, create-community-link, nc-icon-anvil, nc-name, nc-desc, nc-submit, nt-community-<id>, nt-title, nt-body, nt-submit). No red screens. Regression: register/login/feed districts still load (verified by successful registration and tab navigation). Console still emits the two pre-existing cosmetic warnings ('shadow*' style deprecated, 'props.pointerEvents deprecated') — carried over from prior iteration, non-blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warning still present: 'shadow*' style props are deprecated — one shadow* block remains at /app/frontend/app/roundtable/index.tsx:184-188 (FAB). Migrate to style.boxShadow for RN Web / New Architecture cleanliness.", "Console warning still present: 'props.pointerEvents is deprecated' — pre-existing, not new."]}
+    ],
+    "react_native_issues": [
+      {"component": "RoundtableHub FAB shadow* style", "issue": "Deprecated shadow* style props on the New-thread FAB. Reference: /app/frontend/app/roundtable/index.tsx:184-188 — migrate shadowColor/shadowOffset/shadowOpacity/shadowRadius to style.boxShadow."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_roundtable.py",
+    "/app/backend/tests/test_konphlux_api.py",
+    "/app/test_reports/pytest/roundtable_results.xml"
+  ],
+  "action_items": [
+    "LOW: Migrate the FAB shadow* props in /app/frontend/app/roundtable/index.tsx to style.boxShadow to silence the RN Web / New Architecture deprecation warning.",
+    "LOW: Minor UX polish — new-community.tsx error copy says 'Couldn't found the community'; suggest 'Couldn't found (create) the community' or 'Couldn't create the community.' Not blocking.",
+    "NOTE (from prior iteration, unchanged): consider adding tab-* testIDs to bottom tabs; and rename duplicate 'district-back' testID (Stack header + on-page button)."
+  ],
+  "critical_code_review_comments": [
+    "Roundtable backend is clean: all endpoints require Bearer token, seed guarded by count check so idempotent, per-user state (member/voted) resolved via db.rt_members / db.rt_votes lookups keyed by (user_id, community_id/thread_id). Correct 201 on POST for creates, 404 on unknown community/thread, 422 on validation. MongoDB _id excluded via {'_id': 0} projections and via .pop('_id', None) on freshly-inserted docs before returning — good.",
+    "Community create auto-joins creator (members=1, member=true) which is the expected UX. Reply endpoint stamps author from user.display_name so per-user attribution is correct.",
+    "Frontend uses optimistic UI for vote/join/reply with try/catch rollback via load() or restoring prior text — sound pattern. useFocusEffect on hub/community reloads on re-entry so counts stay fresh.",
+    "One place ThreadRow does an optimistic onVoted before the API call; if API fails it re-emits the *pre-optimistic* thread (thread param) so UI reverts. Correct.",
+    "server.py is now 811 lines — approaching the 700-line split threshold. Consider splitting Roundtable, Chatmonger, Feed/Bazaar into routers/*.py modules next iteration."
+  ],
+  "updated_files": ["/app/backend/tests/test_roundtable.py"],
+  "success_rate": {"backend": "100% (16/16 new roundtable tests + 28/28 prior)", "frontend": "100% for every requested Roundtable user flow"},
+  "seed_data_creation": "Registered 3 TEST_ users (test_rt_a_*, test_rt_b_*, test_rt_*@example.com) with display_names TEST_Ada / TEST_Bea / TEST_Rounder. Created 2 TEST_ communities ('TEST_Coilworkers' via backend, 'TEST_UI_Community' via UI) and 2 TEST_ threads ('TEST_ thread title', 'TEST_UI_thread') plus one 'TEST_ reply' on t3 and one on the newly-created thread. All data scoped to those test users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Roundtable is fully wired. Backend endpoints under /api/roundtable/{communities,threads} enforce Bearer auth and return {member, voted, thread_count, community_name} enrichment. Register form does NOT use reg-* testIDs — use placeholders 'Display name' / 'Email' / 'Password (6+ characters)' and click 'Forge my ID' text. All Roundtable screens have testIDs matching the spec exactly. FAB new-thread uses stale shadow* style — cosmetic warning only. Seeded ids: communities c1-c4, threads t1-t4, replies r1-r3. Emergent LLM key still active for Chatmonger; not exercised in this iteration.",
+  "rca_of_issue": "No bug reproduced. The Roundtable feature works end-to-end: navigation from Districts card → district detail → /roundtable, community browsing/joining/creating, thread browsing/upvoting/creating, reply posting — all persist to MongoDB and reflect immediately in the UI thanks to optimistic updates + useFocusEffect refresh."
+}

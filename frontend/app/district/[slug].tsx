@@ -90,11 +90,15 @@ export default function DistrictDetail() {
             <Text style={[styles.tagline, { color: colors.brand }]}>{district.tagline}</Text>
             <Text style={[styles.description, { color: colors.muted }]}>{district.description}</Text>
             <ForgeButton
-              label={`Enter & chat with ${district.chatmonger.name}`}
+              label={district.slug === "roundtable" ? "Enter the Roundtable" : `Enter & chat with ${district.chatmonger.name}`}
               style={{ marginTop: spacing.lg }}
               testID="district-enter"
               icon={<MaterialCommunityIcons name="arrow-right-bold-box" size={18} color={colors.onBrandPrimary} />}
-              onPress={() => router.push(`/chatmonger/${district.slug}`)}
+              onPress={() =>
+                district.slug === "roundtable"
+                  ? router.push("/roundtable")
+                  : router.push(`/chatmonger/${district.slug}`)
+              }
             />
           </LinearGradient>
 

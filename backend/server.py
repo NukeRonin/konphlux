@@ -106,6 +106,22 @@ class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class CommunityCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+    description: str = Field(min_length=1, max_length=280)
+    icon: str = "forum"
+
+
+class ThreadCreate(BaseModel):
+    community_id: str
+    title: str = Field(min_length=2, max_length=140)
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class ReplyCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -307,6 +323,47 @@ PROFILE = {
 }
 
 
+RT_COMMUNITIES = [
+    {"id": "c1", "name": "The Forge Floor", "icon": "anvil", "members": 4820,
+     "description": "Makers and tinkerers sharing works-in-progress, half-finished contraptions and hard-won fixes.",
+     "created_by": "seed", "created_at": "2026-01-02T09:00:00+00:00"},
+    {"id": "c2", "name": "Aether & Ether", "icon": "lightning-bolt", "members": 3110,
+     "description": "Coils, glowing experiments and the polite argument over whether aether hums in B-flat.",
+     "created_by": "seed", "created_at": "2026-01-03T09:00:00+00:00"},
+    {"id": "c3", "name": "Parlour Debates", "icon": "forum", "members": 6740,
+     "description": "Spirited discourse on anything under gaslight. Bring an opinion and a thick skin.",
+     "created_by": "seed", "created_at": "2026-01-04T09:00:00+00:00"},
+    {"id": "c4", "name": "Market Watchers", "icon": "chart-line", "members": 2290,
+     "description": "Deals, duds and dispatches from the Bazaar. What's worth the brass this week?",
+     "created_by": "seed", "created_at": "2026-01-05T09:00:00+00:00"},
+]
+
+RT_THREADS = [
+    {"id": "t1", "community_id": "c1", "title": "My workshop door now reads the weather",
+     "body": "Two weeks of swearing later, the pressure gauge on my door reads barometric pressure. Ask me anything before I retrofit the letterbox.",
+     "author": "Wilhelmina Grast", "user_id": "seed", "upvotes": 214,
+     "created_at": "2026-06-10T09:00:00+00:00"},
+    {"id": "t2", "community_id": "c2", "title": "Why does my aether coil hum a low B-flat?",
+     "body": "New retrofit on my reading lamp. It hums, contentedly, at what I swear is a low B-flat. Is this normal or have I built a very small pipe organ?",
+     "author": "Percival Oakes", "user_id": "seed", "upvotes": 148,
+     "created_at": "2026-06-11T09:00:00+00:00"},
+    {"id": "t3", "community_id": "c3", "title": "Hot take: brass-forward interiors have peaked",
+     "body": "There, I said it. We've reached maximum brass. The pendulum swings back to blackened iron and oiled walnut. Discuss.",
+     "author": "Iolanthe Vex", "user_id": "seed", "upvotes": 331,
+     "created_at": "2026-06-12T09:00:00+00:00"},
+    {"id": "t4", "community_id": "c4", "title": "Are the Copperline calipers worth 125 brass?",
+     "body": "Tempted by the set of three in the Bazaar. Anyone own them? Do they hold calibration or wander after a month?",
+     "author": "Tomas Krieg", "user_id": "seed", "upvotes": 72,
+     "created_at": "2026-06-13T09:00:00+00:00"},
+]
+
+RT_REPLIES = [
+    {"id": "r1", "thread_id": "t1", "body": "Astonishing. Now do the kettle.", "author": "Percival Oakes", "user_id": "seed", "created_at": "2026-06-10T10:00:00+00:00"},
+    {"id": "r2", "thread_id": "t1", "body": "Parts list or it didn't happen.", "author": "Tomas Krieg", "user_id": "seed", "created_at": "2026-06-10T10:30:00+00:00"},
+    {"id": "r3", "thread_id": "t3", "body": "Bold words in a brass district. I'll allow it.", "author": "Odyn (Table Marshal)", "user_id": "seed", "created_at": "2026-06-12T11:00:00+00:00"},
+]
+
+
 async def seed():
     if await db.districts.count_documents({}) == 0:
         await db.districts.insert_many([dict(d) for d in DISTRICTS])
@@ -317,6 +374,11 @@ async def seed():
     if await db.bazaar.count_documents({}) == 0:
         await db.bazaar.insert_many([dict(b) for b in BAZAAR])
         logger.info("Seeded bazaar")
+    if await db.rt_communities.count_documents({}) == 0:
+        await db.rt_communities.insert_many([dict(c) for c in RT_COMMUNITIES])
+        await db.rt_threads.insert_many([dict(t) for t in RT_THREADS])
+        await db.rt_replies.insert_many([dict(r) for r in RT_REPLIES])
+        logger.info("Seeded roundtable")
     await db.users.create_index("email", unique=True)
 
 
@@ -571,6 +633,160 @@ async def get_profile(user: dict = Depends(require_user)):
         "saved": saves_count,
     }
     return profile
+
+
+# ---------- Roundtable ----------
+async def _thread_meta(thread: dict, user_id: str, community_name: str | None = None) -> dict:
+    t = {k: v for k, v in thread.items() if k != "_id"}
+    t["reply_count"] = await db.rt_replies.count_documents({"thread_id": t["id"]})
+    t["voted"] = bool(await db.rt_votes.find_one({"user_id": user_id, "thread_id": t["id"]}))
+    if community_name is None:
+        c = await db.rt_communities.find_one({"id": t["community_id"]}, {"_id": 0, "name": 1})
+        community_name = c["name"] if c else "Roundtable"
+    t["community_name"] = community_name
+    return t
+
+
+@api_router.get("/roundtable/communities")
+async def rt_list_communities(user: dict = Depends(require_user)):
+    docs = await db.rt_communities.find({}, {"_id": 0}).to_list(500)
+    member_ids = {m["community_id"] for m in await db.rt_members.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)}
+    for d in docs:
+        d["member"] = d["id"] in member_ids
+        d["thread_count"] = await db.rt_threads.count_documents({"community_id": d["id"]})
+    docs.sort(key=lambda c: c.get("members", 0), reverse=True)
+    return docs
+
+
+@api_router.post("/roundtable/communities", status_code=201)
+async def rt_create_community(body: CommunityCreate, user: dict = Depends(require_user)):
+    community = {
+        "id": uuid.uuid4().hex,
+        "name": body.name.strip(),
+        "description": body.description.strip(),
+        "icon": body.icon or "forum",
+        "members": 1,
+        "created_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.rt_communities.insert_one(dict(community))
+    await db.rt_members.insert_one({"user_id": user["id"], "community_id": community["id"]})
+    community.pop("_id", None)
+    community["member"] = True
+    community["thread_count"] = 0
+    return community
+
+
+@api_router.get("/roundtable/communities/{community_id}")
+async def rt_community_detail(community_id: str, user: dict = Depends(require_user)):
+    c = await db.rt_communities.find_one({"id": community_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Community not found")
+    c["member"] = bool(await db.rt_members.find_one({"user_id": user["id"], "community_id": community_id}))
+    threads = await db.rt_threads.find({"community_id": community_id}).to_list(500)
+    threads = [await _thread_meta(t, user["id"], c["name"]) for t in threads]
+    threads.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    c["threads"] = threads
+    c["thread_count"] = len(threads)
+    return c
+
+
+@api_router.post("/roundtable/communities/{community_id}/join")
+async def rt_toggle_join(community_id: str, user: dict = Depends(require_user)):
+    c = await db.rt_communities.find_one({"id": community_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Community not found")
+    q = {"user_id": user["id"], "community_id": community_id}
+    existing = await db.rt_members.find_one(q)
+    if existing:
+        await db.rt_members.delete_one(q)
+        member = False
+        delta = -1
+    else:
+        await db.rt_members.insert_one(dict(q))
+        member = True
+        delta = 1
+    members = max(0, c.get("members", 0) + delta)
+    await db.rt_communities.update_one({"id": community_id}, {"$set": {"members": members}})
+    return {"id": community_id, "member": member, "members": members}
+
+
+@api_router.get("/roundtable/threads")
+async def rt_list_threads(user: dict = Depends(require_user)):
+    threads = await db.rt_threads.find({}).to_list(1000)
+    threads = [await _thread_meta(t, user["id"]) for t in threads]
+    threads.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    return threads
+
+
+@api_router.post("/roundtable/threads", status_code=201)
+async def rt_create_thread(body: ThreadCreate, user: dict = Depends(require_user)):
+    c = await db.rt_communities.find_one({"id": body.community_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Community not found")
+    thread = {
+        "id": uuid.uuid4().hex,
+        "community_id": body.community_id,
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "author": user["display_name"],
+        "user_id": user["id"],
+        "upvotes": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.rt_threads.insert_one(dict(thread))
+    thread.pop("_id", None)
+    return await _thread_meta(thread, user["id"], c["name"])
+
+
+@api_router.get("/roundtable/threads/{thread_id}")
+async def rt_thread_detail(thread_id: str, user: dict = Depends(require_user)):
+    t = await db.rt_threads.find_one({"id": thread_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    thread = await _thread_meta(t, user["id"])
+    replies = await db.rt_replies.find({"thread_id": thread_id}, {"_id": 0}).to_list(2000)
+    replies.sort(key=lambda r: r.get("created_at", ""))
+    thread["replies"] = replies
+    return thread
+
+
+@api_router.post("/roundtable/threads/{thread_id}/vote")
+async def rt_toggle_vote(thread_id: str, user: dict = Depends(require_user)):
+    t = await db.rt_threads.find_one({"id": thread_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    q = {"user_id": user["id"], "thread_id": thread_id}
+    existing = await db.rt_votes.find_one(q)
+    if existing:
+        await db.rt_votes.delete_one(q)
+        voted = False
+        delta = -1
+    else:
+        await db.rt_votes.insert_one(dict(q))
+        voted = True
+        delta = 1
+    upvotes = max(0, t.get("upvotes", 0) + delta)
+    await db.rt_threads.update_one({"id": thread_id}, {"$set": {"upvotes": upvotes}})
+    return {"id": thread_id, "voted": voted, "upvotes": upvotes}
+
+
+@api_router.post("/roundtable/threads/{thread_id}/replies", status_code=201)
+async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(require_user)):
+    t = await db.rt_threads.find_one({"id": thread_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    reply = {
+        "id": uuid.uuid4().hex,
+        "thread_id": thread_id,
+        "body": body.body.strip(),
+        "author": user["display_name"],
+        "user_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.rt_replies.insert_one(dict(reply))
+    reply.pop("_id", None)
+    return reply
 
 
 app.include_router(api_router)

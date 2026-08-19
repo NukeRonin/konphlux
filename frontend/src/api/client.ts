@@ -99,6 +99,39 @@ export type ChatMessage = { role: "user" | "assistant"; text: string; created_at
 export type ChatHistory = { chatmonger: Chatmonger; district: string; messages: ChatMessage[] };
 export type SavesResponse = { posts: Post[]; listings: Listing[]; districts: District[] };
 
+export type Community = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  members: number;
+  thread_count: number;
+  member: boolean;
+  threads?: Thread[];
+};
+
+export type Thread = {
+  id: string;
+  community_id: string;
+  community_name: string;
+  title: string;
+  body: string;
+  author: string;
+  upvotes: number;
+  voted: boolean;
+  reply_count: number;
+  created_at: string;
+  replies?: Reply[];
+};
+
+export type Reply = {
+  id: string;
+  thread_id: string;
+  body: string;
+  author: string;
+  created_at: string;
+};
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -135,5 +168,33 @@ export const api = {
     request<ChatMessage>(`/chatmonger/${slug}`, {
       method: "POST",
       body: JSON.stringify({ message }),
+    }),
+
+  rtCommunities: () => request<Community[]>("/roundtable/communities"),
+  rtCommunity: (id: string) => request<Community>(`/roundtable/communities/${id}`),
+  rtCreateCommunity: (name: string, description: string, icon: string) =>
+    request<Community>("/roundtable/communities", {
+      method: "POST",
+      body: JSON.stringify({ name, description, icon }),
+    }),
+  rtJoin: (id: string) =>
+    request<{ id: string; member: boolean; members: number }>(`/roundtable/communities/${id}/join`, {
+      method: "POST",
+    }),
+  rtThreads: () => request<Thread[]>("/roundtable/threads"),
+  rtThread: (id: string) => request<Thread>(`/roundtable/threads/${id}`),
+  rtCreateThread: (community_id: string, title: string, body: string) =>
+    request<Thread>("/roundtable/threads", {
+      method: "POST",
+      body: JSON.stringify({ community_id, title, body }),
+    }),
+  rtVote: (id: string) =>
+    request<{ id: string; voted: boolean; upvotes: number }>(`/roundtable/threads/${id}/vote`, {
+      method: "POST",
+    }),
+  rtReply: (id: string, body: string) =>
+    request<Reply>(`/roundtable/threads/${id}/replies`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
     }),
 };
