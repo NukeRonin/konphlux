@@ -19,7 +19,7 @@ import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { compactNumber, fonts, radius, spacing } from "@/src/theme/tokens";
 
-function PostCard({ post, onLike }: { post: Post; onLike: (id: string) => void }) {
+function PostCard({ post, onLike, onSave }: { post: Post; onLike: (id: string) => void; onSave: (id: string) => void }) {
   const { colors } = useTheme();
   return (
     <Panel style={styles.postCard} testID={`post-${post.id}`}>
@@ -67,7 +67,13 @@ function PostCard({ post, onLike }: { post: Post; onLike: (id: string) => void }
           <Text style={[styles.actionText, { color: colors.muted }]}>Share</Text>
         </View>
         <View style={{ flex: 1 }} />
-        <MaterialCommunityIcons name="bookmark-outline" size={19} color={colors.muted} />
+        <Pressable onPress={() => onSave(post.id)} hitSlop={8} testID={`save-${post.id}`}>
+          <MaterialCommunityIcons
+            name={post.saved ? "bookmark" : "bookmark-outline"}
+            size={19}
+            color={post.saved ? colors.brand : colors.muted}
+          />
+        </Pressable>
       </View>
     </Panel>
   );
@@ -199,6 +205,19 @@ export default function FeedScreen() {
     }
   };
 
+  const onSave = async (id: string) => {
+    setData((prev) =>
+      prev
+        ? { ...prev, posts: prev.posts.map((p) => (p.id === id ? { ...p, saved: !p.saved } : p)) }
+        : prev,
+    );
+    try {
+      await api.toggleSave("post", id);
+    } catch {
+      load(true);
+    }
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <AppHeader
@@ -217,7 +236,7 @@ export default function FeedScreen() {
         <FlatList
           data={data?.posts ?? []}
           keyExtractor={(p) => p.id}
-          renderItem={({ item }) => <PostCard post={item} onLike={onLike} />}
+          renderItem={({ item }) => <PostCard post={item} onLike={onLike} onSave={onSave} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={

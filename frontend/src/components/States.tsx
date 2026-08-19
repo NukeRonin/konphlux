@@ -40,8 +40,8 @@ export function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <View style={styles.center} testID="error-state">
       <MaterialCommunityIcons name="pipe-disconnected" size={54} color={colors.error} />
-      <Text style={[styles.title, { color: colors.onSurface }]}>The boiler's gone cold.</Text>
-      <Text style={[styles.msg, { color: colors.muted }]}>We couldn't fetch that just now.</Text>
+      <Text style={[styles.title, { color: colors.onSurface }]}>The boiler&apos;s gone cold.</Text>
+      <Text style={[styles.msg, { color: colors.muted }]}>We couldn&apos;t fetch that just now.</Text>
       <ForgeButton label="Reignite the boiler" onPress={onRetry} testID="retry-button" style={{ marginTop: spacing.md }} />
     </View>
   );

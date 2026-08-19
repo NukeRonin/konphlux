@@ -23,6 +23,7 @@ export default function ProductDetail() {
   const [item, setItem] = useState<Listing | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [added, setAdded] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -30,6 +31,7 @@ export default function ProductDetail() {
       setStatus("loading");
       const res = await api.getListing(id);
       setItem(res);
+      setSaved(!!res.saved);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -39,6 +41,15 @@ export default function ProductDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const toggleSave = async () => {
+    setSaved((s) => !s);
+    try {
+      await api.toggleSave("listing", id!);
+    } catch {
+      setSaved((s) => !s);
+    }
+  };
 
   const addToCart = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -74,6 +85,14 @@ export default function ProductDetail() {
                 style={[styles.backBtn, { top: insets.top + spacing.sm, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
               >
                 <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
+              </Pressable>
+              <Pressable
+                onPress={toggleSave}
+                hitSlop={12}
+                testID="product-save"
+                style={[styles.saveBtn, { top: insets.top + spacing.sm, backgroundColor: colors.surfaceSecondary, borderColor: saved ? colors.brand : colors.border }]}
+              >
+                <MaterialCommunityIcons name={saved ? "bookmark" : "bookmark-outline"} size={22} color={saved ? colors.brand : colors.onSurface} />
               </Pressable>
             </View>
 
@@ -134,6 +153,16 @@ const styles = StyleSheet.create({
   backBtn: {
     position: "absolute",
     left: spacing.lg,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtn: {
+    position: "absolute",
+    right: spacing.lg,
     width: 38,
     height: 38,
     borderRadius: 19,

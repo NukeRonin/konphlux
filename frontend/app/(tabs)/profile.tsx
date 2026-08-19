@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { api, Profile } from "@/src/api/client";
@@ -10,6 +11,7 @@ import { Eyebrow, Hairline } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { Panel } from "@/src/components/Panel";
 import { ErrorState, Loading } from "@/src/components/States";
+import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { compactNumber, formatPrice, fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -27,12 +29,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function ProfileScreen() {
   const { colors, mode, toggle } = useTheme();
+  const { signOut } = useAuth();
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
     try {
-      setStatus("loading");
       const res = await api.getProfile();
       setProfile(res);
       setStatus("ready");
@@ -41,9 +44,15 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  const handleMenu = (to: string) => {
+    if (to === "bookmarks") router.push("/saved");
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -79,7 +88,7 @@ export default function ProfileScreen() {
             <View style={styles.statsRow}>
               <Stat label="Posts" value={compactNumber(profile.stats.posts)} />
               <Stat label="Followers" value={compactNumber(profile.stats.followers)} />
-              <Stat label="Following" value={compactNumber(profile.stats.following)} />
+              <Stat label="Saved" value={compactNumber(profile.stats.saved)} />
             </View>
           </Panel>
 
@@ -132,6 +141,7 @@ export default function ProfileScreen() {
                   <Pressable
                     key={item.to}
                     testID={`menu-${item.to}`}
+                    onPress={() => handleMenu(item.to)}
                     style={({ pressed }) => [
                       styles.menuRow,
                       {
@@ -158,6 +168,7 @@ export default function ProfileScreen() {
             fullWidth
             style={{ marginTop: spacing.xl }}
             testID="signout-btn"
+            onPress={signOut}
             icon={<MaterialCommunityIcons name="logout" size={16} color={colors.brand} />}
           />
           <Text style={[styles.version, { color: colors.muted }]}>Konphlux · Est. in the age of steam & signal</Text>

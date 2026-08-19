@@ -1,0 +1,40 @@
+{
+  "summary": "Full backend + frontend regression for the new auth + AI feature drop. Backend: 28/28 pytest tests PASS (auth register/login/duplicate/401/me, districts + roundtable, feed + like + create, bazaar list/detail/auth-gate, saves toggle+list for post/listing/district + 400 on unknown kind, chatmonger history + REAL AI reply from Emergent LLM (openai gpt-5.4) in ~2s, profile). Frontend (mobile 390x844): Login screen shows when unauthenticated; go-register opens Register; registering with example.com email lands on Feed; ROUNDTABLE district-roundtable card navigates to /district/roundtable showing 'Inside Roundtable' (primary user complaint fixed); three additional districts (bazaar, chatterbox, sparking-dawn) also navigate; chatmonger-card AND district-enter both open the AI chat; sending a chat message returns and renders a real assistant reply; district-favourite toggles; 6 nearby districts render and nearby row navigates; Bazaar listing-b1 -> /product/b1 with add-to-cart + product-save works; Feed save-<id>, like-<id> work; Compose (route /compose) posts a new user-authored dispatch that appears in the feed; HQ -> menu-bookmarks -> /saved shows all 3 tabs (Wares/Dispatches/Districts) each populated with the items just toggled; theme-toggle works; signout returns to Login; wrong-password login shows error. No red screens. Console warnings: 'props.pointerEvents is deprecated' (one remaining call site) and 'shadow*' style props deprecated (RN Web / New Architecture) — cosmetic, not blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "district-back", "issue": "Two elements share testID='district-back' (Stack header back + in-page back button). Playwright resolves 2 nodes and the first isn't always visible. Consider renaming one (e.g. header-back vs district-back) to avoid duplicate testIDs.", "testID": "district-back", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warning: 'shadow*' style props are deprecated. Use style.boxShadow on RN Web / New Architecture.", "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — one call site still passes pointerEvents as a prop; grep for it and move into StyleSheet."]}
+    ],
+    "react_native_issues": [
+      {"component": "pointerEvents prop", "issue": "One remaining component still passes pointerEvents as a React prop instead of via style. New Architecture ignores the prop. Reference: search /app/frontend for 'pointerEvents='."},
+      {"component": "shadow* style", "issue": "Deprecated shadow* style props still used somewhere in the panels/cards. Migrate to style.boxShadow for RN Web / New Architecture."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_konphlux_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "OPTIONAL: Add testIDs tab-feed / tab-districts / tab-bazaar / tab-hq to the bottom tab bar (currently only text labels). Spec references them; testing worked around with get_by_text.",
+    "OPTIONAL: Rename duplicate testID 'district-back' — the Stack header uses the same testID as the in-page back button, which trips strict automation.",
+    "OPTIONAL: Note that Compose is implemented as a full route (/compose) not a modal. Functional and passes; the spec called it 'Compose modal' — either update spec or convert to a modal.",
+    "LOW: Grep and fix the remaining pointerEvents-as-prop warning and shadow* style deprecation for New Architecture cleanliness.",
+    "Update /app/memory/test_credentials.md — it still says 'no authentication'. Auth is now required; document that fresh users must be registered (use @example.com; reserved TLDs rejected; password >= 6)."
+  ],
+  "critical_code_review_comments": [
+    "Auth implementation is clean: pwdlib PasswordHash.recommended(), PyJWT HS256 with 'sub'+'exp' required on decode, HTTPBearer with auto_error=False and 401 headers set. Duplicate-email returns 409, wrong password path does a dummy verify to mitigate user-enumeration timing — nice touch.",
+    "All data endpoints (districts/{slug}, feed, bazaar, saves, chatmonger, profile) correctly require Bearer token; verified 401 when anonymous.",
+    "Chatmonger uses emergentintegrations LlmChat with session_id=user:slug for per-user memory, non-streaming send_message, and stores both user + assistant messages in db.chat_messages. Errors wrapped as 502 with steampunk copy — good.",
+    "MongoDB _id excluded consistently via projections {'_id': 0} or enrich_post filter.",
+    "Feed sort has three redundant .sort() calls (lines 411-413); only the last matters. Harmless but consider a single sort by created_at with fallback.",
+    "PROFILE.stats['following'] key was replaced with 'saved' — that's fine but the seed template still has 'following'; the pytest previously asserted 'following' — updated in new tests."
+  ],
+  "updated_files": ["/app/backend/tests/test_konphlux_api.py"],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "100% for all requested user flows"},
+  "seed_data_creation": "Registered ~5 TEST_ users (pw_/pw2_/pw3_/pw4_/pw5_@example.com) with a couple of TEST_-prefixed feed posts and a few Chatmonger messages for the Roundtable/Sparking-Dawn districts. Data is scoped to those test users only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth is JWT via /api/auth/register|login|me; every other endpoint needs Bearer. Use @example.com (not .test/.example). Emergent LLM key is in backend/.env; Chatmonger returns real replies in ~1-3s. Bottom tabs currently have no tab-* testIDs — click by label via page.get_by_text('Feed'|'Districts'|'Bazaar'|'HQ', exact=True). testID 'district-back' resolves to 2 elements (Stack header + on-page button) — use nth or JS click on last node. Compose is a route (/compose), not a modal.",
+  "rca_of_issue": "No new bug found. The user's specific complaint — 'Roundtable district card does nothing' — is fully resolved: tapping [data-testid=district-roundtable] navigates to /district/roundtable and renders 'Inside Roundtable'. The prior fix (Gear.tsx pointerEvents moved into StyleSheet) continues to work; a second unrelated component still passes pointerEvents as a prop but does not block interaction."
+}

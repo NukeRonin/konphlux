@@ -1,49 +1,39 @@
 # Konphlux — Mobile App PRD
 
 ## Original Problem Statement
-"Build a mobile app: I've imported my website code from this GitHub repo. Please use it as a reference to build the mobile app version." The user provided a ZIP of `konphlux` (a Vite + TanStack Router + Supabase web app generated on Lovable). Konphlux is an all-in-one social + utility ecosystem combining social networking, a marketplace, content creation, and professional services into one platform organized into 22 themed "districts".
-
-## User Choices
-- App type: social + e-commerce + content super-app.
-- Backend: reuse concept; website backend NOT deployed → rebuilt a fresh FastAPI + MongoDB backend with seeded data.
-- Integrations: none for now.
-- Design: **match the website's look & feel** — "polished steampunk" parchment aesthetic (brass/copper/bronze/wood/parchment + glowing aether blue), Cinzel (display) + Karla (body) fonts.
+"Build a mobile app version of my imported website (Konphlux)." Konphlux is an all-in-one social + utility ecosystem (social networking, marketplace, content creation, professional services) organized into 22 themed "districts", with a polished steampunk parchment aesthetic. Website was a private Vite + TanStack Router + Supabase app (backend not deployed).
 
 ## Architecture
-- **Frontend**: Expo (SDK 54) + expo-router file-based routing. Bottom tabs: Feed / Districts / Bazaar / HQ. Detail routes: `district/[slug]`, `product/[id]`, modal `compose`.
-  - Theme system (`src/theme`): light "parchment" (default) + dark "lamplight" modes, persisted via `@/src/utils/storage`.
-  - Custom fonts (Cinzel + Karla) loaded via expo-font from `assets/fonts`.
-  - Reusable components: Panel, BrassText (masked gradient), Eyebrow, Hairline, ForgeButton, AvatarInitials/RingAvatar, Gear (animated), ChatmongerCard, AppHeader, States (Loading/Empty/Error).
-  - Keyboard handled via react-native-keyboard-controller (compose modal).
-- **Backend** (`server.py`): FastAPI, MongoDB (motor). Seeds 22 districts, 6 feed posts, 8 bazaar listings on startup (if empty). All routes under `/api`, `_id` excluded.
+- **Frontend**: Expo (SDK 54) + expo-router. Auth gate → `(auth)` (login/register) vs `(tabs)` (Feed / Districts / Bazaar / HQ). Detail routes: `district/[slug]`, `product/[id]`, `chatmonger/[slug]`, `saved`, modal `compose`.
+  - Steampunk theme system (light "parchment" default + dark "lamplight"), Cinzel + Karla fonts (expo-font), reusable components (Panel, BrassText, ForgeButton, AvatarInitials, Gear, ChatmongerCard, AppHeader, States).
+  - AuthContext stores JWT in `storage.secure*`; API client attaches Bearer token.
+- **Backend** (`server.py`): FastAPI + MongoDB (motor). Seeds 22 districts, 6 feed posts, 8 bazaar listings. JWT auth (PyJWT + argon2/pwdlib). AI Chatmonger via emergentintegrations (Emergent LLM key, openai `gpt-5.4`). All data routes require Bearer token; under `/api`.
 
-## Core Requirements (static)
-1. Faithfully match the steampunk parchment visual identity of the website.
-2. Social feed with stories, composer, reactions.
-3. Directory of all 22 districts + district detail (features + chatmonger).
-4. Bazaar marketplace with categories + product detail.
-5. Profile / HQ with Konphlux ID, treasury balance, settings, dark mode.
+## Implemented
+### 2026-06 (MVP)
+- ✅ Feed (stories/composer/trending/posts), Districts grid (22) + district detail (features + chatmonger + nearby), Bazaar (category chips + product detail), HQ profile with dark-mode toggle. Light+dark steampunk theme. 12/12 backend + full frontend tests.
+- ✅ Bug fix: district cards not responding (Gear `pointerEvents` prop → `style.pointerEvents` for New Architecture).
 
-## Implemented (2026-06)
-- ✅ FastAPI backend: `/api/districts`, `/api/districts/{slug}`, `/api/feed` (GET/POST), `/api/feed/{id}/like`, `/api/bazaar`, `/api/bazaar/{id}`, `/api/profile`.
-- ✅ Feed screen: stories row, composer trigger, trending, post cards, optimistic like toggle, pull-to-refresh.
-- ✅ Compose modal: create post with keyboard-aware input + sticky footer.
-- ✅ Districts grid (22) with brass icon plates → district detail (brass-text hero, animated gears, features grid, glowing Chatmonger card, nearby districts).
-- ✅ Bazaar: horizontal category chip filter + 2-col product grid → product detail with add-to-cart.
-- ✅ HQ/Profile: Konphlux ID card (rivets), treasury balance, Lamplight dark-mode toggle, 4 settings menu groups.
-- ✅ Light + dark themes; Cinzel/Karla fonts; all interactive elements have testIDs.
-- ✅ Tested: 12/12 backend pytest + full Playwright frontend flow PASS.
+### 2026-06 (Auth + interactivity drop)
+- ✅ JWT email/password auth: register/login/me; auth gate; sign-out.
+- ✅ Real AI Chatmonger chat per district (persisted history, per-user sessions).
+- ✅ Per-user data: likes, created posts, and saves (saved Bazaar listings + saved posts + favourite districts).
+- ✅ Saved screen (3 tabs) reachable from HQ → Bookmarks; save toggles on feed posts, products, and districts.
+- ✅ Verified: 28/28 backend + full frontend flow (incl. the reported Roundtable card navigation).
 
 ## Backlog (prioritized)
 ### P1
-- Real content per district (e.g. Answerfier Q&A board, Roundtable threads, Telegraph articles).
-- Cart + checkout flow in Bazaar (currently add-to-cart is a stub).
-- "Chatmonger" AI assistant chat (would require an LLM integration).
+- Bazaar cart + checkout (add-to-cart is currently a local stub).
+- Real content for more districts (Roundtable threads, Telegraph articles, Answerfier Q&A).
+- Comments on feed posts (count shown, thread not built).
 ### P2
-- Real authentication (Konphlux ID sign-in) — website used Supabase auth + Stripe.
-- Messaging (Chatterbox) and Notifications inboxes.
-- Sparking Dawn (dating), Waypoint (stays), Dreambacker (crowdfunding) functional flows.
+- Google social login option; password reset.
+- Messaging (Chatterbox) + Notifications inboxes.
 - Image upload for posts/listings (needs object storage).
+- Streaming Chatmonger responses (currently full-reply).
+
+## Test accounts
+No seeded account — register fresh (see /app/memory/test_credentials.md). Use `@example.com`, password 6+ chars.
 
 ## Next Tasks
-- Await user direction on which district(s) to make fully functional first, or auth/payments.
+- Await user direction: Bazaar checkout, or make a specific district (Roundtable) fully functional, or messaging.

@@ -1,13 +1,18 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 import uuid
-from datetime import datetime, timezone
+import jwt
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
+from datetime import datetime, timezone, timedelta
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 
 ROOT_DIR = Path(__file__).parent
@@ -23,12 +28,82 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("konphlux")
 
+# ----------------------------- Auth / LLM config -----------------------------
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+CHAT_MODEL = ("openai", "gpt-5.4")
+
+password_hash = PasswordHash.recommended()
+bearer = HTTPBearer(auto_error=False)
+
+
+def create_access_token(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    claims = {"sub": user_id, "iat": now, "exp": now + timedelta(minutes=JWT_EXPIRE_MINUTES)}
+    return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def require_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+) -> dict:
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise _unauthorized()
+    try:
+        payload = jwt.decode(
+            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+            options={"require": ["sub", "exp"]},
+        )
+        user_id = payload["sub"]
+    except (InvalidTokenError, KeyError, TypeError):
+        raise _unauthorized()
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise _unauthorized()
+    return user
+
+
+def public_user(user: dict) -> dict:
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "display_name": user["display_name"],
+        "handle": user["handle"],
+    }
+
 
 # ----------------------------- Models -----------------------------
 class PostCreate(BaseModel):
     body: str
-    author: str = "Wilhelmina Grast"
-    kind: str = "Friend"
+
+
+class RegisterBody(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    display_name: str = Field(min_length=1, max_length=60)
+
+
+class LoginBody(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class SaveBody(BaseModel):
+    kind: str  # "post" | "listing" | "district"
+    item_id: str
+
+
+class ChatBody(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
 
 
 # ----------------------------- Seed data -----------------------------
@@ -242,6 +317,26 @@ async def seed():
     if await db.bazaar.count_documents({}) == 0:
         await db.bazaar.insert_many([dict(b) for b in BAZAAR])
         logger.info("Seeded bazaar")
+    await db.users.create_index("email", unique=True)
+
+
+async def _user_like_ids(user_id: str) -> set:
+    rows = await db.likes.find({"user_id": user_id}, {"_id": 0, "post_id": 1}).to_list(1000)
+    return {r["post_id"] for r in rows}
+
+
+async def _user_saves(user_id: str, kind: str | None = None) -> list:
+    q = {"user_id": user_id}
+    if kind:
+        q["kind"] = kind
+    return await db.saves.find(q, {"_id": 0}).to_list(2000)
+
+
+def enrich_post(post: dict, liked_ids: set, saved_ids: set) -> dict:
+    post = {k: v for k, v in post.items() if k != "_id"}
+    post["liked"] = post["id"] in liked_ids
+    post["saved"] = post["id"] in saved_ids
+    return post
 
 
 # ----------------------------- Routes -----------------------------
@@ -250,6 +345,45 @@ async def root():
     return {"message": "Konphlux API — one ID, every district."}
 
 
+# ---------- Auth ----------
+@api_router.post("/auth/register", status_code=201)
+async def register(body: RegisterBody):
+    email = str(body.email).lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="That email is already enrolled.")
+    handle = "@" + email.split("@")[0].replace(".", "").replace("+", "")[:20]
+    user = {
+        "id": uuid.uuid4().hex,
+        "email": email,
+        "password_hash": password_hash.hash(body.password),
+        "display_name": body.display_name.strip(),
+        "handle": handle,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(dict(user))
+    token = create_access_token(user["id"])
+    return {"access_token": token, "token_type": "bearer", "user": public_user(user)}
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginBody):
+    email = str(body.email).lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        password_hash.verify(body.password, password_hash.hash("dummy-password"))
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not password_hash.verify(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(user["id"])
+    return {"access_token": token, "token_type": "bearer", "user": public_user(user)}
+
+
+@api_router.get("/auth/me")
+async def me(user: dict = Depends(require_user)):
+    return public_user(user)
+
+
+# ---------- Districts ----------
 @api_router.get("/districts")
 async def get_districts():
     docs = await db.districts.find({}, {"_id": 0}).to_list(100)
@@ -258,70 +392,185 @@ async def get_districts():
 
 
 @api_router.get("/districts/{slug}")
-async def get_district(slug: str):
+async def get_district(slug: str, user: dict = Depends(require_user)):
     doc = await db.districts.find_one({"slug": slug}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="District not found")
     others = await db.districts.find({"slug": {"$nin": [slug, "home"]}}, {"_id": 0}).to_list(100)
     others.sort(key=lambda d: d["name"])
     doc["nearby"] = others[:6]
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "district")}
+    doc["saved"] = slug in saved_ids
     return doc
 
 
+# ---------- Feed ----------
 @api_router.get("/feed")
-async def get_feed():
-    docs = await db.feed.find({}, {"_id": 0}).to_list(200)
-    docs.sort(key=lambda p: int(p["id"]) if p.get("id", "").isdigit() else 0, reverse=True)
-    return {"stories": STORIES, "trending": TRENDING, "suggestions": SUGGESTIONS, "posts": docs}
+async def get_feed(user: dict = Depends(require_user)):
+    docs = await db.feed.find({}).to_list(500)
+    docs.sort(key=lambda p: p.get("created_at", "") or "", reverse=True)
+    docs.sort(key=lambda p: 0 if p.get("created_at") else 1)  # user posts (with created_at) first-ish
+    docs.sort(key=lambda p: (p.get("created_at") or "0"), reverse=True)
+    liked_ids = await _user_like_ids(user["id"])
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "post")}
+    posts = [enrich_post(p, liked_ids, saved_ids) for p in docs]
+    return {"stories": STORIES, "trending": TRENDING, "suggestions": SUGGESTIONS, "posts": posts}
 
 
 @api_router.post("/feed")
-async def create_post(payload: PostCreate):
+async def create_post(payload: PostCreate, user: dict = Depends(require_user)):
     post = {
         "id": uuid.uuid4().hex,
-        "author": payload.author,
-        "kind": payload.kind,
+        "author": user["display_name"],
+        "user_id": user["id"],
+        "kind": "You",
         "time": "just now",
         "body": payload.body,
         "likes": 0,
         "comments": 0,
-        "liked": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.feed.insert_one(dict(post))
-    post.pop("_id", None)
-    return post
+    return enrich_post(post, set(), set())
 
 
 @api_router.post("/feed/{post_id}/like")
-async def toggle_like(post_id: str):
+async def toggle_like(post_id: str, user: dict = Depends(require_user)):
     doc = await db.feed.find_one({"id": post_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Post not found")
-    liked = not doc.get("liked", False)
-    likes = doc.get("likes", 0) + (1 if liked else -1)
-    await db.feed.update_one({"id": post_id}, {"$set": {"liked": liked, "likes": likes}})
+    existing = await db.likes.find_one({"user_id": user["id"], "post_id": post_id})
+    if existing:
+        await db.likes.delete_one({"user_id": user["id"], "post_id": post_id})
+        liked = False
+        delta = -1
+    else:
+        await db.likes.insert_one({"user_id": user["id"], "post_id": post_id})
+        liked = True
+        delta = 1
+    likes = max(0, doc.get("likes", 0) + delta)
+    await db.feed.update_one({"id": post_id}, {"$set": {"likes": likes}})
     return {"id": post_id, "liked": liked, "likes": likes}
 
 
+# ---------- Bazaar ----------
 @api_router.get("/bazaar")
-async def get_bazaar():
+async def get_bazaar(user: dict = Depends(require_user)):
     docs = await db.bazaar.find({}, {"_id": 0}).to_list(200)
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
+    for d in docs:
+        d["saved"] = d["id"] in saved_ids
     cats = sorted({d["category"] for d in docs})
     return {"categories": cats, "listings": docs}
 
 
 @api_router.get("/bazaar/{item_id}")
-async def get_bazaar_item(item_id: str):
+async def get_bazaar_item(item_id: str, user: dict = Depends(require_user)):
     doc = await db.bazaar.find_one({"id": item_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Listing not found")
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
+    doc["saved"] = item_id in saved_ids
     return doc
 
 
+# ---------- Saves ----------
+@api_router.post("/saves")
+async def toggle_save(body: SaveBody, user: dict = Depends(require_user)):
+    if body.kind not in ("post", "listing", "district"):
+        raise HTTPException(status_code=400, detail="Unknown save kind")
+    q = {"user_id": user["id"], "kind": body.kind, "item_id": body.item_id}
+    existing = await db.saves.find_one(q)
+    if existing:
+        await db.saves.delete_one(q)
+        return {"saved": False, **{k: v for k, v in q.items() if k != "user_id"}}
+    await db.saves.insert_one({**q, "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"saved": True, **{k: v for k, v in q.items() if k != "user_id"}}
+
+
+@api_router.get("/saves")
+async def list_saves(user: dict = Depends(require_user)):
+    saves = await _user_saves(user["id"])
+    post_ids = [s["item_id"] for s in saves if s["kind"] == "post"]
+    listing_ids = [s["item_id"] for s in saves if s["kind"] == "listing"]
+    district_slugs = [s["item_id"] for s in saves if s["kind"] == "district"]
+
+    posts = await db.feed.find({"id": {"$in": post_ids}}).to_list(500)
+    liked_ids = await _user_like_ids(user["id"])
+    posts = [enrich_post(p, liked_ids, set(post_ids)) for p in posts]
+
+    listings = await db.bazaar.find({"id": {"$in": listing_ids}}, {"_id": 0}).to_list(500)
+    for d in listings:
+        d["saved"] = True
+    districts = await db.districts.find({"slug": {"$in": district_slugs}}, {"_id": 0}).to_list(100)
+
+    return {"posts": posts, "listings": listings, "districts": districts}
+
+
+# ---------- Chatmonger (AI) ----------
+@api_router.get("/chatmonger/{slug}")
+async def chat_history(slug: str, user: dict = Depends(require_user)):
+    district = await db.districts.find_one({"slug": slug}, {"_id": 0})
+    if not district:
+        raise HTTPException(status_code=404, detail="District not found")
+    msgs = await db.chat_messages.find(
+        {"user_id": user["id"], "slug": slug}, {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+    return {"chatmonger": district["chatmonger"], "district": district["name"], "messages": msgs}
+
+
+@api_router.post("/chatmonger/{slug}")
+async def chat_send(slug: str, body: ChatBody, user: dict = Depends(require_user)):
+    district = await db.districts.find_one({"slug": slug}, {"_id": 0})
+    if not district:
+        raise HTTPException(status_code=404, detail="District not found")
+    cm = district["chatmonger"]
+    now = datetime.now(timezone.utc).isoformat()
+    await db.chat_messages.insert_one(
+        {"user_id": user["id"], "slug": slug, "role": "user", "text": body.message, "created_at": now}
+    )
+
+    system = (
+        f"You are {cm['name']}, the '{cm['role']}' and resident Chatmonger of the '{district['name']}' district "
+        f"inside Konphlux — a whimsical, ornate steampunk 'everything platform'. "
+        f"District purpose: {district['description']} "
+        f"Features here: {', '.join(district['features'])}. "
+        f"Speak with warm, witty Victorian-steampunk flair, but stay genuinely helpful and concise (2-4 short sentences). "
+        f"Only help with matters relevant to this district and Konphlux. Address the user as {user['display_name']}."
+    )
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"{user['id']}:{slug}",
+            system_message=system,
+        ).with_model(*CHAT_MODEL)
+        reply = await chat.send_message(UserMessage(text=body.message))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Chatmonger error")
+        raise HTTPException(status_code=502, detail="The Chatmonger's aether coil sputtered. Try again.") from e
+
+    reply_at = datetime.now(timezone.utc).isoformat()
+    await db.chat_messages.insert_one(
+        {"user_id": user["id"], "slug": slug, "role": "assistant", "text": reply, "created_at": reply_at}
+    )
+    return {"role": "assistant", "text": reply, "created_at": reply_at}
+
+
+# ---------- Profile ----------
 @api_router.get("/profile")
-async def get_profile():
-    return PROFILE
+async def get_profile(user: dict = Depends(require_user)):
+    posts_count = await db.feed.count_documents({"user_id": user["id"]})
+    saves_count = await db.saves.count_documents({"user_id": user["id"]})
+    profile = dict(PROFILE)
+    profile["display_name"] = user["display_name"]
+    profile["handle"] = user["handle"]
+    profile["email"] = user["email"]
+    profile["stats"] = {
+        "posts": posts_count,
+        "followers": PROFILE["stats"]["followers"],
+        "saved": saves_count,
+    }
+    return profile
 
 
 app.include_router(api_router)

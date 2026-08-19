@@ -24,6 +24,7 @@ export default function DistrictDetail() {
   const insets = useSafeAreaInsets();
   const [district, setDistrict] = useState<District | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [saved, setSaved] = useState(false);
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -31,6 +32,7 @@ export default function DistrictDetail() {
       setStatus("loading");
       const res = await api.getDistrict(slug);
       setDistrict(res);
+      setSaved(!!res.saved);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -40,6 +42,15 @@ export default function DistrictDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const toggleFavourite = async () => {
+    setSaved((s) => !s);
+    try {
+      await api.toggleSave("district", slug!);
+    } catch {
+      setSaved((s) => !s);
+    }
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -62,9 +73,14 @@ export default function DistrictDetail() {
           >
             <Gear size={220} opacity={0.09} style={{ right: -60, top: -40 }} />
             <Gear size={120} opacity={0.08} reverse style={{ left: -30, top: 120 }} />
-            <Pressable onPress={() => router.back()} hitSlop={12} testID="district-back" style={[styles.backBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
-            </Pressable>
+            <View style={styles.heroTopRow}>
+              <Pressable onPress={() => router.back()} hitSlop={12} testID="district-back" style={[styles.backBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
+              </Pressable>
+              <Pressable onPress={toggleFavourite} hitSlop={12} testID="district-favourite" style={[styles.backBtn, { backgroundColor: colors.surfaceSecondary, borderColor: saved ? colors.brand : colors.border }]}>
+                <MaterialCommunityIcons name={saved ? "star" : "star-outline"} size={22} color={saved ? colors.brandPrimary : colors.onSurface} />
+              </Pressable>
+            </View>
 
             <View style={[styles.heroIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.borderStrong }]}>
               <MaterialCommunityIcons name={district.icon as IconName} size={30} color={colors.brand} />
@@ -74,10 +90,11 @@ export default function DistrictDetail() {
             <Text style={[styles.tagline, { color: colors.brand }]}>{district.tagline}</Text>
             <Text style={[styles.description, { color: colors.muted }]}>{district.description}</Text>
             <ForgeButton
-              label="Enter with your Konphlux ID"
+              label={`Enter & chat with ${district.chatmonger.name}`}
               style={{ marginTop: spacing.lg }}
               testID="district-enter"
-              onPress={() => {}}
+              icon={<MaterialCommunityIcons name="arrow-right-bold-box" size={18} color={colors.onBrandPrimary} />}
+              onPress={() => router.push(`/chatmonger/${district.slug}`)}
             />
           </LinearGradient>
 
@@ -99,7 +116,11 @@ export default function DistrictDetail() {
 
           {/* Chatmonger */}
           <View style={styles.section}>
-            <ChatmongerCard chatmonger={district.chatmonger} district={district.name} />
+            <ChatmongerCard
+              chatmonger={district.chatmonger}
+              district={district.name}
+              onPress={() => router.push(`/chatmonger/${district.slug}`)}
+            />
           </View>
 
           {/* Nearby districts */}
@@ -139,6 +160,7 @@ export default function DistrictDetail() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   hero: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, borderBottomWidth: 1, overflow: "hidden" },
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   backBtn: {
     width: 38,
     height: 38,
@@ -146,7 +168,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
   },
   heroIcon: {
     width: 60,

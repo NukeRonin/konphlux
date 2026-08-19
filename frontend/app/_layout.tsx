@@ -1,14 +1,15 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
-import { LogBox } from "react-native";
+import { LogBox, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { AuthProvider, useAuth } from "@/src/auth/AuthContext";
 import { ThemeProvider, useTheme } from "@/src/theme/ThemeContext";
 
 LogBox.ignoreAllLogs(true);
@@ -16,14 +17,35 @@ LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { mode } = useTheme();
+  const { mode, colors } = useTheme();
+  const { user, ready } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!ready) return;
+    const inAuthGroup = segments[0] === "(auth)";
+    if (!user && !inAuthGroup) {
+      router.replace("/(auth)/login");
+    } else if (user && inAuthGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [user, ready, segments, router]);
+
+  if (!ready) {
+    return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
+  }
+
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+        <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
+        <Stack.Screen name="saved" />
+        <Stack.Screen name="chatmonger/[slug]" options={{ presentation: "card" }} />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>
@@ -54,7 +76,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <KeyboardProvider>
           <ThemeProvider>
-            <RootNavigator />
+            <AuthProvider>
+              <RootNavigator />
+            </AuthProvider>
           </ThemeProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
