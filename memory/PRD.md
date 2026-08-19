@@ -35,6 +35,12 @@
 - ✅ Verified: 18/18 backend tests + frontend flow (checkout opens real Stripe hosted URL). Card entry on stripe.com not driven by harness (external domain) — works in real use with test card 4242…
 - Stripe secret key stored in backend/.env (STRIPE_SECRET_KEY). Webhook (STRIPE_WEBHOOK_SECRET) optional for production; payment currently verified by polling.
 
+### 2026-06 (Go-live prep + Home district links)
+- ✅ Home feed now has an "Explore districts" horizontal shortcut row (home-district-<slug>) that navigates to each district — verified.
+- ✅ Stripe webhook endpoint /api/stripe/webhook (verifies signature when STRIPE_WEBHOOK_SECRET set; marks order paid + clears buyer cart). Safe no-op when secret unset.
+- ✅ Go-live plan: keep TEST key in preview; set LIVE sk_live_... + STRIPE_WEBHOOK_SECRET in Deployment → Secrets after publishing. Webhook URL: https://<deployed-domain>/api/stripe/webhook (event: checkout.session.completed).
+- ✅ 63/63 backend tests pass.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

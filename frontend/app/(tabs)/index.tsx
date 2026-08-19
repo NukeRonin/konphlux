@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -10,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { api, FeedResponse, Post } from "@/src/api/client";
+import { api, District, FeedResponse, Post } from "@/src/api/client";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AvatarInitials, RingAvatar } from "@/src/components/AvatarInitials";
 import { Eyebrow, Hairline } from "@/src/components/BrassText";
@@ -143,6 +144,44 @@ function Composer() {
   );
 }
 
+function DistrictStrip({ districts }: { districts: District[] }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  if (districts.length === 0) return null;
+  return (
+    <FlatList
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      data={districts}
+      keyExtractor={(d) => d.slug}
+      contentContainerStyle={styles.districtStrip}
+      renderItem={({ item }) => (
+        <Pressable
+          testID={`home-district-${item.slug}`}
+          onPress={() => router.push(`/district/${item.slug}`)}
+          style={styles.districtChip}
+        >
+          <LinearGradient
+            colors={colors.brassGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.districtIcon, { borderColor: colors.brandSecondary }]}
+          >
+            <MaterialCommunityIcons
+              name={item.icon as keyof typeof MaterialCommunityIcons.glyphMap}
+              size={24}
+              color={colors.onBrandPrimary}
+            />
+          </LinearGradient>
+          <Text numberOfLines={1} style={[styles.districtName, { color: colors.onSurface }]}>
+            {item.name}
+          </Text>
+        </Pressable>
+      )}
+    />
+  );
+}
+
 function Trending({ items }: { items: string[] }) {
   const { colors } = useTheme();
   return (
@@ -164,14 +203,16 @@ function Trending({ items }: { items: string[] }) {
 export default function FeedScreen() {
   const { colors } = useTheme();
   const [data, setData] = useState<FeedResponse | null>(null);
+  const [districts, setDistricts] = useState<District[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (isRefresh?: boolean) => {
     try {
       if (!isRefresh) setStatus("loading");
-      const res = await api.getFeed();
+      const [res, dists] = await Promise.all([api.getFeed(), api.getDistricts()]);
       setData(res);
+      setDistricts(dists);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -254,6 +295,8 @@ export default function FeedScreen() {
               <Eyebrow style={{ marginTop: spacing.sm }}>Stories from your circle</Eyebrow>
               <Stories names={data?.stories ?? []} />
               <Composer />
+              <Eyebrow>Explore districts</Eyebrow>
+              <DistrictStrip districts={districts} />
               <Trending items={data?.trending ?? []} />
               <Eyebrow>Latest dispatches</Eyebrow>
             </View>
@@ -269,7 +312,17 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl },
 
   storiesCard: { overflow: "hidden" },
-  storiesRow: { padding: spacing.md, gap: spacing.md },
+  districtStrip: { gap: spacing.md, paddingVertical: spacing.xs },
+  districtChip: { width: 72, alignItems: "center", gap: 6 },
+  districtIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  districtName: { fontFamily: fonts.bodyMedium, fontSize: 11, textAlign: "center" },  storiesRow: { padding: spacing.md, gap: spacing.md },
   story: { width: 72, alignItems: "center", gap: 6 },
   storyInitial: { fontFamily: fonts.displaySemi, fontSize: 18 },
   storyName: { fontFamily: fonts.body, fontSize: 11 },

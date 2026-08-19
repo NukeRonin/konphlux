@@ -975,6 +975,9 @@ async def stripe_webhook(request: Request):
                 {"session_id": session["id"]},
                 {"$set": {"payment_status": "paid", "status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
             )
+            uid = (session.get("metadata") or {}).get("user_id")
+            if uid:
+                await db.carts.update_one({"user_id": uid}, {"$set": {"items": []}})
     return {"received": True}
 
 
