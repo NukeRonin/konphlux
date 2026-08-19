@@ -1,5 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
 import uuid
 import jwt
+import stripe
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta
@@ -34,6 +36,10 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 CHAT_MODEL = ("openai", "gpt-5.4")
+
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+CURRENCY = "usd"
 
 password_hash = PasswordHash.recommended()
 bearer = HTTPBearer(auto_error=False)
@@ -120,6 +126,19 @@ class ThreadCreate(BaseModel):
 
 class ReplyCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+
+
+class CartAdd(BaseModel):
+    item_id: str
+    qty: int = Field(default=1, ge=1, le=99)
+
+
+class CartSet(BaseModel):
+    qty: int = Field(ge=0, le=99)
+
+
+class CheckoutBody(BaseModel):
+    return_base: str
 
 
 # ----------------------------- Seed data -----------------------------
@@ -301,7 +320,7 @@ PROFILE = {
             {"label": "Konphlux ID", "icon": "card-account-details", "to": "id"},
             {"label": "Dashboard", "icon": "view-dashboard", "to": "dashboard"},
             {"label": "Resumé", "icon": "file-account", "to": "resume"},
-            {"label": "My Warehouse", "icon": "warehouse", "to": "warehouse"},
+            {"label": "My Orders", "icon": "receipt", "to": "warehouse"},
             {"label": "Bookmarks", "icon": "bookmark-multiple", "to": "bookmarks"},
             {"label": "Achievements", "icon": "trophy", "to": "achievements"},
         ]},
@@ -787,6 +806,183 @@ async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(r
     await db.rt_replies.insert_one(dict(reply))
     reply.pop("_id", None)
     return reply
+
+
+# ---------- Cart & Checkout (Stripe) ----------
+async def _build_cart(user_id: str) -> dict:
+    doc = await db.carts.find_one({"user_id": user_id})
+    items = doc.get("items", []) if doc else []
+    enriched = []
+    subtotal = 0
+    for it in items:
+        listing = await db.bazaar.find_one({"id": it["item_id"]}, {"_id": 0})
+        if not listing:
+            continue
+        qty = it["qty"]
+        line = listing["price_cents"] * qty
+        subtotal += line
+        enriched.append({
+            "item_id": listing["id"], "title": listing["title"], "image": listing["image"],
+            "price_cents": listing["price_cents"], "qty": qty, "line_cents": line,
+            "seller": listing["seller"],
+        })
+    return {"items": enriched, "subtotal_cents": subtotal, "count": sum(e["qty"] for e in enriched)}
+
+
+async def _set_qty(user_id: str, item_id: str, qty: int):
+    doc = await db.carts.find_one({"user_id": user_id})
+    items = doc.get("items", []) if doc else []
+    items = [i for i in items if i["item_id"] != item_id]
+    if qty > 0:
+        items.append({"item_id": item_id, "qty": qty})
+    await db.carts.update_one({"user_id": user_id}, {"$set": {"items": items}}, upsert=True)
+
+
+@api_router.get("/cart")
+async def get_cart(user: dict = Depends(require_user)):
+    return await _build_cart(user["id"])
+
+
+@api_router.post("/cart")
+async def add_to_cart(body: CartAdd, user: dict = Depends(require_user)):
+    listing = await db.bazaar.find_one({"id": body.item_id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    doc = await db.carts.find_one({"user_id": user["id"]})
+    items = doc.get("items", []) if doc else []
+    existing = next((i for i in items if i["item_id"] == body.item_id), None)
+    new_qty = min(99, (existing["qty"] if existing else 0) + body.qty)
+    await _set_qty(user["id"], body.item_id, new_qty)
+    return await _build_cart(user["id"])
+
+
+@api_router.patch("/cart/{item_id}")
+async def set_cart_qty(item_id: str, body: CartSet, user: dict = Depends(require_user)):
+    await _set_qty(user["id"], item_id, body.qty)
+    return await _build_cart(user["id"])
+
+
+@api_router.delete("/cart/{item_id}")
+async def remove_from_cart(item_id: str, user: dict = Depends(require_user)):
+    await _set_qty(user["id"], item_id, 0)
+    return await _build_cart(user["id"])
+
+
+@api_router.post("/checkout")
+async def create_checkout(body: CheckoutBody, user: dict = Depends(require_user)):
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payments are not configured.")
+    cart = await _build_cart(user["id"])
+    if not cart["items"]:
+        raise HTTPException(status_code=400, detail="Your cart is empty.")
+
+    base = body.return_base.rstrip("/")
+    if not base.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid return URL")
+
+    line_items = [{
+        "price_data": {
+            "currency": CURRENCY,
+            "product_data": {"name": it["title"]},
+            "unit_amount": it["price_cents"],
+        },
+        "quantity": it["qty"],
+    } for it in cart["items"]]
+
+    order_id = uuid.uuid4().hex
+    success_url = f"{base}/api/checkout/return?result=success&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{base}/api/checkout/return?result=cancel"
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=line_items,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            managed_payments={"enabled": False},
+            metadata={"order_id": order_id, "user_id": user["id"]},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Stripe session error")
+        raise HTTPException(status_code=502, detail="Could not start checkout.") from e
+
+    await db.orders.insert_one({
+        "id": order_id,
+        "user_id": user["id"],
+        "session_id": session.id,
+        "status": "pending",
+        "payment_status": "unpaid",
+        "currency": CURRENCY,
+        "amount_cents": cart["subtotal_cents"],
+        "lines": [{"item_id": it["item_id"], "title": it["title"], "qty": it["qty"], "unit_amount": it["price_cents"], "image": it["image"]} for it in cart["items"]],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"session_id": session.id, "checkout_url": session.url}
+
+
+@api_router.get("/checkout/status/{session_id}")
+async def checkout_status(session_id: str, user: dict = Depends(require_user)):
+    order = await db.orders.find_one({"session_id": session_id, "user_id": user["id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order["payment_status"] != "paid" and stripe.api_key:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            if session.payment_status == "paid":
+                await db.orders.update_one(
+                    {"session_id": session_id},
+                    {"$set": {"payment_status": "paid", "status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
+                )
+                await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}})
+                order["payment_status"] = "paid"
+                order["status"] = "paid"
+        except Exception:  # noqa: BLE001
+            logger.exception("Stripe status error")
+    return {"paid": order["payment_status"] == "paid", "order": order}
+
+
+@api_router.get("/checkout/return", response_class=HTMLResponse)
+async def checkout_return(result: str = "cancel", session_id: str = ""):
+    ok = result == "success"
+    title = "Payment complete" if ok else "Checkout cancelled"
+    msg = ("Your order is confirmed. You may close this window and return to Konphlux."
+           if ok else "No charge was made. Close this window to return to Konphlux.")
+    color = "#B06C3A"
+    return f"""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title></head>
+<body style="margin:0;font-family:Georgia,serif;background:#F6F1E7;color:#3B3229;display:flex;align-items:center;justify-content:center;height:100vh;">
+<div style="text-align:center;padding:32px;max-width:420px;">
+<div style="font-size:56px;">{'⚙️' if ok else '✕'}</div>
+<h1 style="color:{color};font-size:26px;margin:12px 0;">{title}</h1>
+<p style="font-size:16px;line-height:1.5;color:#8A7A63;">{msg}</p>
+</div></body></html>"""
+
+
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    if not STRIPE_WEBHOOK_SECRET:
+        return {"received": True, "note": "webhook secret not configured"}
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid webhook") from e
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        if session.get("payment_status") == "paid":
+            await db.orders.update_one(
+                {"session_id": session["id"]},
+                {"$set": {"payment_status": "paid", "status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
+            )
+    return {"received": True}
+
+
+@api_router.get("/orders")
+async def list_orders(user: dict = Depends(require_user)):
+    docs = await db.orders.find({"user_id": user["id"], "payment_status": "paid"}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda o: o.get("paid_at") or o.get("created_at", ""), reverse=True)
+    return docs
 
 
 app.include_router(api_router)

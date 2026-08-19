@@ -45,6 +45,8 @@ function RootNavigator() {
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
         <Stack.Screen name="saved" />
+        <Stack.Screen name="cart" />
+        <Stack.Screen name="orders" />
         <Stack.Screen name="chatmonger/[slug]" options={{ presentation: "card" }} />
         <Stack.Screen name="roundtable/index" />
         <Stack.Screen name="roundtable/community/[id]" />

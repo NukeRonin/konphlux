@@ -51,9 +51,18 @@ export default function ProductDetail() {
     }
   };
 
-  const addToCart = () => {
+  const addToCart = async () => {
+    if (!id || added) {
+      router.push("/cart");
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setAdded(true);
+    try {
+      await api.addToCart(id, 1);
+    } catch {
+      setAdded(false);
+    }
   };
 
   return (
@@ -135,10 +144,10 @@ export default function ProductDetail() {
               <Text style={[styles.barPrice, { color: colors.onSurface }]}>{formatPrice(item.price_cents)}</Text>
             </View>
             <ForgeButton
-              label={added ? "Added to cart" : "Add to cart"}
+              label={added ? "Added — view cart" : "Add to cart"}
               onPress={addToCart}
               testID="add-to-cart"
-              icon={<MaterialCommunityIcons name={added ? "check" : "cart-plus"} size={16} color={colors.onBrandPrimary} />}
+              icon={<MaterialCommunityIcons name={added ? "cart-arrow-right" : "cart-plus"} size={16} color={colors.onBrandPrimary} />}
             />
           </View>
         </>

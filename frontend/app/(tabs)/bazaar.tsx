@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -83,9 +83,11 @@ function ProductCard({ item }: { item: Listing }) {
 
 export default function BazaarScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [data, setData] = useState<BazaarResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [active, setActive] = useState(ALL);
+  const [cartCount, setCartCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -102,6 +104,12 @@ export default function BazaarScreen() {
     load();
   }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      api.getCart().then((c) => setCartCount(c.count)).catch(() => {});
+    }, []),
+  );
+
   const chips = useMemo(() => [ALL, ...(data?.categories ?? [])], [data]);
   const listings = useMemo(
     () => (data?.listings ?? []).filter((l) => active === ALL || l.category === active),
@@ -113,7 +121,7 @@ export default function BazaarScreen() {
       <AppHeader
         title="Bazaar"
         subtitle="Buy, sell, bid, barter"
-        actions={[{ icon: "cart-outline", onPress: () => {}, testID: "cart-btn", badge: true }]}
+        actions={[{ icon: "cart-outline", onPress: () => router.push("/cart"), testID: "cart-btn", badge: cartCount > 0 }]}
       />
       {status === "loading" ? (
         <Loading label="Opening the stalls…" />

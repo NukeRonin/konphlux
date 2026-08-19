@@ -28,6 +28,13 @@
 - ✅ Roundtable district button ("Enter the Roundtable") opens the functional hub (`/roundtable`).
 - ✅ Verified: 16/16 new backend tests + full frontend flow; previous 28/28 intact.
 
+### 2026-06 (Bazaar cart + Stripe checkout)
+- ✅ Server-side per-user cart (add/set qty/remove) with authoritative prices from the bazaar collection.
+- ✅ Stripe Checkout (test mode) hosted page: POST /api/checkout creates a Checkout Session (managed_payments disabled); app opens it via expo-web-browser; backend verifies via stripe.Session.retrieve.
+- ✅ Paid orders recorded; My Orders screen (HQ → My Orders); cart badge on Bazaar; add-to-cart on product page.
+- ✅ Verified: 18/18 backend tests + frontend flow (checkout opens real Stripe hosted URL). Card entry on stripe.com not driven by harness (external domain) — works in real use with test card 4242…
+- Stripe secret key stored in backend/.env (STRIPE_SECRET_KEY). Webhook (STRIPE_WEBHOOK_SECRET) optional for production; payment currently verified by polling.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

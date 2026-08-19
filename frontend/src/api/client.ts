@@ -132,6 +132,30 @@ export type Reply = {
   created_at: string;
 };
 
+export type CartItem = {
+  item_id: string;
+  title: string;
+  image: string;
+  price_cents: number;
+  qty: number;
+  line_cents: number;
+  seller: string;
+};
+export type Cart = { items: CartItem[]; subtotal_cents: number; count: number };
+
+export type OrderLine = { item_id: string; title: string; qty: number; unit_amount: number; image: string };
+export type Order = {
+  id: string;
+  session_id: string;
+  status: string;
+  payment_status: string;
+  currency: string;
+  amount_cents: number;
+  lines: OrderLine[];
+  created_at: string;
+  paid_at?: string;
+};
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -197,4 +221,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ body }),
     }),
+
+  getCart: () => request<Cart>("/cart"),
+  addToCart: (item_id: string, qty = 1) =>
+    request<Cart>("/cart", { method: "POST", body: JSON.stringify({ item_id, qty }) }),
+  setCartQty: (item_id: string, qty: number) =>
+    request<Cart>(`/cart/${item_id}`, { method: "PATCH", body: JSON.stringify({ qty }) }),
+  removeFromCart: (item_id: string) => request<Cart>(`/cart/${item_id}`, { method: "DELETE" }),
+  checkout: (return_base: string) =>
+    request<{ session_id: string; checkout_url: string }>("/checkout", {
+      method: "POST",
+      body: JSON.stringify({ return_base }),
+    }),
+  checkoutStatus: (session_id: string) =>
+    request<{ paid: boolean; order: Order }>(`/checkout/status/${session_id}`),
+  getOrders: () => request<Order[]>("/orders"),
 };

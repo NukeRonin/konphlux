@@ -52,6 +52,7 @@ export default function ProfileScreen() {
 
   const handleMenu = (to: string) => {
     if (to === "bookmarks") router.push("/saved");
+    else if (to === "warehouse") router.push("/orders");
   };
 
   return (
