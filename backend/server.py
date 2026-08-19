@@ -15,6 +15,7 @@ from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from email_service import send_order_receipt
 
 
 ROOT_DIR = Path(__file__).parent
@@ -667,9 +668,10 @@ async def _thread_meta(thread: dict, user_id: str, community_name: str | None = 
 
 
 @api_router.get("/roundtable/communities")
-async def rt_list_communities(user: dict = Depends(require_user)):
-    docs = await db.rt_communities.find({}, {"_id": 0}).to_list(500)
+async def rt_list_communities(user: dict = Depends(require_user), filter: str | None = None):
     member_ids = {m["community_id"] for m in await db.rt_members.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)}
+    query = {"id": {"$in": list(member_ids)}} if filter == "joined" else {}
+    docs = await db.rt_communities.find(query, {"_id": 0}).to_list(500)
     for d in docs:
         d["member"] = d["id"] in member_ids
         d["thread_count"] = await db.rt_threads.count_documents({"community_id": d["id"]})
@@ -731,8 +733,9 @@ async def rt_toggle_join(community_id: str, user: dict = Depends(require_user)):
 
 
 @api_router.get("/roundtable/threads")
-async def rt_list_threads(user: dict = Depends(require_user)):
-    threads = await db.rt_threads.find({}).to_list(1000)
+async def rt_list_threads(user: dict = Depends(require_user), mine: bool = False):
+    query = {"user_id": user["id"]} if mine else {}
+    threads = await db.rt_threads.find(query).to_list(1000)
     threads = [await _thread_meta(t, user["id"]) for t in threads]
     threads.sort(key=lambda t: t.get("created_at", ""), reverse=True)
     return threads
@@ -920,6 +923,29 @@ async def create_checkout(body: CheckoutBody, user: dict = Depends(require_user)
     return {"session_id": session.id, "checkout_url": session.url}
 
 
+async def _fulfill_paid_order(session_id: str, buyer: dict | None = None):
+    """Mark order paid (idempotent), clear the buyer's cart, and email a receipt once."""
+    order = await db.orders.find_one({"session_id": session_id})
+    if not order:
+        return
+    already_paid = order.get("payment_status") == "paid"
+    await db.orders.update_one(
+        {"session_id": session_id},
+        {"$set": {"payment_status": "paid", "status": "paid",
+                  "paid_at": order.get("paid_at") or datetime.now(timezone.utc).isoformat()}},
+    )
+    await db.carts.update_one({"user_id": order["user_id"]}, {"$set": {"items": []}})
+    if not order.get("email_sent"):
+        user = buyer or await db.users.find_one({"id": order["user_id"]})
+        if user and user.get("email"):
+            fresh = await db.orders.find_one({"session_id": session_id}, {"_id": 0})
+            try:
+                await send_order_receipt(to=user["email"], name=user.get("display_name", "there"), order=fresh)
+                await db.orders.update_one({"session_id": session_id}, {"$set": {"email_sent": True}})
+            except Exception:  # noqa: BLE001
+                logger.exception("Receipt email failed")
+
+
 @api_router.get("/checkout/status/{session_id}")
 async def checkout_status(session_id: str, user: dict = Depends(require_user)):
     order = await db.orders.find_one({"session_id": session_id, "user_id": user["id"]}, {"_id": 0})
@@ -929,11 +955,7 @@ async def checkout_status(session_id: str, user: dict = Depends(require_user)):
         try:
             session = stripe.checkout.Session.retrieve(session_id)
             if session.payment_status == "paid":
-                await db.orders.update_one(
-                    {"session_id": session_id},
-                    {"$set": {"payment_status": "paid", "status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
-                )
-                await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}})
+                await _fulfill_paid_order(session_id, buyer=user)
                 order["payment_status"] = "paid"
                 order["status"] = "paid"
         except Exception:  # noqa: BLE001
@@ -971,13 +993,7 @@ async def stripe_webhook(request: Request):
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         if session.get("payment_status") == "paid":
-            await db.orders.update_one(
-                {"session_id": session["id"]},
-                {"$set": {"payment_status": "paid", "status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
-            )
-            uid = (session.get("metadata") or {}).get("user_id")
-            if uid:
-                await db.carts.update_one({"user_id": uid}, {"$set": {"items": []}})
+            await _fulfill_paid_order(session["id"])
     return {"received": True}
 
 

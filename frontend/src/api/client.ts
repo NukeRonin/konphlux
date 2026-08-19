@@ -194,7 +194,8 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
 
-  rtCommunities: () => request<Community[]>("/roundtable/communities"),
+  rtCommunities: (filter?: "joined") =>
+    request<Community[]>(`/roundtable/communities${filter ? `?filter=${filter}` : ""}`),
   rtCommunity: (id: string) => request<Community>(`/roundtable/communities/${id}`),
   rtCreateCommunity: (name: string, description: string, icon: string) =>
     request<Community>("/roundtable/communities", {
@@ -206,6 +207,7 @@ export const api = {
       method: "POST",
     }),
   rtThreads: () => request<Thread[]>("/roundtable/threads"),
+  rtMyThreads: () => request<Thread[]>("/roundtable/threads?mine=true"),
   rtThread: (id: string) => request<Thread>(`/roundtable/threads/${id}`),
   rtCreateThread: (community_id: string, title: string, body: string) =>
     request<Thread>("/roundtable/threads", {

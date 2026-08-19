@@ -1,0 +1,37 @@
+{
+  "summary": "ROUNDTABLE FEATURE-ROW SHORTCUTS + NEW SCREENS VERIFIED (backend + UI). Added 10 new pytest tests to /app/backend/tests/test_roundtable.py under TestCommunitiesJoinedFilter (5) and TestThreadsMineFilter (5) covering: (a) GET /api/roundtable/communities?filter=joined empty for brand-new user, populates with c2 after POST /join, empty again after leave (join toggle), per-user isolation (user_c joining c3 does NOT appear in user_d's joined list), unknown filter values (?filter=bogus) fall back to full list, regression that GET /api/roundtable/communities (no filter) still returns all seeded communities c1..c4; (b) GET /api/roundtable/threads?mine=true empty for brand-new user, populates with a newly-created thread, excludes other users' authored threads, no _id in payloads, ?mine=false returns full list (regression). Full pytest suite now 85/85 PASS in 12.24s (test_konphlux_api + test_roundtable expanded 16->26 + test_cart_checkout + test_webhook + test_email_receipts). UI E2E via Playwright (mobile 375x667): registered fresh user, verified all 7 rt-feature-* testIDs on /district/roundtable exist and each tap navigates to the expected route ('Create Community'->/roundtable/new-community, 'Browse Communities'->/roundtable/communities?filter=all, 'Joined Communities'->?filter=joined, 'Recently Visited'->?filter=recent, 'Discussions I Started'->/roundtable/my-threads, 'Discussion threads' & 'Site-wide discussion routing'->/roundtable). /roundtable/communities lists all seeded communities with Joined badge logic; ?filter=joined shows correct empty state for a new user (You haven't joined any); /roundtable/my-threads shows correct empty state (No discussions yet); after tapping into a community, /roundtable/communities?filter=recent shows exactly that 1 community (AsyncStorage-backed rt_recent_communities working). Zero console errors during the flow. Only console warnings observed are library-level (react-native-web) — 'shadow*' style props deprecated, and 'props.pointerEvents deprecated. Use style.pointerEvents' — but grep confirmed the app code does NOT use `pointerEvents=` as a prop (0 hits in /app/frontend/app and /app/frontend/src), so these are library warnings, not app bugs. No deprecated Expo packages introduced (this change is pure additive: 2 new screens + 2 backend query filters).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_roundtable.py",
+    "/app/test_reports/pytest/roundtable_results.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(NONE blocking) All requested features verified end-to-end.",
+    "(LOW / carried) server.py has grown past 1000 lines — optional split into routers (auth, cart/checkout, roundtable, chatmonger, email).",
+    "(LOW / carried) server.py still uses @app.on_event('startup'/'shutdown') — FastAPI-deprecated in favour of lifespan handlers. Non-functional, just warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py:670-679 (rt_list_communities): filter param defaults None; only string equality with 'joined' triggers the member_ids $in query, everything else (including unknown values) falls through to the full list. member_ids is a set of the caller's joined community ids, applied client-side on each doc to set c.member — correct and per-user.",
+    "server.py:735-741 (rt_list_threads): mine is a bool via FastAPI query coercion; when true, query is {user_id: user.id}, else {} — correct scoping. Threads are then decorated with _thread_meta which strips _id and sets voted per-user.",
+    "server.py:670-741: both endpoints require_user (401 without token) — correct authz.",
+    "frontend/src/api/client.ts:197-210: rtCommunities takes optional 'joined' literal type (defensively typed to prevent stray values), rtMyThreads hits /roundtable/threads?mine=true — matches backend contract.",
+    "frontend/app/district/[slug].tsx:21-29: ROUNDTABLE_ACTIONS is a plain Record<string,{route,icon}>; features not in the map fall back to the non-interactive chip grid — safe for non-Roundtable districts.",
+    "frontend/app/roundtable/communities.tsx:84-115: filter parsing tolerates any string via ternary narrowing to 'all'; 'recent' branch reads AsyncStorage key rt_recent_communities and preserves visit order; 'joined' delegates to the backend filter; useFocusEffect refetches on tab focus — good, ensures joined/recent update after join/visit."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_roundtable.py"
+  ],
+  "success_rate": {"backend": "100% (85/85)", "frontend": "100% (7/7 feature-row navigations + 3/3 new screens render correctly)"},
+  "seed_data_creation": "Registered ephemeral users this run: test_rt_a_*, test_rt_b_*, test_rt_c_*, test_rt_d_*, rt_ui_*@example.com. Each isolated by uuid. New user_c also created 1 test community ('TEST_Cee_Community') + 1 test thread; user_a created 1 additional 'TEST_Iso_*' community + thread. No production data modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Roundtable district shortcut buttons and the 2 new screens (/roundtable/communities and /roundtable/my-threads) are fully verified. Backend filter params are ?filter=joined on /api/roundtable/communities and ?mine=true on /api/roundtable/threads — both scoped per-authenticated-user; anything else on the filter query param falls back to the full list. Frontend uses AsyncStorage key 'rt_recent_communities' to track visited communities client-side (no backend endpoint needed). All 7 feature rows on /district/roundtable are Pressable rows with testID='rt-feature-<label>' and drive Expo Router push with the routes mapped in ROUNDTABLE_ACTIONS. Full pytest suite runs with: EXPO_PUBLIC_BACKEND_URL=<preview_url> pytest /app/backend/tests/ — 85 tests, ~12s.",
+  "rca_of_issue": "No bugs found. The reported issue ('feature chips under Inside Roundtable are static and do nothing') is resolved: the chips are now Pressable rows (testID rt-feature-*) mapped through ROUNDTABLE_ACTIONS in /app/frontend/app/district/[slug].tsx, each tap invokes router.push to a real screen. Two new screens (/roundtable/communities.tsx and /roundtable/my-threads.tsx) fetch the correct backend endpoints with the new ?filter=joined and ?mine=true query params respectively. Backend was extended with two additive filters that are correctly per-user-scoped."
+}

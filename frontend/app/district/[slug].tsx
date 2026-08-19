@@ -17,6 +17,17 @@ import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
+// For the Roundtable district, each feature chip is a working shortcut.
+const ROUNDTABLE_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Create Community": { route: "/roundtable/new-community", icon: "account-multiple-plus" },
+  "Browse Communities": { route: "/roundtable/communities?filter=all", icon: "account-group" },
+  "Recently Visited": { route: "/roundtable/communities?filter=recent", icon: "history" },
+  "Joined Communities": { route: "/roundtable/communities?filter=joined", icon: "account-check" },
+  "Discussion threads": { route: "/roundtable", icon: "forum" },
+  "Discussions I Started": { route: "/roundtable/my-threads", icon: "feather" },
+  "Site-wide discussion routing": { route: "/roundtable", icon: "sitemap" },
+};
+
 export default function DistrictDetail() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { colors } = useTheme();
@@ -105,17 +116,43 @@ export default function DistrictDetail() {
           {/* Features */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Inside {district.name}</Text>
-            <View style={styles.featureGrid}>
-              {district.features.map((f) => (
-                <View
-                  key={f}
-                  style={[styles.feature, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
-                >
-                  <MaterialCommunityIcons name="cog" size={13} color={colors.brandPrimary} />
-                  <Text style={[styles.featureText, { color: colors.onSurface }]}>{f}</Text>
-                </View>
-              ))}
-            </View>
+            {district.slug === "roundtable" ? (
+              <View style={{ gap: spacing.sm }}>
+                {district.features.map((f) => {
+                  const action = ROUNDTABLE_ACTIONS[f];
+                  if (!action) return null;
+                  return (
+                    <Pressable
+                      key={f}
+                      testID={`rt-feature-${f}`}
+                      onPress={() => router.push(action.route as any)}
+                      style={({ pressed }) => [
+                        styles.featureRow,
+                        { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+                      ]}
+                    >
+                      <View style={[styles.featureRowIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                        <MaterialCommunityIcons name={action.icon} size={18} color={colors.brand} />
+                      </View>
+                      <Text style={[styles.featureRowText, { color: colors.onSurface }]}>{f}</Text>
+                      <MaterialCommunityIcons name="chevron-right" size={20} color={colors.muted} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.featureGrid}>
+                {district.features.map((f) => (
+                  <View
+                    key={f}
+                    style={[styles.feature, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+                  >
+                    <MaterialCommunityIcons name="cog" size={13} color={colors.brandPrimary} />
+                    <Text style={[styles.featureText, { color: colors.onSurface }]}>{f}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* Chatmonger */}
@@ -197,6 +234,18 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   featureText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  featureRowIcon: { width: 36, height: 36, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
+  featureRowText: { flex: 1, fontFamily: fonts.displaySemi, fontSize: 15 },
 
   nearbyRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   nearbyIcon: { width: 40, height: 40, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },

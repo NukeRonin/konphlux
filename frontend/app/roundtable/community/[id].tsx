@@ -12,8 +12,17 @@ import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { ThreadRow } from "@/src/components/ThreadRow";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { compactNumber, fonts, radius, spacing } from "@/src/theme/tokens";
+import { storage } from "@/src/utils/storage";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
+const RECENT_KEY = "rt_recent_communities";
+
+async function trackRecent(id: string) {
+  const prev = (await storage.getItem<string[]>(RECENT_KEY, [])) ?? [];
+  const next = [id, ...prev.filter((x) => x !== id)].slice(0, 20);
+  await storage.setItem(RECENT_KEY, next);
+}
 
 export default function CommunityDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,6 +38,7 @@ export default function CommunityDetail() {
       const res = await api.rtCommunity(id);
       setCommunity(res);
       setStatus("ready");
+      trackRecent(id);
     } catch {
       setStatus("error");
     }

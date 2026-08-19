@@ -218,3 +218,161 @@ class TestReplies:
         r = anon.post(f"{API}/roundtable/threads/t1/replies",
                       json={"body": "hi"}, timeout=20)
         assert r.status_code in (401, 403)
+
+
+
+# ---- 2026-06 filters: ?filter=joined on communities, ?mine=true on threads ----
+
+@pytest.fixture(scope="module")
+def user_c():
+    """Fresh user with NO joins / NO authored threads, for empty-state assertions."""
+    email = f"test_rt_c_{uuid.uuid4().hex[:8]}@example.com"
+    r = requests.post(f"{API}/auth/register", json={
+        "email": email, "password": "brass-gauge-42", "display_name": "TEST_Cee"
+    }, timeout=20)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    s = requests.Session()
+    s.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {body['access_token']}"})
+    return {"s": s, "user": body["user"]}
+
+
+class TestCommunitiesJoinedFilter:
+    def test_joined_filter_empty_for_new_user(self, user_c):
+        r = user_c["s"].get(f"{API}/roundtable/communities?filter=joined", timeout=20)
+        assert r.status_code == 200
+        data = r.json()
+        assert isinstance(data, list)
+        assert data == []  # brand-new user has joined nothing
+
+    def test_all_filter_regression_returns_seeds(self, user_c):
+        r = user_c["s"].get(f"{API}/roundtable/communities", timeout=20)
+        assert r.status_code == 200
+        ids = [c["id"] for c in r.json()]
+        for seed in ("c1", "c2", "c3", "c4"):
+            assert seed in ids
+
+    def test_joined_filter_reflects_join(self, user_c):
+        # Baseline: joined list is empty
+        joined0 = user_c["s"].get(f"{API}/roundtable/communities?filter=joined", timeout=20).json()
+        assert joined0 == []
+        # Join c2
+        rj = user_c["s"].post(f"{API}/roundtable/communities/c2/join", timeout=20)
+        assert rj.status_code == 200 and rj.json()["member"] is True
+        # Now joined list has exactly c2
+        joined1 = user_c["s"].get(f"{API}/roundtable/communities?filter=joined", timeout=20).json()
+        assert isinstance(joined1, list) and len(joined1) == 1
+        assert joined1[0]["id"] == "c2"
+        assert joined1[0]["member"] is True
+        assert "_id" not in joined1[0]
+        # All-list still includes c2 (regression + member flag)
+        all_list = user_c["s"].get(f"{API}/roundtable/communities", timeout=20).json()
+        c2_in_all = next(c for c in all_list if c["id"] == "c2")
+        assert c2_in_all["member"] is True
+        # Leave c2 -> joined empty again
+        user_c["s"].post(f"{API}/roundtable/communities/c2/join", timeout=20)
+        joined2 = user_c["s"].get(f"{API}/roundtable/communities?filter=joined", timeout=20).json()
+        assert joined2 == []
+
+    def test_joined_filter_isolated_per_user(self, user_c):
+        """user_c joining c3 must not affect a different user's joined list."""
+        # Register a peer user_d inline
+        email = f"test_rt_d_{uuid.uuid4().hex[:8]}@example.com"
+        rr = requests.post(f"{API}/auth/register", json={
+            "email": email, "password": "brass-gauge-42", "display_name": "TEST_Dee"
+        }, timeout=20)
+        assert rr.status_code == 201
+        d_token = rr.json()["access_token"]
+        d_s = requests.Session()
+        d_s.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {d_token}"})
+
+        # user_c joins c3
+        rj = user_c["s"].post(f"{API}/roundtable/communities/c3/join", timeout=20)
+        assert rj.status_code == 200 and rj.json()["member"] is True
+
+        # user_d joined list is still empty
+        d_joined = d_s.get(f"{API}/roundtable/communities?filter=joined", timeout=20).json()
+        assert d_joined == []
+
+        # user_c joined list contains c3
+        c_joined = user_c["s"].get(f"{API}/roundtable/communities?filter=joined", timeout=20).json()
+        assert [c["id"] for c in c_joined] == ["c3"]
+
+        # cleanup: user_c leaves c3
+        user_c["s"].post(f"{API}/roundtable/communities/c3/join", timeout=20)
+
+    def test_unknown_filter_falls_back_to_all(self, user_c):
+        """Unknown filter values must not crash; server treats them as no-filter."""
+        r = user_c["s"].get(f"{API}/roundtable/communities?filter=bogus", timeout=20)
+        assert r.status_code == 200
+        ids = [c["id"] for c in r.json()]
+        for seed in ("c1", "c2", "c3", "c4"):
+            assert seed in ids
+
+
+class TestThreadsMineFilter:
+    def test_mine_empty_for_new_user(self, user_c):
+        r = user_c["s"].get(f"{API}/roundtable/threads?mine=true", timeout=20)
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_mine_reflects_authored_thread(self, user_c):
+        # Create a community owned by user_c, then a thread in it
+        cr = user_c["s"].post(f"{API}/roundtable/communities", json={
+            "name": "TEST_Cee_Community", "description": "TEST for mine=true", "icon": "forum"
+        }, timeout=20)
+        assert cr.status_code == 201
+        cid = cr.json()["id"]
+
+        tr = user_c["s"].post(f"{API}/roundtable/threads", json={
+            "community_id": cid, "title": "TEST_ mine=true thread",
+            "body": "TEST_ body content that is long enough."
+        }, timeout=20)
+        assert tr.status_code == 201
+        tid = tr.json()["id"]
+
+        mine = user_c["s"].get(f"{API}/roundtable/threads?mine=true", timeout=20).json()
+        ids = [t["id"] for t in mine]
+        assert tid in ids
+        # And every thread in "mine" must be authored by this user's display name
+        for t in mine:
+            assert t["author"] == user_c["user"]["display_name"]
+            assert "_id" not in t
+
+    def test_mine_excludes_other_users_threads(self, user_a, user_c):
+        """user_a's authored threads must NOT appear in user_c's mine=true list."""
+        # Ensure user_a has at least one authored thread (create fresh one)
+        cr = user_a["s"].post(f"{API}/roundtable/communities", json={
+            "name": f"TEST_Iso_{uuid.uuid4().hex[:6]}", "description": "iso", "icon": "forum"
+        }, timeout=20)
+        assert cr.status_code == 201
+        a_cid = cr.json()["id"]
+        ar = user_a["s"].post(f"{API}/roundtable/threads", json={
+            "community_id": a_cid, "title": "TEST_ A owned thread",
+            "body": "TEST_ body content that is long enough."
+        }, timeout=20)
+        assert ar.status_code == 201
+        a_tid = ar.json()["id"]
+
+        # user_c's mine list must NOT contain user_a's thread
+        c_mine = user_c["s"].get(f"{API}/roundtable/threads?mine=true", timeout=20).json()
+        c_mine_ids = [t["id"] for t in c_mine]
+        assert a_tid not in c_mine_ids
+        # And user_a's mine=true DOES contain it
+        a_mine = user_a["s"].get(f"{API}/roundtable/threads?mine=true", timeout=20).json()
+        assert a_tid in [t["id"] for t in a_mine]
+
+    def test_all_threads_regression_includes_seeds(self, user_c):
+        r = user_c["s"].get(f"{API}/roundtable/threads", timeout=20)
+        assert r.status_code == 200
+        ids = [t["id"] for t in r.json()]
+        for seed in ("t1", "t2", "t3", "t4"):
+            assert seed in ids
+
+    def test_mine_false_returns_all(self, user_c):
+        r = user_c["s"].get(f"{API}/roundtable/threads?mine=false", timeout=20)
+        assert r.status_code == 200
+        ids = [t["id"] for t in r.json()]
+        # seeded threads authored by fixtures show up
+        for seed in ("t1", "t2", "t3", "t4"):
+            assert seed in ids
