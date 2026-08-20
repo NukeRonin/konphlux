@@ -195,6 +195,30 @@ class SwipeBody(BaseModel):
     action: str  # like | pass
 
 
+class AnvilWorkCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=160)
+    kind: str = "story"  # story | script
+    category: str = Field(default="General", max_length=40)
+    body: str = Field(min_length=1, max_length=20000)
+    open_cowriting: bool = False
+
+
+class ContributionBody(BaseModel):
+    body: str = Field(min_length=1, max_length=8000)
+
+
+class AssistBody(BaseModel):
+    mode: str = "continue"  # continue | idea | improve
+    title: str = Field(default="", max_length=160)
+    kind: str = "story"
+    text: str = Field(default="", max_length=8000)
+
+
+class AdventureBody(BaseModel):
+    history: list[dict] = Field(default_factory=list)
+    action: str = Field(min_length=1, max_length=2000)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -407,6 +431,40 @@ DATING_PROFILES = [
      "tagline": "Blacksmith with a soft heart", "bio": "I forge iron all day and go soft at sunsets. Seeking someone to share the quiet after the hammering stops.", "photo": _portrait("1506794778202-cad84cf45f1d")},
 ]
 
+
+# Author Anvil — writing & publishing district.
+ANVIL_CATEGORIES = ["General", "Fantasy", "Mystery", "Romance", "Sci-Fi", "Horror", "Adventure", "Drama", "Comedy", "Poetry"]
+
+ANVIL_PROMPTS = [
+    "A lamplighter discovers one street lamp that refuses to be lit.",
+    "Two rival clockmakers are commissioned to build the same impossible watch.",
+    "An airship arrives at a port that isn't on any map.",
+    "The city's automatons begin leaving tiny handwritten notes.",
+    "A letter arrives, postmarked from a district that burned down years ago.",
+    "An inventor's greatest creation asks to be switched off.",
+    "The last telegraph operator receives a message from the future.",
+    "A stowaway on the dawn patrol turns out to be the captain's younger self.",
+    "Someone is stealing sounds from the city — first the bells, then the birds.",
+    "A cartographer falls in love with a place that keeps moving.",
+    "The Bazaar's oldest merchant offers to sell you a single, perfect memory.",
+    "Steam rises from a manhole in the exact shape of a person you once knew.",
+]
+
+ANVIL_WORKS = [
+    {"id": "w1", "title": "The Kettle That Kept Time", "kind": "story", "category": "Fantasy",
+     "author": "Wilhelmina Grast", "author_id": "seed", "applause": 128, "open_cowriting": False,
+     "created_at": "2026-06-08T09:00:00+00:00",
+     "body": "The kettle had been in the family for three generations, and for three generations it had told the time. Not with hands or numbers, but with the pitch of its whistle — a low hum at dawn, a bright shriek at noon, a tired sigh at dusk. On the morning it fell silent, Wilhelmina knew that something in the city had stopped as well.\n\nShe carried it to the Forge Floor, past the copper stalls and the hiss of the great boilers, and set it on the workbench of the only smith who might understand. \"It has forgotten the hour,\" she said. The smith only smiled, and reached for the smallest of his hammers."},
+    {"id": "w2", "title": "Pressure — A Two-Hander", "kind": "script", "category": "Drama",
+     "author": "Marlowe Quill", "author_id": "seed", "applause": 74, "open_cowriting": True,
+     "created_at": "2026-06-11T09:00:00+00:00",
+     "body": "INT. BOILER ROOM — NIGHT\n\nThe gauges glow amber. TOMAS, grease to the elbows, does not look up.\n\nTOMAS\nYou came back.\n\nISOLDE (O.S.)\nThe city's holding its breath. I could hardly stay away.\n\nTOMAS\n(a beat)\nThen help me hold it a little longer.\n\n[The scene is open for co-writing — add the next exchange.]"},
+    {"id": "w3", "title": "Notes Left by Automatons", "kind": "story", "category": "Mystery",
+     "author": "Percival Oakes", "author_id": "seed", "applause": 203, "open_cowriting": True,
+     "created_at": "2026-06-13T09:00:00+00:00",
+     "body": "The first note was folded into a perfect square and left on the tram seat: REMEMBER TO LOOK UP. The second was tucked under a teacup at the Parlour: THE THIRD LAMP IS LYING. By the fourth, the whole district had begun to read them aloud in the mornings, the way one reads a horoscope — half in jest, half in dread.\n\nNobody had ever seen an automaton write."},
+]
+
 PROFILE = {
     "display_name": "Wilhelmina Grast",
     "handle": "@artificer",
@@ -591,6 +649,10 @@ async def seed():
     for p in DATING_PROFILES:
         if not await db.dating_profiles.find_one({"user_id": p["user_id"]}):
             await db.dating_profiles.insert_one(dict(p))
+    # Author Anvil seeded works (idempotent).
+    for w in ANVIL_WORKS:
+        if not await db.anvil_works.find_one({"id": w["id"]}):
+            await db.anvil_works.insert_one(dict(w))
     if await db.rt_communities.count_documents({}) == 0:
         await db.rt_communities.insert_many([dict(c) for c in RT_COMMUNITIES])
         await db.rt_threads.insert_many([dict(t) for t in RT_THREADS])
@@ -1221,6 +1283,176 @@ async def list_saves(user: dict = Depends(require_user)):
     districts = await db.districts.find({"slug": {"$in": district_slugs}}, {"_id": 0}).to_list(100)
 
     return {"posts": posts, "listings": listings, "districts": districts}
+
+
+# ---------- Author Anvil (writing & publishing) ----------
+async def _anvil_public(doc: dict, user_id: str, applauded_ids: set) -> dict:
+    d = {k: v for k, v in doc.items() if k != "_id"}
+    d.setdefault("applause", 0)
+    d.setdefault("open_cowriting", False)
+    d["applauded"] = d["id"] in applauded_ids
+    d["is_author"] = d.get("author_id") == user_id
+    d["contribution_count"] = await db.anvil_contributions.count_documents({"work_id": d["id"]})
+    excerpt = (d.get("body") or "").strip().replace("\n", " ")
+    d["excerpt"] = excerpt[:160] + ("…" if len(excerpt) > 160 else "")
+    return d
+
+
+async def _anvil_llm(system: str, prompt: str, session: str) -> str:
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session, system_message=system).with_model(*CHAT_MODEL)
+    return await chat.send_message(UserMessage(text=prompt))
+
+
+@api_router.get("/anvil/prompts")
+async def anvil_prompts(user: dict = Depends(require_user)):
+    return {"prompts": ANVIL_PROMPTS, "categories": ANVIL_CATEGORIES}
+
+
+@api_router.get("/anvil/cowriting")
+async def anvil_cowriting(user: dict = Depends(require_user)):
+    docs = await db.anvil_works.find({"open_cowriting": True}).to_list(300)
+    applauded = {a["work_id"] for a in await db.anvil_applause.find({"user_id": user["id"]}, {"_id": 0, "work_id": 1}).to_list(5000)}
+    works = [await _anvil_public(d, user["id"], applauded) for d in docs]
+    works.sort(key=lambda w: w.get("created_at", ""), reverse=True)
+    return works
+
+
+@api_router.get("/anvil")
+async def anvil_list(user: dict = Depends(require_user), kind: str | None = None, category: str | None = None):
+    query: dict = {}
+    if kind in ("story", "script"):
+        query["kind"] = kind
+    if category and category != "All":
+        query["category"] = category
+    docs = await db.anvil_works.find(query).to_list(500)
+    applauded = {a["work_id"] for a in await db.anvil_applause.find({"user_id": user["id"]}, {"_id": 0, "work_id": 1}).to_list(5000)}
+    works = [await _anvil_public(d, user["id"], applauded) for d in docs]
+    works.sort(key=lambda w: w.get("created_at", ""), reverse=True)
+    cats = sorted({w["category"] for w in works if w.get("category")})
+    return {"works": works, "categories": cats}
+
+
+@api_router.post("/anvil", status_code=201)
+async def anvil_create(body: AnvilWorkCreate, user: dict = Depends(require_user)):
+    if body.kind not in ("story", "script"):
+        raise HTTPException(status_code=400, detail="A work is either a story or a script.")
+    category = body.category if body.category in ANVIL_CATEGORIES else "General"
+    work = {
+        "id": uuid.uuid4().hex,
+        "title": body.title.strip(),
+        "kind": body.kind,
+        "category": category,
+        "body": body.body.strip(),
+        "author": user["display_name"],
+        "author_id": user["id"],
+        "applause": 0,
+        "open_cowriting": body.open_cowriting,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.anvil_works.insert_one(dict(work))
+    return await _anvil_public(work, user["id"], set())
+
+
+@api_router.get("/anvil/{work_id}")
+async def anvil_detail(work_id: str, user: dict = Depends(require_user)):
+    doc = await db.anvil_works.find_one({"id": work_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Work not found")
+    applauded = {a["work_id"] for a in await db.anvil_applause.find({"user_id": user["id"]}, {"_id": 0, "work_id": 1}).to_list(5000)}
+    work = await _anvil_public(doc, user["id"], applauded)
+    contribs = await db.anvil_contributions.find({"work_id": work_id}, {"_id": 0}).to_list(1000)
+    contribs.sort(key=lambda c: c.get("created_at", ""))
+    work["contributions"] = contribs
+    return work
+
+
+@api_router.post("/anvil/{work_id}/applause")
+async def anvil_applause(work_id: str, user: dict = Depends(require_user)):
+    doc = await db.anvil_works.find_one({"id": work_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Work not found")
+    q = {"user_id": user["id"], "work_id": work_id}
+    existing = await db.anvil_applause.find_one(q)
+    if existing:
+        await db.anvil_applause.delete_one(q)
+        applauded, delta = False, -1
+    else:
+        await db.anvil_applause.insert_one(dict(q))
+        applauded, delta = True, 1
+    applause = max(0, doc.get("applause", 0) + delta)
+    await db.anvil_works.update_one({"id": work_id}, {"$set": {"applause": applause}})
+    return {"id": work_id, "applauded": applauded, "applause": applause}
+
+
+@api_router.post("/anvil/{work_id}/contribute", status_code=201)
+async def anvil_contribute(work_id: str, body: ContributionBody, user: dict = Depends(require_user)):
+    doc = await db.anvil_works.find_one({"id": work_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Work not found")
+    if not doc.get("open_cowriting"):
+        raise HTTPException(status_code=403, detail="This work isn't open for co-writing.")
+    contribution = {
+        "id": uuid.uuid4().hex,
+        "work_id": work_id,
+        "body": body.body.strip(),
+        "author": user["display_name"],
+        "author_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.anvil_contributions.insert_one(dict(contribution))
+    contribution.pop("_id", None)
+    return contribution
+
+
+@api_router.post("/anvil/assist")
+async def anvil_assist(body: AssistBody, user: dict = Depends(require_user)):
+    kind = "screenplay" if body.kind == "script" else "story"
+    system = (
+        "You are GenoScribe, the resident writing-smith of Author Anvil inside Konphlux, a whimsical "
+        "steampunk world. You help authors write vivid, atmospheric prose. Match the author's voice. "
+        "Return only the requested writing — no preamble, no commentary, no markdown headers."
+    )
+    if body.mode == "idea":
+        prompt = (
+            f"Give me three short, original {kind} ideas set in a steampunk world"
+            + (f' related to the title "{body.title}".' if body.title else ".")
+            + " Return them as a simple numbered list, one sentence each."
+        )
+    elif body.mode == "improve":
+        prompt = f"Rewrite the following {kind} excerpt to be more vivid and evocative, keeping the same meaning and length:\n\n{body.text}"
+    else:  # continue
+        seed = body.text or (f"Title: {body.title}" if body.title else "")
+        prompt = f"Continue this {kind} with the next 1-2 paragraphs, picking up naturally:\n\n{seed}"
+    try:
+        text = await _anvil_llm(system, prompt, session=f"anvil-assist:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("GenoScribe error")
+        raise HTTPException(status_code=502, detail="GenoScribe's aether pen ran dry. Try again.") from e
+    return {"text": text}
+
+
+@api_router.post("/anvil/adventure")
+async def anvil_adventure(body: AdventureBody, user: dict = Depends(require_user)):
+    system = (
+        "You are the narrator of AIventure, an interactive steampunk text adventure inside Konphlux. "
+        "Narrate in second person, vividly but briefly (2-4 sentences). After each passage, always end with "
+        "'What do you do?' Keep the story coherent with what came before and react to the player's action."
+    )
+    transcript = ""
+    for m in body.history[-12:]:
+        role = "You" if m.get("role") == "user" else "Narrator"
+        transcript += f"{role}: {m.get('content', '')}\n"
+    prompt = (
+        (f"Story so far:\n{transcript}\n" if transcript.strip() else "")
+        + f"The player does: {body.action}\nNarrate what happens next."
+    )
+    try:
+        text = await _anvil_llm(system, prompt, session=f"anvil-adventure:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("AIventure error")
+        raise HTTPException(status_code=502, detail="The adventure's aether flickered. Try again.") from e
+    return {"text": text}
+
 
 
 # ---------- Chatmonger (AI) ----------

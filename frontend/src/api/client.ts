@@ -139,6 +139,26 @@ export type AppNotification = {
   created_at: string;
 };
 
+export type AnvilContribution = { id: string; body: string; author: string; created_at: string };
+
+export type AnvilWork = {
+  id: string;
+  title: string;
+  kind: "story" | "script";
+  category: string;
+  body: string;
+  excerpt: string;
+  author: string;
+  author_id: string;
+  applause: number;
+  applauded: boolean;
+  is_author: boolean;
+  open_cowriting: boolean;
+  contribution_count: number;
+  created_at: string;
+  contributions?: AnvilContribution[];
+};
+
 export type DatingProfile = {
   user_id: string;
   display_name: string;
@@ -318,6 +338,27 @@ export const api = {
   notifications: () => request<AppNotification[]>("/notifications"),
   unreadCount: () => request<{ count: number }>("/notifications/unread_count"),
   markNotificationsRead: () => request<{ ok: boolean }>("/notifications/read", { method: "POST" }),
+
+  anvilList: (kind?: string, category?: string) => {
+    const p = new URLSearchParams();
+    if (kind) p.set("kind", kind);
+    if (category) p.set("category", category);
+    const qs = p.toString();
+    return request<{ works: AnvilWork[]; categories: string[] }>(`/anvil${qs ? `?${qs}` : ""}`);
+  },
+  anvilPrompts: () => request<{ prompts: string[]; categories: string[] }>("/anvil/prompts"),
+  anvilCowriting: () => request<AnvilWork[]>("/anvil/cowriting"),
+  anvilWork: (id: string) => request<AnvilWork>(`/anvil/${id}`),
+  anvilCreate: (payload: { title: string; kind: string; category: string; body: string; open_cowriting: boolean }) =>
+    request<AnvilWork>("/anvil", { method: "POST", body: JSON.stringify(payload) }),
+  anvilApplause: (id: string) =>
+    request<{ id: string; applauded: boolean; applause: number }>(`/anvil/${id}/applause`, { method: "POST" }),
+  anvilContribute: (id: string, body: string) =>
+    request<AnvilContribution>(`/anvil/${id}/contribute`, { method: "POST", body: JSON.stringify({ body }) }),
+  anvilAssist: (payload: { mode: string; title?: string; kind?: string; text?: string }) =>
+    request<{ text: string }>("/anvil/assist", { method: "POST", body: JSON.stringify(payload) }),
+  anvilAdventure: (history: { role: string; content: string }[], action: string) =>
+    request<{ text: string }>("/anvil/adventure", { method: "POST", body: JSON.stringify({ history, action }) }),
   getProfile: () => request<Profile>("/profile"),
 
   toggleSave: (kind: SaveKind, item_id: string) =>

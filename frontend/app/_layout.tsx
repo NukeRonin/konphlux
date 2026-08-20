@@ -53,6 +53,12 @@ function RootNavigator() {
         <Stack.Screen name="sparking-dawn/index" />
         <Stack.Screen name="sparking-dawn/matches" />
         <Stack.Screen name="sparking-dawn/profile" options={{ presentation: "modal" }} />
+        <Stack.Screen name="anvil/index" />
+        <Stack.Screen name="anvil/work/[id]" />
+        <Stack.Screen name="anvil/prompts" />
+        <Stack.Screen name="anvil/cowriting" />
+        <Stack.Screen name="anvil/aiventure" />
+        <Stack.Screen name="anvil/write" options={{ presentation: "modal" }} />
         <Stack.Screen name="saved" />
         <Stack.Screen name="cart" />
         <Stack.Screen name="orders" />

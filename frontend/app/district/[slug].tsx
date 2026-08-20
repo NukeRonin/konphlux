@@ -23,6 +23,20 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   answerfier: { route: "/answerfier", label: "Enter Answerfier" },
   bazaar: { route: "/(tabs)/bazaar", label: "Enter the Bazaar" },
   "sparking-dawn": { route: "/sparking-dawn", label: "Enter Sparking Dawn" },
+  "author-anvil": { route: "/anvil", label: "Enter Author Anvil" },
+};
+
+// Author Anvil — every feature opens a real writing/publishing destination.
+const ANVIL_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Stories": { route: "/anvil?kind=story", icon: "book-open-variant" },
+  "Scripts": { route: "/anvil?kind=script", icon: "script-text" },
+  "Prompts": { route: "/anvil/prompts", icon: "lightbulb-on" },
+  "Write & Submit Stories": { route: "/anvil/write?kind=story", icon: "feather" },
+  "Write & Submit Scripts": { route: "/anvil/write?kind=script", icon: "script-text-play" },
+  "Story Categories": { route: "/anvil", icon: "shape-outline" },
+  "GenoScribe": { route: "/anvil/write", icon: "auto-fix" },
+  "Co-writing": { route: "/anvil/cowriting", icon: "account-multiple" },
+  "AIventure": { route: "/anvil/aiventure", icon: "compass-rose" },
 };
 
 // Sparking Dawn — the two feature buttons open the discovery deck filtered by who you seek.
@@ -73,6 +87,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   answerfier: ANSWERFIER_ACTIONS,
   bazaar: BAZAAR_ACTIONS,
   "sparking-dawn": SPARKING_ACTIONS,
+  "author-anvil": ANVIL_ACTIONS,
 };
 
 export default function DistrictDetail() {
