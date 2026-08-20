@@ -1,0 +1,34 @@
+{
+  "summary": "Bazaar selling side end-to-end verified. Backend: 17/17 pytest tests pass in /app/backend/tests/test_bazaar_sell.py covering image upload (PNG store+serve, non-image 400, oversize 413), fixed listing creation, auction creation + missing-field 400, browse categories include eBooks/Audio Books with seeded book listings, mine scoping, delete owner vs 403 for other user, bid rules (below-starting 400, seller-can't-bid 400, valid first bid, +$1 increment enforced), cart guards (running auction 400, seller own fixed 400, other-user fixed OK). Frontend (mobile viewport 390x844): /district/bazaar has all 13 feature-<name> rows with testIDs and correct routes (Sell -> /bazaar/sell, Your Posts -> /bazaar/mine, eBooks -> /(tabs)/bazaar?category=eBooks, Shopping cart -> /cart, etc). Sell screen shows all inputs (sell-image, sell-title, sell-description, sell-category chips, sell-kind-fixed/auction, sell-price, sell-duration-24/48/72/168, sell-submit) and validation error appears when submitting without image. Your Posts empty state renders with mine-sell + mine-empty-sell buttons. Bazaar tab with ?category=eBooks correctly filters to the 3 eBook titles. Product page for an auction shows LIVE AUCTION badge, auction-countdown, starting/current bid, bid-input with correct min prompt ('$10.00 or more' -> after $12 bid, '$13.00 or more'), place-bid works and updates Current bid + bid count + highest bidder name. Object storage init logs 'Object storage initialised'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking but should be migrated. Reference: multiple components (surfaced on /login)."},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking. Reference: surfaced on /login load."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bazaar_sell.py",
+    "/app/test_reports/pytest/bazaar_sell_results.xml"
+  ],
+  "action_items": [
+    "Optional: migrate remaining `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents` to silence RN Web deprecation warnings.",
+    "Optional (UX): expo-image-picker on web opens a native file dialog dynamically; consider surfacing an explicit <input type=file> fallback with testID='sell-file' to enable e2e web tests of the photo upload path."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~1500 lines and mixes many domain modules (auth, bazaar, roundtable, answerfier, cart, chat, storage). Consider splitting into routers per domain to keep files under ~700 lines.",
+    "storage_service.py uses sync requests inside async endpoints — correctly wrapped in run_in_threadpool at call sites. Good.",
+    "_public_listing correctly strips _id and derives kind, seconds_left, min_next_bid_cents, can_bid/can_buy. No JSON serialization issues observed.",
+    "Cart guard on POST /api/cart correctly blocks running auctions (400), non-winner after end (403 semantics via winner_id check), and seller-own fixed (400)."
+  ],
+  "updated_files": ["/app/backend/tests/test_bazaar_sell.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% for tested flows (district routes, sell form, your posts, bazaar category filter, product auction bid)"},
+  "seed_data_creation": "Test users prefixed TEST_ registered per run; TEST_ listings created and mostly deleted by tests. A few TEST_ listings (BidUI, FlowAuction, UI Product Auction) remain from UI verification; harmless.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend base URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL (loaded via python-dotenv at test module import). Use `pytest -o addopts=` to bypass the -n loadscope parallel default in /app/backend/pytest.ini when running a single file. On web build, expo-image-picker does not expose a persistent <input type=file>; for UI e2e auction bidding, register two users via API and inject the bidder token into localStorage under key 'konphlux.auth.token' as a JSON-encoded string before navigating to /product/{id}.",
+  "rca_of_issue": "N/A — no bugs found."
+}

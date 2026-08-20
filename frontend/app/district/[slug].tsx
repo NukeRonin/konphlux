@@ -21,6 +21,24 @@ type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   roundtable: { route: "/roundtable", label: "Enter the Roundtable" },
   answerfier: { route: "/answerfier", label: "Enter Answerfier" },
+  bazaar: { route: "/(tabs)/bazaar", label: "Enter the Bazaar" },
+};
+
+// For the Bazaar district, every feature chip opens a working destination.
+const BAZAAR_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Buy": { route: "/(tabs)/bazaar", icon: "cart" },
+  "Sell": { route: "/bazaar/sell", icon: "tag-plus" },
+  "Booths": { route: "/(tabs)/bazaar", icon: "storefront" },
+  "Setup Booth": { route: "/bazaar/sell", icon: "store-plus" },
+  "You Might Be Interested In": { route: "/(tabs)/bazaar", icon: "lightbulb-on" },
+  "Your Posts": { route: "/bazaar/mine", icon: "package-variant" },
+  "Your Saves": { route: "/saved", icon: "bookmark-multiple" },
+  "Seller ratings": { route: "/bazaar/mine", icon: "star-circle" },
+  "eBooks": { route: "/(tabs)/bazaar?category=eBooks", icon: "book-open-page-variant" },
+  "Audio Books": { route: "/(tabs)/bazaar?category=Audio Books", icon: "headphones" },
+  "Wish lists": { route: "/saved", icon: "heart" },
+  "Shopping cart": { route: "/cart", icon: "cart-outline" },
+  "Checkout": { route: "/cart", icon: "credit-card-outline" },
 };
 
 // For the Answerfier district, each feature chip opens the Q&A board with a filter.
@@ -41,6 +59,12 @@ const ROUNDTABLE_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Discussion threads": { route: "/roundtable", icon: "forum" },
   "Discussions I Started": { route: "/roundtable/my-threads", icon: "feather" },
   "Site-wide discussion routing": { route: "/roundtable", icon: "sitemap" },
+};
+
+const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
+  roundtable: ROUNDTABLE_ACTIONS,
+  answerfier: ANSWERFIER_ACTIONS,
+  bazaar: BAZAAR_ACTIONS,
 };
 
 export default function DistrictDetail() {
@@ -131,10 +155,10 @@ export default function DistrictDetail() {
           {/* Features */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Inside {district.name}</Text>
-            {district.slug === "roundtable" || district.slug === "answerfier" ? (
+            {ACTIONS_BY_SLUG[district.slug] ? (
               <View style={{ gap: spacing.sm }}>
                 {district.features.map((f) => {
-                  const action = (district.slug === "roundtable" ? ROUNDTABLE_ACTIONS : ANSWERFIER_ACTIONS)[f];
+                  const action = ACTIONS_BY_SLUG[district.slug][f];
                   if (!action) return null;
                   return (
                     <Pressable

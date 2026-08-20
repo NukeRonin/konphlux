@@ -29,6 +29,28 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** Upload a listing image (multipart). Returns the public file URL to store on the listing. */
+export async function uploadImage(uri: string, isWeb: boolean): Promise<string> {
+  const name = `photo_${Date.now()}.jpg`;
+  const form = new FormData();
+  if (isWeb) {
+    const blob = await (await fetch(uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    // native FormData file shape
+    form.append("file", { uri, name, type: "image/jpeg" } as any);
+  }
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/api/bazaar/upload`, { method: "POST", headers, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = (data as any)?.detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${res.status})`, res.status);
+  }
+  return `${BASE}/api/files/${(data as { path: string }).path}`;
+}
+
 export type Chatmonger = { name: string; role: string; greeting: string };
 
 export type District = {
@@ -73,7 +95,26 @@ export type Listing = {
   image: string;
   description: string;
   saved?: boolean;
+  // sell / ownership
+  seller_id?: string;
+  is_seller?: boolean;
+  created_at?: string;
+  // auction
+  kind?: "fixed" | "auction";
+  is_auction?: boolean;
+  ended?: boolean;
+  starting_price_cents?: number;
+  current_bid_cents?: number | null;
+  bid_count?: number;
+  highest_bidder_name?: string | null;
+  seconds_left?: number;
+  is_winner?: boolean;
+  min_next_bid_cents?: number;
+  can_bid?: boolean;
+  can_buy?: boolean;
 };
+
+export type Bid = { id: string; bidder_name: string; amount_cents: number; created_at: string };
 
 export type BazaarResponse = { categories: string[]; listings: Listing[] };
 
@@ -206,6 +247,21 @@ export const api = {
     request<{ id: string; liked: boolean; likes: number }>(`/feed/${id}/like`, { method: "POST" }),
   getBazaar: () => request<BazaarResponse>("/bazaar"),
   getListing: (id: string) => request<Listing>(`/bazaar/${id}`),
+  getMyListings: () => request<Listing[]>("/bazaar/mine"),
+  createListing: (payload: {
+    title: string;
+    description: string;
+    category: string;
+    image: string;
+    kind: "fixed" | "auction";
+    price_cents?: number;
+    starting_price_cents?: number;
+    duration_hours?: number;
+  }) => request<Listing>("/bazaar", { method: "POST", body: JSON.stringify(payload) }),
+  deleteListing: (id: string) => request<{ deleted: boolean; id: string }>(`/bazaar/${id}`, { method: "DELETE" }),
+  placeBid: (id: string, amount_cents: number) =>
+    request<Listing>(`/bazaar/${id}/bid`, { method: "POST", body: JSON.stringify({ amount_cents }) }),
+  listBids: (id: string) => request<Bid[]>(`/bazaar/${id}/bids`),
   getProfile: () => request<Profile>("/profile"),
 
   toggleSave: (kind: SaveKind, item_id: string) =>

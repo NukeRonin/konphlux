@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -50,6 +50,7 @@ function Chip({
 function ProductCard({ item }: { item: Listing }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const auction = !!item.is_auction;
   return (
     <Pressable
       testID={`listing-${item.id}`}
@@ -57,12 +58,22 @@ function ProductCard({ item }: { item: Listing }) {
       style={({ pressed }) => [styles.card, { transform: [{ scale: pressed ? 0.97 : 1 }] }]}
     >
       <View style={[styles.cardInner, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, shadowColor: colors.shadow }]}>
-        <Image
-          source={{ uri: item.image }}
-          style={[styles.image, { backgroundColor: colors.surfaceTertiary }]}
-          contentFit="cover"
-          transition={250}
-        />
+        <View>
+          <Image
+            source={{ uri: item.image }}
+            style={[styles.image, { backgroundColor: colors.surfaceTertiary }]}
+            contentFit="cover"
+            transition={250}
+          />
+          {auction ? (
+            <View style={[styles.auctionBadge, { backgroundColor: item.ended ? colors.muted : colors.brandSecondary }]}>
+              <MaterialCommunityIcons name="gavel" size={11} color={colors.onBrandPrimary} />
+              <Text style={[styles.auctionBadgeText, { color: colors.onBrandPrimary }]}>
+                {item.ended ? "ENDED" : "AUCTION"}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.cardBody}>
           <Eyebrow>{item.category}</Eyebrow>
           <Text numberOfLines={2} style={[styles.title, { color: colors.onSurface }]}>
@@ -74,6 +85,11 @@ function ProductCard({ item }: { item: Listing }) {
               {item.rating} · {item.reviews}
             </Text>
           </View>
+          {auction ? (
+            <Text style={[styles.auctionLabel, { color: colors.muted }]}>
+              {item.current_bid_cents ? "Current bid" : "Starting"}
+            </Text>
+          ) : null}
           <Text style={[styles.price, { color: colors.brandSecondary }]}>{formatPrice(item.price_cents)}</Text>
         </View>
       </View>
@@ -84,6 +100,7 @@ function ProductCard({ item }: { item: Listing }) {
 export default function BazaarScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ category?: string }>();
   const [data, setData] = useState<BazaarResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [active, setActive] = useState(ALL);
@@ -104,10 +121,16 @@ export default function BazaarScreen() {
     load();
   }, [load]);
 
+  // Deep-link category (e.g. from district shortcuts: eBooks / Audio Books).
+  useEffect(() => {
+    if (params.category) setActive(params.category);
+  }, [params.category]);
+
   useFocusEffect(
     useCallback(() => {
+      load();
       api.getCart().then((c) => setCartCount(c.count)).catch(() => {});
-    }, []),
+    }, [load]),
   );
 
   const chips = useMemo(() => [ALL, ...(data?.categories ?? [])], [data]);
@@ -121,7 +144,10 @@ export default function BazaarScreen() {
       <AppHeader
         title="Bazaar"
         subtitle="Buy, sell, bid, barter"
-        actions={[{ icon: "cart-outline", onPress: () => router.push("/cart"), testID: "cart-btn", badge: cartCount > 0 }]}
+        actions={[
+          { icon: "tag-plus", onPress: () => router.push("/bazaar/sell"), testID: "sell-btn" },
+          { icon: "cart-outline", onPress: () => router.push("/cart"), testID: "cart-btn", badge: cartCount > 0 },
+        ]}
       />
       {status === "loading" ? (
         <Loading label="Opening the stalls…" />
@@ -185,9 +211,22 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   image: { width: "100%", height: 130 },
+  auctionBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  auctionBadgeText: { fontFamily: fonts.bodyBold, fontSize: 9, letterSpacing: 0.5 },
   cardBody: { padding: spacing.md, gap: 4 },
   title: { fontFamily: fonts.displaySemi, fontSize: 14, lineHeight: 19, minHeight: 38 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   rating: { fontFamily: fonts.body, fontSize: 12 },
+  auctionLabel: { fontFamily: fonts.body, fontSize: 10, marginTop: 2 },
   price: { fontFamily: fonts.bodyBold, fontSize: 16, marginTop: 2 },
 });

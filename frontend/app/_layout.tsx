@@ -44,6 +44,8 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
+        <Stack.Screen name="bazaar/sell" options={{ presentation: "modal" }} />
+        <Stack.Screen name="bazaar/mine" />
         <Stack.Screen name="saved" />
         <Stack.Screen name="cart" />
         <Stack.Screen name="orders" />

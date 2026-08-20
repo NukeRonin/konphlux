@@ -1,6 +1,7 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
+from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -17,6 +18,7 @@ from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from email_service import send_order_receipt
+from storage_service import put_object, get_object, init_storage, APP_NAME
 
 
 ROOT_DIR = Path(__file__).parent
@@ -155,6 +157,21 @@ class AnswerCreate(BaseModel):
 
 class BestAnswerBody(BaseModel):
     answer_id: str
+
+
+class ListingCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=1, max_length=2000)
+    category: str = Field(min_length=1, max_length=40)
+    image: str = Field(min_length=1, max_length=600)
+    kind: str = "fixed"  # "fixed" | "auction"
+    price_cents: int | None = Field(default=None, ge=100, le=100_000_000)
+    starting_price_cents: int | None = Field(default=None, ge=100, le=100_000_000)
+    duration_hours: int | None = Field(default=None, ge=1, le=168)
+
+
+class BidBody(BaseModel):
+    amount_cents: int = Field(ge=100, le=100_000_000)
 
 
 # ----------------------------- Seed data -----------------------------
@@ -321,6 +338,23 @@ BAZAAR = [
      "description": "A pocket compass cast in warm bronze with a hinged lid and a needle that has, so far, never once lied to us."},
     {"id": "b8", "title": "Steam Pressure Reader", "price_cents": 9800, "seller": "Boiler Room Supply", "rating": 4.5, "reviews": 154, "category": "Aetherworks", "image": IMG_GEARS,
      "description": "A face-mounted pressure reader for home boilers and small forges. Glows a gentle amber in safe range, an alarming red otherwise."},
+]
+
+IMG_BOOK = "https://images.unsplash.com/photo-1544947950-fa07a98d237f?crop=entropy&cs=srgb&fm=jpg&q=85&w=800"
+IMG_AUDIO = "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?crop=entropy&cs=srgb&fm=jpg&q=85&w=800"
+
+# eBooks + Audio Books — the "Books" media of the Bazaar.
+BOOK_LISTINGS = [
+    {"id": "e1", "title": "The Aetherwright's Handbook (eBook)", "price_cents": 1200, "seller": "The Vault Bindery", "rating": 4.9, "reviews": 380, "category": "eBooks", "image": IMG_BOOK,
+     "description": "A downloadable field manual for coil-work, glow diffusion and the polite tuning of humming lamps. Yours to keep, on any device."},
+    {"id": "e2", "title": "Clockwork & Consequence (eBook)", "price_cents": 990, "seller": "Iolanthe Vex", "rating": 4.7, "reviews": 214, "category": "eBooks", "image": IMG_PARCH,
+     "description": "A serialized mystery set in the brass alleys of Konphlux. Nine chapters, one very suspicious pocket-watch."},
+    {"id": "e3", "title": "Brass-Forward Interiors (eBook)", "price_cents": 1500, "seller": "Ashgrove Press", "rating": 4.6, "reviews": 96, "category": "eBooks", "image": IMG_ARCH,
+     "description": "A photographic guide to warm metals, oiled walnut and gaslight. Includes downloadable mood boards."},
+    {"id": "a-b1", "title": "Tales from the Boiler Room (Audio Book)", "price_cents": 1800, "seller": "Streamora Audio", "rating": 4.8, "reviews": 512, "category": "Audio Books", "image": IMG_AUDIO,
+     "description": "Six hours of narrated short stories, read by the Clockwork Serial cast. Streams or downloads for offline listening."},
+    {"id": "a-b2", "title": "The Wayfinder's Log (Audio Book)", "price_cents": 1600, "seller": "Waypoint Audio", "rating": 4.5, "reviews": 143, "category": "Audio Books", "image": IMG_AUDIO,
+     "description": "A gentle travelogue across every district, narrated with a cartographer's calm. Perfect for a long airship crossing."},
 ]
 
 PROFILE = {
@@ -499,6 +533,10 @@ async def seed():
     if await db.bazaar.count_documents({}) == 0:
         await db.bazaar.insert_many([dict(b) for b in BAZAAR])
         logger.info("Seeded bazaar")
+    # Book media (eBooks + Audio Books) — insert any that are missing (idempotent).
+    for b in BOOK_LISTINGS:
+        if not await db.bazaar.find_one({"id": b["id"]}):
+            await db.bazaar.insert_one(dict(b))
     if await db.rt_communities.count_documents({}) == 0:
         await db.rt_communities.insert_many([dict(c) for c in RT_COMMUNITIES])
         await db.rt_threads.insert_many([dict(t) for t in RT_THREADS])
@@ -645,25 +683,224 @@ async def toggle_like(post_id: str, user: dict = Depends(require_user)):
     return {"id": post_id, "liked": liked, "likes": likes}
 
 
-# ---------- Bazaar ----------
+# ---------- Bazaar (browse + sell + auctions) ----------
+BID_INCREMENT_CENTS = 100  # minimum raise between bids
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def _maybe_end_auction(doc: dict) -> dict:
+    """Lazily settle an auction whose end time has passed."""
+    if doc.get("is_auction") and doc.get("status") == "active":
+        ends = doc.get("ends_at")
+        if ends and _now() >= datetime.fromisoformat(ends):
+            final = doc.get("current_bid_cents") or doc.get("starting_price_cents") or doc.get("price_cents") or 0
+            winner = doc.get("highest_bidder_id")
+            await db.bazaar.update_one(
+                {"id": doc["id"]},
+                {"$set": {"status": "ended", "winner_id": winner, "price_cents": final}},
+            )
+            doc = {**doc, "status": "ended", "winner_id": winner, "price_cents": final}
+    return doc
+
+
+def _public_listing(doc: dict, user_id: str, saved_ids: set) -> dict:
+    d = {k: v for k, v in doc.items() if k != "_id"}
+    is_auction = bool(d.get("is_auction"))
+    d["kind"] = "auction" if is_auction else "fixed"
+    d["is_auction"] = is_auction
+    d["saved"] = d["id"] in saved_ids
+    d["is_seller"] = d.get("seller_id") == user_id
+    d.setdefault("rating", 0)
+    d.setdefault("reviews", 0)
+    if is_auction:
+        current_bid = d.get("current_bid_cents")
+        start = d.get("starting_price_cents") or 0
+        current = current_bid or start
+        ended = d.get("status") == "ended"
+        d["price_cents"] = current
+        d["starting_price_cents"] = start
+        d["current_bid_cents"] = current_bid
+        d["bid_count"] = d.get("bid_count", 0)
+        d["highest_bidder_name"] = d.get("highest_bidder_name")
+        d["ended"] = ended
+        ends = d.get("ends_at")
+        d["seconds_left"] = (
+            max(0, int((datetime.fromisoformat(ends) - _now()).total_seconds())) if ends and not ended else 0
+        )
+        d["is_winner"] = ended and d.get("winner_id") == user_id
+        d["min_next_bid_cents"] = current + BID_INCREMENT_CENTS if current_bid else start
+        d["can_bid"] = (not ended) and (not d["is_seller"])
+        d["can_buy"] = ended and d["is_winner"]
+    else:
+        d["ended"] = False
+        d["can_bid"] = False
+        d["can_buy"] = not d["is_seller"]
+    return d
+
+
 @api_router.get("/bazaar")
 async def get_bazaar(user: dict = Depends(require_user)):
-    docs = await db.bazaar.find({}, {"_id": 0}).to_list(200)
+    raw = await db.bazaar.find({}).to_list(500)
     saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
-    for d in docs:
-        d["saved"] = d["id"] in saved_ids
-    cats = sorted({d["category"] for d in docs})
-    return {"categories": cats, "listings": docs}
+    listings = [_public_listing(await _maybe_end_auction(d), user["id"], saved_ids) for d in raw]
+    listings.sort(key=lambda l: l.get("created_at") or "", reverse=True)
+    cats = sorted({l["category"] for l in listings})
+    return {"categories": cats, "listings": listings}
+
+
+@api_router.get("/bazaar/mine")
+async def get_my_listings(user: dict = Depends(require_user)):
+    raw = await db.bazaar.find({"seller_id": user["id"]}).to_list(500)
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
+    listings = [_public_listing(await _maybe_end_auction(d), user["id"], saved_ids) for d in raw]
+    listings.sort(key=lambda l: l.get("created_at") or "", reverse=True)
+    return listings
+
+
+@api_router.post("/bazaar/upload", status_code=201)
+async def upload_listing_image(user: dict = Depends(require_user), file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image too large (max 8MB).")
+    content_type = file.content_type or "image/jpeg"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Please choose an image file.")
+    ext = {"image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(content_type, "jpg")
+    path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4().hex}.{ext}"
+    try:
+        await run_in_threadpool(put_object, path, data, content_type)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Image upload failed")
+        raise HTTPException(status_code=502, detail="Couldn't store the image. Try again.") from e
+    return {"path": path}
+
+
+@api_router.get("/files/{path:path}")
+async def serve_file(path: str):
+    try:
+        content, ctype = await run_in_threadpool(get_object, path)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="File not found") from e
+    return Response(content=content, media_type=ctype, headers={"Cache-Control": "public, max-age=31536000"})
+
+
+@api_router.post("/bazaar", status_code=201)
+async def create_listing(body: ListingCreate, user: dict = Depends(require_user)):
+    if body.kind not in ("fixed", "auction"):
+        raise HTTPException(status_code=400, detail="Unknown listing type.")
+    now = _now()
+    listing = {
+        "id": uuid.uuid4().hex,
+        "title": body.title.strip(),
+        "description": body.description.strip(),
+        "category": body.category.strip(),
+        "image": body.image.strip(),
+        "seller": user["display_name"],
+        "seller_id": user["id"],
+        "rating": 0,
+        "reviews": 0,
+        "created_at": now.isoformat(),
+    }
+    if body.kind == "auction":
+        if not body.starting_price_cents or not body.duration_hours:
+            raise HTTPException(status_code=400, detail="Auctions need a starting price and a duration.")
+        listing.update({
+            "is_auction": True,
+            "status": "active",
+            "starting_price_cents": body.starting_price_cents,
+            "current_bid_cents": None,
+            "highest_bidder_id": None,
+            "highest_bidder_name": None,
+            "bid_count": 0,
+            "price_cents": body.starting_price_cents,
+            "ends_at": (now + timedelta(hours=body.duration_hours)).isoformat(),
+            "winner_id": None,
+        })
+    else:
+        if not body.price_cents:
+            raise HTTPException(status_code=400, detail="A fixed-price listing needs a price.")
+        listing.update({"is_auction": False, "price_cents": body.price_cents})
+    await db.bazaar.insert_one(dict(listing))
+    return _public_listing(listing, user["id"], set())
 
 
 @api_router.get("/bazaar/{item_id}")
 async def get_bazaar_item(item_id: str, user: dict = Depends(require_user)):
-    doc = await db.bazaar.find_one({"id": item_id}, {"_id": 0})
+    doc = await db.bazaar.find_one({"id": item_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Listing not found")
+    doc = await _maybe_end_auction(doc)
     saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
-    doc["saved"] = item_id in saved_ids
-    return doc
+    return _public_listing(doc, user["id"], saved_ids)
+
+
+@api_router.delete("/bazaar/{item_id}")
+async def delete_listing(item_id: str, user: dict = Depends(require_user)):
+    doc = await db.bazaar.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if doc.get("seller_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only remove your own listings.")
+    await db.bazaar.delete_one({"id": item_id})
+    await db.saves.delete_many({"kind": "listing", "item_id": item_id})
+    # pull it from every cart
+    async for cart in db.carts.find({"items.item_id": item_id}):
+        items = [i for i in cart.get("items", []) if i["item_id"] != item_id]
+        await db.carts.update_one({"_id": cart["_id"]}, {"$set": {"items": items}})
+    return {"deleted": True, "id": item_id}
+
+
+@api_router.get("/bazaar/{item_id}/bids")
+async def list_bids(item_id: str, user: dict = Depends(require_user)):
+    bids = await db.bazaar_bids.find({"listing_id": item_id}, {"_id": 0}).to_list(500)
+    bids.sort(key=lambda b: b.get("created_at", ""), reverse=True)
+    return bids
+
+
+@api_router.post("/bazaar/{item_id}/bid")
+async def place_bid(item_id: str, body: BidBody, user: dict = Depends(require_user)):
+    doc = await db.bazaar.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    doc = await _maybe_end_auction(doc)
+    if not doc.get("is_auction"):
+        raise HTTPException(status_code=400, detail="This listing isn't an auction.")
+    if doc.get("status") == "ended":
+        raise HTTPException(status_code=409, detail="This auction has ended.")
+    if doc.get("seller_id") == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't bid on your own listing.")
+    current = doc.get("current_bid_cents")
+    if current is None:
+        min_bid = doc.get("starting_price_cents") or 0
+        if body.amount_cents < min_bid:
+            raise HTTPException(status_code=400, detail="Bid must meet the starting price.")
+    else:
+        min_bid = current + BID_INCREMENT_CENTS
+        if body.amount_cents < min_bid:
+            raise HTTPException(status_code=400, detail="Bid must be higher than the current bid.")
+    await db.bazaar.update_one(
+        {"id": item_id},
+        {"$set": {
+            "current_bid_cents": body.amount_cents,
+            "highest_bidder_id": user["id"],
+            "highest_bidder_name": user["display_name"],
+            "price_cents": body.amount_cents,
+        }, "$inc": {"bid_count": 1}},
+    )
+    await db.bazaar_bids.insert_one({
+        "id": uuid.uuid4().hex,
+        "listing_id": item_id,
+        "user_id": user["id"],
+        "bidder_name": user["display_name"],
+        "amount_cents": body.amount_cents,
+        "created_at": _now().isoformat(),
+    })
+    fresh = await db.bazaar.find_one({"id": item_id})
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
+    return _public_listing(fresh, user["id"], saved_ids)
 
 
 # ---------- Saves ----------
@@ -1112,6 +1349,14 @@ async def add_to_cart(body: CartAdd, user: dict = Depends(require_user)):
     listing = await db.bazaar.find_one({"id": body.item_id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    listing = await _maybe_end_auction(listing)
+    if listing.get("is_auction"):
+        if listing.get("status") != "ended":
+            raise HTTPException(status_code=400, detail="This auction is still running — place a bid instead.")
+        if listing.get("winner_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="Only the winning bidder can buy this lot.")
+    elif listing.get("seller_id") == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't buy your own listing.")
     doc = await db.carts.find_one({"user_id": user["id"]})
     items = doc.get("items", []) if doc else []
     existing = next((i for i in items if i["item_id"] == body.item_id), None)
@@ -1279,6 +1524,11 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await seed()
+    try:
+        await run_in_threadpool(init_storage)
+        logger.info("Object storage initialised")
+    except Exception:  # noqa: BLE001
+        logger.exception("Object storage init failed (uploads may not work yet)")
 
 
 @app.on_event("shutdown")

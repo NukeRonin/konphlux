@@ -10,7 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.webtomobile.r0ghap"
+      "bundleIdentifier": "com.emergent.webtomobile.r0ghap",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
+        "NSCameraUsageDescription": "Take a photo for your Bazaar listing"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +22,8 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.webtomobile.r0ghap"
+      "package": "com.emergent.webtomobile.r0ghap",
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES"]
     },
     "web": {
       "bundler": "metro",
