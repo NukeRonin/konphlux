@@ -44,8 +44,15 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="bazaar/sell" options={{ presentation: "modal" }} />
         <Stack.Screen name="bazaar/mine" />
+        <Stack.Screen name="bazaar/booths" />
+        <Stack.Screen name="bazaar/booth/[id]" />
+        <Stack.Screen name="bazaar/new-booth" options={{ presentation: "modal" }} />
+        <Stack.Screen name="sparking-dawn/index" />
+        <Stack.Screen name="sparking-dawn/matches" />
+        <Stack.Screen name="sparking-dawn/profile" options={{ presentation: "modal" }} />
         <Stack.Screen name="saved" />
         <Stack.Screen name="cart" />
         <Stack.Screen name="orders" />

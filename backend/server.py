@@ -168,10 +168,31 @@ class ListingCreate(BaseModel):
     price_cents: int | None = Field(default=None, ge=100, le=100_000_000)
     starting_price_cents: int | None = Field(default=None, ge=100, le=100_000_000)
     duration_hours: int | None = Field(default=None, ge=1, le=168)
+    booth_id: str | None = None  # None => individual item; else part of a booth
+
+
+class BoothCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    description: str = Field(default="", max_length=600)
+    image: str = Field(default="", max_length=600)
 
 
 class BidBody(BaseModel):
     amount_cents: int = Field(ge=100, le=100_000_000)
+
+
+class DatingProfileBody(BaseModel):
+    gender: str = Field(min_length=1, max_length=20)  # man | woman | nonbinary
+    seeking: list[str] = Field(default_factory=lambda: ["man", "woman"])
+    bio: str = Field(default="", max_length=600)
+    tagline: str = Field(default="", max_length=120)
+    photo: str = Field(default="", max_length=600)
+    age: int | None = Field(default=None, ge=18, le=120)
+
+
+class SwipeBody(BaseModel):
+    target_id: str
+    action: str  # like | pass
 
 
 # ----------------------------- Seed data -----------------------------
@@ -357,6 +378,35 @@ BOOK_LISTINGS = [
      "description": "A gentle travelogue across every district, narrated with a cartographer's calm. Perfect for a long airship crossing."},
 ]
 
+
+def _portrait(pid: str) -> str:
+    return f"https://images.unsplash.com/photo-{pid}?crop=faces&fit=crop&w=640&h=800&q=80"
+
+
+# Sparking Dawn — seeded dating profiles ("sparks"). `likes_back` ones match instantly on a like.
+DATING_PROFILES = [
+    {"user_id": "spark-1", "display_name": "Isolde Vayne", "gender": "woman", "age": 29, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Airship navigator, terrible at chess", "bio": "I chart routes over the cloud-line and collect brass compasses. Looking for someone who'll argue about maps over coffee.", "photo": _portrait("1494790108377-be9c29b29330")},
+    {"user_id": "spark-2", "display_name": "Cassius Merrow", "gender": "man", "age": 33, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Clockmaker with two left feet", "bio": "I build timepieces that mostly keep time. Fond of long walks and short deadlines.", "photo": _portrait("1500648767791-00dcc994a43e")},
+    {"user_id": "spark-3", "display_name": "Marguerite Ashe", "gender": "woman", "age": 27, "seed": True, "active": True, "likes_back": False,
+     "tagline": "Botanist of impossible orchids", "bio": "I grow things that shouldn't survive the smog. Tea drinker, letter writer, occasional arsonist of bad ideas.", "photo": _portrait("1438761681033-6461ffad8d80")},
+    {"user_id": "spark-4", "display_name": "Dorian Kesh", "gender": "man", "age": 31, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Aetheric engineer, hopeless romantic", "bio": "I wire the lamps that keep the district glowing. Seeking a co-conspirator for midnight rooftop repairs.", "photo": _portrait("1507003211169-0a1dd7228f2d")},
+    {"user_id": "spark-5", "display_name": "Selene Ardent", "gender": "woman", "age": 30, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Opera singer, part-time pickpocket", "bio": "I sing on the brass stage and lift only hearts (mostly). Looking for someone unafraid of a dramatic exit.", "photo": _portrait("1534528741775-53994a69daeb")},
+    {"user_id": "spark-6", "display_name": "Ambrose Fell", "gender": "man", "age": 35, "seed": True, "active": True, "likes_back": False,
+     "tagline": "Cartographer of forgotten alleys", "bio": "I map the parts of Konphlux nobody remembers. Quiet, curious, dangerously good at directions.", "photo": _portrait("1502685104226-ee32379fefbe")},
+    {"user_id": "spark-7", "display_name": "Beatrix Nolan", "gender": "woman", "age": 26, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Inventor of small useless wonders", "bio": "My workshop is chaos and my ideas are worse. Bring snacks and a sense of humour.", "photo": _portrait("1524504388940-b1c1722653e1")},
+    {"user_id": "spark-8", "display_name": "Lucian Vale", "gender": "man", "age": 28, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Airship pilot, reluctant poet", "bio": "I fly the dawn patrol and write verses I never show anyone. Until now, apparently.", "photo": _portrait("1519085360753-af0119f7cbe7")},
+    {"user_id": "spark-9", "display_name": "Odette Grimm", "gender": "woman", "age": 32, "seed": True, "active": True, "likes_back": False,
+     "tagline": "Bookbinder & incurable night-owl", "bio": "I stitch stories back together for a living. Looking for a plot twist of my own.", "photo": _portrait("1544005313-94ddf0286df2")},
+    {"user_id": "spark-10", "display_name": "Rafael Dunn", "gender": "man", "age": 34, "seed": True, "active": True, "likes_back": True,
+     "tagline": "Blacksmith with a soft heart", "bio": "I forge iron all day and go soft at sunsets. Seeking someone to share the quiet after the hammering stops.", "photo": _portrait("1506794778202-cad84cf45f1d")},
+]
+
 PROFILE = {
     "display_name": "Wilhelmina Grast",
     "handle": "@artificer",
@@ -537,6 +587,10 @@ async def seed():
     for b in BOOK_LISTINGS:
         if not await db.bazaar.find_one({"id": b["id"]}):
             await db.bazaar.insert_one(dict(b))
+    # Sparking Dawn seeded profiles (idempotent).
+    for p in DATING_PROFILES:
+        if not await db.dating_profiles.find_one({"user_id": p["user_id"]}):
+            await db.dating_profiles.insert_one(dict(p))
     if await db.rt_communities.count_documents({}) == 0:
         await db.rt_communities.insert_many([dict(c) for c in RT_COMMUNITIES])
         await db.rt_threads.insert_many([dict(t) for t in RT_THREADS])
@@ -683,6 +737,129 @@ async def toggle_like(post_id: str, user: dict = Depends(require_user)):
     return {"id": post_id, "liked": liked, "likes": likes}
 
 
+# ---------- Sparking Dawn (dating) ----------
+def _match_key(a: str, b: str) -> str:
+    return "::".join(sorted([a, b]))
+
+
+def _dating_card(doc: dict) -> dict:
+    return {
+        "id": doc["user_id"],
+        "display_name": doc.get("display_name", "Someone"),
+        "gender": doc.get("gender"),
+        "age": doc.get("age"),
+        "tagline": doc.get("tagline", ""),
+        "bio": doc.get("bio", ""),
+        "photo": doc.get("photo", ""),
+    }
+
+
+async def _dating_card_for(target_id: str) -> dict:
+    prof = await db.dating_profiles.find_one({"user_id": target_id})
+    if prof:
+        return _dating_card(prof)
+    u = await db.users.find_one({"id": target_id})
+    if u:
+        return {"id": target_id, "display_name": u.get("display_name", "Someone"), "gender": None,
+                "age": None, "tagline": "", "bio": u.get("bio", ""), "photo": u.get("avatar", "")}
+    return {"id": target_id, "display_name": "Someone", "gender": None, "age": None, "tagline": "", "bio": "", "photo": ""}
+
+
+@api_router.get("/dating/me")
+async def dating_me(user: dict = Depends(require_user)):
+    prof = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0})
+    return prof
+
+
+@api_router.post("/dating/profile")
+async def dating_save_profile(body: DatingProfileBody, user: dict = Depends(require_user)):
+    if body.gender not in ("man", "woman", "nonbinary"):
+        raise HTTPException(status_code=400, detail="Please pick how you identify.")
+    seeking = [s for s in body.seeking if s in ("man", "woman", "nonbinary")] or ["man", "woman"]
+    doc = {
+        "user_id": user["id"],
+        "display_name": user["display_name"],
+        "gender": body.gender,
+        "seeking": seeking,
+        "bio": body.bio.strip(),
+        "tagline": body.tagline.strip(),
+        "photo": body.photo.strip() or user.get("avatar", ""),
+        "age": body.age,
+        "seed": False,
+        "active": True,
+    }
+    await db.dating_profiles.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/dating/discover")
+async def dating_discover(user: dict = Depends(require_user), seeking: str = "all"):
+    swiped = {s["target_id"] for s in await db.dating_swipes.find({"user_id": user["id"]}, {"_id": 0, "target_id": 1}).to_list(5000)}
+    my_matches = await db.dating_matches.find({"users": user["id"]}, {"_id": 0}).to_list(2000)
+    matched_ids = set()
+    for m in my_matches:
+        matched_ids.update(u for u in m["users"] if u != user["id"])
+    exclude = swiped | matched_ids | {user["id"]}
+    query: dict = {"active": True, "user_id": {"$nin": list(exclude)}}
+    if seeking in ("man", "woman", "nonbinary"):
+        query["gender"] = seeking
+    docs = await db.dating_profiles.find(query, {"_id": 0}).to_list(200)
+    random.shuffle(docs)
+    return [_dating_card(d) for d in docs[:30]]
+
+
+@api_router.post("/dating/swipe")
+async def dating_swipe(body: SwipeBody, user: dict = Depends(require_user)):
+    if body.action not in ("like", "pass"):
+        raise HTTPException(status_code=400, detail="Unknown action.")
+    if body.target_id == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't swipe on yourself.")
+    await db.dating_swipes.update_one(
+        {"user_id": user["id"], "target_id": body.target_id},
+        {"$set": {"action": body.action, "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    if body.action != "like":
+        return {"match": False}
+
+    target = await db.dating_profiles.find_one({"user_id": body.target_id})
+    liked_back = False
+    if target and target.get("seed"):
+        liked_back = bool(target.get("likes_back"))
+    else:
+        rev = await db.dating_swipes.find_one({"user_id": body.target_id, "target_id": user["id"], "action": "like"})
+        liked_back = bool(rev)
+
+    if not liked_back:
+        return {"match": False}
+
+    key = _match_key(user["id"], body.target_id)
+    if not await db.dating_matches.find_one({"key": key}):
+        await db.dating_matches.insert_one({
+            "id": uuid.uuid4().hex,
+            "key": key,
+            "users": [user["id"], body.target_id],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    return {"match": True, "profile": await _dating_card_for(body.target_id)}
+
+
+@api_router.get("/dating/matches")
+async def dating_matches(user: dict = Depends(require_user)):
+    docs = await db.dating_matches.find({"users": user["id"]}).to_list(2000)
+    docs.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+    out = []
+    for m in docs:
+        other = next((u for u in m["users"] if u != user["id"]), None)
+        if other:
+            card = await _dating_card_for(other)
+            card["matched_at"] = m.get("created_at")
+            out.append(card)
+    return out
+
+
+
 # ---------- Bazaar (browse + sell + auctions) ----------
 BID_INCREMENT_CENTS = 100  # minimum raise between bids
 
@@ -715,6 +892,9 @@ def _public_listing(doc: dict, user_id: str, saved_ids: set) -> dict:
     d["is_seller"] = d.get("seller_id") == user_id
     d.setdefault("rating", 0)
     d.setdefault("reviews", 0)
+    d["booth_id"] = d.get("booth_id")
+    d["booth_name"] = d.get("booth_name")
+    d["listing_type"] = "booth" if d.get("booth_id") else "individual"
     if is_auction:
         current_bid = d.get("current_bid_cents")
         start = d.get("starting_price_cents") or 0
@@ -823,8 +1003,68 @@ async def create_listing(body: ListingCreate, user: dict = Depends(require_user)
         if not body.price_cents:
             raise HTTPException(status_code=400, detail="A fixed-price listing needs a price.")
         listing.update({"is_auction": False, "price_cents": body.price_cents})
+    # Optionally attach to one of the seller's booths (else it's an individual item).
+    if body.booth_id:
+        booth = await db.booths.find_one({"id": body.booth_id})
+        if not booth or booth.get("owner_id") != user["id"]:
+            raise HTTPException(status_code=400, detail="That booth isn't yours.")
+        listing["booth_id"] = booth["id"]
+        listing["booth_name"] = booth["name"]
     await db.bazaar.insert_one(dict(listing))
     return _public_listing(listing, user["id"], set())
+
+
+# ---------- Booths (seller storefronts) ----------
+async def _booth_public(doc: dict) -> dict:
+    d = {k: v for k, v in doc.items() if k != "_id"}
+    d["listing_count"] = await db.bazaar.count_documents({"booth_id": d["id"]})
+    return d
+
+
+@api_router.post("/booths", status_code=201)
+async def create_booth(body: BoothCreate, user: dict = Depends(require_user)):
+    booth = {
+        "id": uuid.uuid4().hex,
+        "name": body.name.strip(),
+        "description": body.description.strip(),
+        "image": body.image.strip(),
+        "owner_id": user["id"],
+        "owner_name": user["display_name"],
+        "created_at": _now().isoformat(),
+    }
+    await db.booths.insert_one(dict(booth))
+    return await _booth_public(booth)
+
+
+@api_router.get("/booths")
+async def list_booths(user: dict = Depends(require_user)):
+    docs = await db.booths.find({}).to_list(500)
+    booths = [await _booth_public(d) for d in docs]
+    booths.sort(key=lambda b: b.get("listing_count", 0), reverse=True)
+    return booths
+
+
+@api_router.get("/booths/mine")
+async def my_booths(user: dict = Depends(require_user)):
+    docs = await db.booths.find({"owner_id": user["id"]}).to_list(500)
+    booths = [await _booth_public(d) for d in docs]
+    booths.sort(key=lambda b: b.get("created_at", ""), reverse=True)
+    return booths
+
+
+@api_router.get("/booths/{booth_id}")
+async def booth_detail(booth_id: str, user: dict = Depends(require_user)):
+    booth = await db.booths.find_one({"id": booth_id})
+    if not booth:
+        raise HTTPException(status_code=404, detail="Booth not found")
+    result = await _booth_public(booth)
+    saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
+    raw = await db.bazaar.find({"booth_id": booth_id}).to_list(500)
+    listings = [_public_listing(await _maybe_end_auction(d), user["id"], saved_ids) for d in raw]
+    listings.sort(key=lambda l: l.get("created_at") or "", reverse=True)
+    result["listings"] = listings
+    result["is_owner"] = booth.get("owner_id") == user["id"]
+    return result
 
 
 @api_router.get("/bazaar/{item_id}")
@@ -881,6 +1121,7 @@ async def place_bid(item_id: str, body: BidBody, user: dict = Depends(require_us
         min_bid = current + BID_INCREMENT_CENTS
         if body.amount_cents < min_bid:
             raise HTTPException(status_code=400, detail="Bid must be higher than the current bid.")
+    prev_bidder = doc.get("highest_bidder_id")
     await db.bazaar.update_one(
         {"id": item_id},
         {"$set": {
@@ -898,9 +1139,55 @@ async def place_bid(item_id: str, body: BidBody, user: dict = Depends(require_us
         "amount_cents": body.amount_cents,
         "created_at": _now().isoformat(),
     })
+    # Notify the previous highest bidder that they've been outbid.
+    if prev_bidder and prev_bidder != user["id"]:
+        await _notify(
+            prev_bidder,
+            "outbid",
+            listing_id=item_id,
+            title="You've been outbid",
+            body=f'{user["display_name"]} outbid you on "{doc.get("title", "an item")}" — now {_dollars(body.amount_cents)}.',
+        )
     fresh = await db.bazaar.find_one({"id": item_id})
     saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "listing")}
     return _public_listing(fresh, user["id"], saved_ids)
+
+
+# ---------- Notifications (in-app alerts) ----------
+def _dollars(cents: int) -> str:
+    return "$" + f"{cents / 100:,.2f}"
+
+
+async def _notify(user_id: str, ntype: str, listing_id: str | None, title: str, body: str) -> None:
+    await db.notifications.insert_one({
+        "id": uuid.uuid4().hex,
+        "user_id": user_id,
+        "type": ntype,
+        "listing_id": listing_id,
+        "title": title,
+        "body": body,
+        "read": False,
+        "created_at": _now().isoformat(),
+    })
+
+
+@api_router.get("/notifications")
+async def list_notifications(user: dict = Depends(require_user)):
+    docs = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda n: n.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.get("/notifications/unread_count")
+async def unread_count(user: dict = Depends(require_user)):
+    count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"count": count}
+
+
+@api_router.post("/notifications/read")
+async def mark_all_read(user: dict = Depends(require_user)):
+    await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
 
 
 # ---------- Saves ----------

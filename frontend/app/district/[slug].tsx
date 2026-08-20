@@ -22,14 +22,21 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   roundtable: { route: "/roundtable", label: "Enter the Roundtable" },
   answerfier: { route: "/answerfier", label: "Enter Answerfier" },
   bazaar: { route: "/(tabs)/bazaar", label: "Enter the Bazaar" },
+  "sparking-dawn": { route: "/sparking-dawn", label: "Enter Sparking Dawn" },
+};
+
+// Sparking Dawn — the two feature buttons open the discovery deck filtered by who you seek.
+const SPARKING_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "I'm looking for men": { route: "/sparking-dawn?seeking=man", icon: "gender-male" },
+  "I'm looking for women": { route: "/sparking-dawn?seeking=woman", icon: "gender-female" },
 };
 
 // For the Bazaar district, every feature chip opens a working destination.
 const BAZAAR_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Buy": { route: "/(tabs)/bazaar", icon: "cart" },
   "Sell": { route: "/bazaar/sell", icon: "tag-plus" },
-  "Booths": { route: "/(tabs)/bazaar", icon: "storefront" },
-  "Setup Booth": { route: "/bazaar/sell", icon: "store-plus" },
+  "Booths": { route: "/bazaar/booths", icon: "storefront" },
+  "Setup Booth": { route: "/bazaar/new-booth", icon: "store-plus" },
   "You Might Be Interested In": { route: "/(tabs)/bazaar", icon: "lightbulb-on" },
   "Your Posts": { route: "/bazaar/mine", icon: "package-variant" },
   "Your Saves": { route: "/saved", icon: "bookmark-multiple" },
@@ -65,6 +72,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
   bazaar: BAZAAR_ACTIONS,
+  "sparking-dawn": SPARKING_ACTIONS,
 };
 
 export default function DistrictDetail() {

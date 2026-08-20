@@ -105,6 +105,7 @@ export default function BazaarScreen() {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [active, setActive] = useState(ALL);
   const [cartCount, setCartCount] = useState(0);
+  const [unread, setUnread] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -130,6 +131,7 @@ export default function BazaarScreen() {
     useCallback(() => {
       load();
       api.getCart().then((c) => setCartCount(c.count)).catch(() => {});
+      api.unreadCount().then((r) => setUnread(r.count)).catch(() => {});
     }, [load]),
   );
 
@@ -145,6 +147,7 @@ export default function BazaarScreen() {
         title="Bazaar"
         subtitle="Buy, sell, bid, barter"
         actions={[
+          { icon: "bell-outline", onPress: () => router.push("/notifications"), testID: "notif-btn", badge: unread > 0 },
           { icon: "tag-plus", onPress: () => router.push("/bazaar/sell"), testID: "sell-btn" },
           { icon: "cart-outline", onPress: () => router.push("/cart"), testID: "cart-btn", badge: cartCount > 0 },
         ]}

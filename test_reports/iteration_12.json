@@ -1,0 +1,33 @@
+{
+  "summary": "Bazaar enhancements (Booths + Outbid alerts) — backend + frontend fully working. Backend: 16/16 pytest tests pass covering booth create (min-name reject, 201 ok), list, mine (isolation), detail (is_owner true/false + listings sublist), listing wiring (individual w/o booth_id, booth listing_type/booth_name when owned, 400 when booth_id not owned), booth detail shows only booth items (individual excluded, listing_count=2), and outbid notifications (first bidder generates no self-notification; 2nd bidder outbidding creates exactly 1 unread outbid notif for previous bidder — none for bidder2; /notifications/read marks all read but keeps items with read=true; unread_count endpoint returns {count:N}). Regression: browse, mine, delete, cart guard on own listing all pass. Frontend (mobile viewport 390x844): (1) District /district/bazaar shows feature-Booths + feature-Setup Booth rows and both navigate correctly. (2) /bazaar/new-booth creates a booth (nb-name, nb-description, nb-submit) and routes to /bazaar/booth/{id} which shows the BOOTH tag, booth name, 'by <owner>', and 'Add item to booth' button (booth-add-item) for the owner. (3) /bazaar/booths lists all booths including newly created ones. (4) /bazaar/sell shows the List As selector with sell-listas-individual, sell-booth-<id>, and sell-new-booth all present. (5) Bazaar tab header shows the bell (notif-btn) with an unread-dot child element after being outbid; tapping opens /notifications listing the 'You've been outbid' alert; tapping the alert navigates to the auction product page (/product/{listing_id}); unread count clears to 0 (mark-all-read) after opening notifications. (6) Creating a listing with a booth_id yields listing_type='booth' with booth_name set, and the product page shows product-booth-chip linking to the booth, while the booth detail lists the item under booth-item-{id}.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Still emitted on some cards (pre-existing, not introduced by this iteration). Reference: shared card styles in sparking-dawn/index.tsx and possibly others."},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — origin appears to be a shared component (ForgeButton/BrassText). Pre-existing carryover from iteration 11; not caused by booth/notification screens."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_booths_notifications.py",
+    "/app/test_reports/pytest/booths_notifications_results.xml"
+  ],
+  "action_items": [
+    "Optional (not blocking): silence the RN Web deprecation warnings — migrate remaining shadow* -> boxShadow and locate the shared component still using pointerEvents as a prop instead of style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "server.py continues to grow (>1800 lines). Consider splitting bazaar/booths/notifications into their own routers as follow-up.",
+    "GET /api/notifications/unread_count returns {count:N} — testers should note the key is 'count', not 'unread_count'. Frontend client uses the correct key already."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_booths_notifications.py (new pytest suite, 16 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No seed data added. Tests register fresh users (prefixed TEST_/ui_/nx_/bc_ with random suffix) per test to guarantee isolation. Test listings/booths/notifications are TEST_-prefixed for identifiability.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth: POST /api/auth/register returns 201. Notifications unread_count endpoint returns {'count': N} (not 'unread_count'). Booth endpoints: POST /api/booths, GET /api/booths (list, sorted by listing_count desc), GET /api/booths/mine, GET /api/booths/{id} returns {..., listings:[], listing_count:N, is_owner:bool}. Listings expose booth_id, booth_name, listing_type ('booth'|'individual'). Frontend testIDs: notif-btn (bell), nb-name/nb-description/nb-submit (new booth form), booth-item-{id}, sell-listas-individual/sell-booth-{id}/sell-new-booth, product-booth-chip. Auction minimum increment is +100 cents ($1) beyond the current bid.",
+  "rca_of_issue": "N/A — no bugs found. All 6 requested flows (booth CRUD, listing-in-booth, booth detail listings, outbid alerts, mark-read, frontend booth + bell UI) are functional end-to-end."
+}

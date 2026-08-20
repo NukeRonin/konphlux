@@ -1,13 +1,13 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, uploadImage } from "@/src/api/client";
+import { api, Booth, uploadImage } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -25,6 +25,7 @@ export default function SellScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ booth_id?: string }>();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -32,8 +33,16 @@ export default function SellScreen() {
   const [kind, setKind] = useState<"fixed" | "auction">("fixed");
   const [price, setPrice] = useState("");
   const [durationHours, setDurationHours] = useState(48);
+  const [booths, setBooths] = useState<Booth[]>([]);
+  const [boothId, setBoothId] = useState<string | null>(params.booth_id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useFocusEffect(
+    useCallback(() => {
+      api.myBooths().then(setBooths).catch(() => {});
+    }, []),
+  );
 
   const pickFromLibrary = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
@@ -71,8 +80,8 @@ export default function SellScreen() {
       const image = await uploadImage(imageUri, Platform.OS === "web");
       const payload =
         kind === "auction"
-          ? { title: title.trim(), description: description.trim(), category, image, kind, starting_price_cents: priceCents, duration_hours: durationHours }
-          : { title: title.trim(), description: description.trim(), category, image, kind, price_cents: priceCents };
+          ? { title: title.trim(), description: description.trim(), category, image, kind, starting_price_cents: priceCents, duration_hours: durationHours, booth_id: boothId }
+          : { title: title.trim(), description: description.trim(), category, image, kind, price_cents: priceCents, booth_id: boothId };
       const listing = await api.createListing(payload as any);
       router.replace(`/product/${listing.id}`);
     } catch (e: any) {
@@ -147,6 +156,37 @@ export default function SellScreen() {
           multiline
           style={[styles.input, styles.multiline, { color: colors.onSurface, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
         />
+
+        <Eyebrow style={{ marginTop: spacing.lg }}>List as</Eyebrow>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <Pressable
+            testID="sell-listas-individual"
+            onPress={() => setBoothId(null)}
+            style={[styles.listAsChip, { backgroundColor: !boothId ? colors.brand : colors.surfaceSecondary, borderColor: !boothId ? colors.brand : colors.border }]}
+          >
+            <MaterialCommunityIcons name="tag" size={14} color={!boothId ? colors.onBrandPrimary : colors.brand} />
+            <Text style={[styles.chipText, { color: !boothId ? colors.onBrandPrimary : colors.onSurface }]}>Individual item</Text>
+          </Pressable>
+          {booths.map((b) => (
+            <Pressable
+              key={b.id}
+              testID={`sell-booth-${b.id}`}
+              onPress={() => setBoothId(b.id)}
+              style={[styles.listAsChip, { backgroundColor: boothId === b.id ? colors.brand : colors.surfaceSecondary, borderColor: boothId === b.id ? colors.brand : colors.border }]}
+            >
+              <MaterialCommunityIcons name="storefront" size={14} color={boothId === b.id ? colors.onBrandPrimary : colors.brand} />
+              <Text style={[styles.chipText, { color: boothId === b.id ? colors.onBrandPrimary : colors.onSurface }]}>{b.name}</Text>
+            </Pressable>
+          ))}
+          <Pressable
+            testID="sell-new-booth"
+            onPress={() => router.push("/bazaar/new-booth")}
+            style={[styles.listAsChip, { backgroundColor: "transparent", borderColor: colors.borderStrong, borderStyle: "dashed" }]}
+          >
+            <MaterialCommunityIcons name="store-plus" size={14} color={colors.brand} />
+            <Text style={[styles.chipText, { color: colors.brand }]}>New booth</Text>
+          </Pressable>
+        </ScrollView>
 
         <Eyebrow style={{ marginTop: spacing.lg }}>Sale type</Eyebrow>
         <View style={styles.toggleRow}>
@@ -243,6 +283,7 @@ const styles = StyleSheet.create({
   chipRow: { gap: spacing.sm, paddingVertical: spacing.sm },
   chip: { height: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   chipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  listAsChip: { flexDirection: "row", alignItems: "center", gap: 6, height: 40, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, flexShrink: 0 },
   toggleRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   toggle: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 46, borderRadius: radius.md, borderWidth: 1 },
   toggleText: { fontFamily: fonts.bodyBold, fontSize: 14 },

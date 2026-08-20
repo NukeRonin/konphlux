@@ -201,10 +201,22 @@ export default function ProductDetail() {
 }
 
 function ProductBody({ item, isAuction, secondsLeft, colors }: any) {
+  const router = useRouter();
   return (
     <View style={styles.body}>
         <Eyebrow>{item.category}</Eyebrow>
         <Text style={[styles.title, { color: colors.onSurface }]}>{item.title}</Text>
+        {item.listing_type === "booth" && item.booth_name ? (
+          <Pressable
+            testID="product-booth-chip"
+            onPress={() => item.booth_id && router.push(`/bazaar/booth/${item.booth_id}`)}
+            style={[styles.boothChip, { backgroundColor: colors.surfaceTertiary }]}
+          >
+            <MaterialCommunityIcons name="storefront" size={13} color={colors.brand} />
+            <Text style={[styles.boothChipText, { color: colors.brand }]}>{item.booth_name}</Text>
+            <MaterialCommunityIcons name="chevron-right" size={14} color={colors.brand} />
+          </Pressable>
+        ) : null}
         <View style={styles.metaRow}>
           <View style={styles.ratingRow}>
             <MaterialCommunityIcons name="star" size={16} color={colors.brandPrimary} />
@@ -371,6 +383,8 @@ const styles = StyleSheet.create({
   },
   body: { padding: spacing.lg },
   title: { fontFamily: fonts.display, fontSize: 24, marginTop: 6, lineHeight: 30 },
+  boothChip: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5, marginTop: spacing.sm },
+  boothChipText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.md },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   rating: { fontFamily: fonts.bodyBold, fontSize: 15 },

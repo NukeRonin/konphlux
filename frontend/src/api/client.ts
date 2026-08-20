@@ -116,6 +116,51 @@ export type Listing = {
 
 export type Bid = { id: string; bidder_name: string; amount_cents: number; created_at: string };
 
+export type Booth = {
+  id: string;
+  name: string;
+  description: string;
+  image: string;
+  owner_id: string;
+  owner_name: string;
+  listing_count: number;
+  created_at: string;
+  is_owner?: boolean;
+  listings?: Listing[];
+};
+
+export type AppNotification = {
+  id: string;
+  type: string;
+  listing_id: string | null;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+};
+
+export type DatingProfile = {
+  user_id: string;
+  display_name: string;
+  gender: "man" | "woman" | "nonbinary";
+  seeking: string[];
+  bio: string;
+  tagline: string;
+  photo: string;
+  age: number | null;
+};
+
+export type SparkCard = {
+  id: string;
+  display_name: string;
+  gender: string | null;
+  age: number | null;
+  tagline: string;
+  bio: string;
+  photo: string;
+  matched_at?: string;
+};
+
 export type BazaarResponse = { categories: string[]; listings: Listing[] };
 
 export type MenuItem = { label: string; icon: string; to: string };
@@ -257,11 +302,22 @@ export const api = {
     price_cents?: number;
     starting_price_cents?: number;
     duration_hours?: number;
+    booth_id?: string | null;
   }) => request<Listing>("/bazaar", { method: "POST", body: JSON.stringify(payload) }),
   deleteListing: (id: string) => request<{ deleted: boolean; id: string }>(`/bazaar/${id}`, { method: "DELETE" }),
   placeBid: (id: string, amount_cents: number) =>
     request<Listing>(`/bazaar/${id}/bid`, { method: "POST", body: JSON.stringify({ amount_cents }) }),
   listBids: (id: string) => request<Bid[]>(`/bazaar/${id}/bids`),
+
+  createBooth: (name: string, description: string, image: string) =>
+    request<Booth>("/booths", { method: "POST", body: JSON.stringify({ name, description, image }) }),
+  listBooths: () => request<Booth[]>("/booths"),
+  myBooths: () => request<Booth[]>("/booths/mine"),
+  boothDetail: (id: string) => request<Booth>(`/booths/${id}`),
+
+  notifications: () => request<AppNotification[]>("/notifications"),
+  unreadCount: () => request<{ count: number }>("/notifications/unread_count"),
+  markNotificationsRead: () => request<{ ok: boolean }>("/notifications/read", { method: "POST" }),
   getProfile: () => request<Profile>("/profile"),
 
   toggleSave: (kind: SaveKind, item_id: string) =>
@@ -345,4 +401,21 @@ export const api = {
     request<{ id: string; voted: boolean; upvotes: number }>(`/answerfier/answers/${answer_id}/vote`, {
       method: "POST",
     }),
+
+  datingMe: () => request<DatingProfile | null>("/dating/me"),
+  datingSaveProfile: (payload: {
+    gender: string;
+    seeking: string[];
+    bio: string;
+    tagline: string;
+    photo: string;
+    age: number | null;
+  }) => request<DatingProfile>("/dating/profile", { method: "POST", body: JSON.stringify(payload) }),
+  datingDiscover: (seeking: string) => request<SparkCard[]>(`/dating/discover?seeking=${seeking}`),
+  datingSwipe: (target_id: string, action: "like" | "pass") =>
+    request<{ match: boolean; profile?: SparkCard }>("/dating/swipe", {
+      method: "POST",
+      body: JSON.stringify({ target_id, action }),
+    }),
+  datingMatches: () => request<SparkCard[]>("/dating/matches"),
 };
