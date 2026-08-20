@@ -104,7 +104,7 @@ export default function Write() {
             ))}
           </View>
         </View>
-        <Text style={[styles.genoHint, { color: colors.muted }]}>GenoScribe · AI writing help</Text>
+        <Text style={[styles.genoHint, { color: colors.muted }]}>AI assist</Text>
         <TextInput testID="write-body" value={body} onChangeText={setBody} placeholder="Once upon a foggy evening…" placeholderTextColor={colors.muted} multiline style={[styles.input, styles.multiline, { color: colors.onSurface, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} />
 
         <View style={[styles.cowriteRow, { borderColor: colors.border }]}>

@@ -45,6 +45,15 @@
 - ✅ Emergent-managed email: server sends an HTML receipt to the buyer's email after payment is confirmed (both /checkout/status poll + webhook paths), idempotent via order.email_sent, fixed server-side template (guardrails enforced).
 - ✅ email_service.py (EMERGENT_EMAIL_KEY + EMAIL_FROM_NAME=Konphlux in .env). 75/75 backend tests pass (12 new email tests).
 
+### 2026-06 (BrainBoost learning district — COMPLETE, agent-tested 15/15 backend + frontend)
+- ✅ Full BrainBoost hub (/brainboost) with Fact of the Day, stats, quick-action grid, featured courses. Title fits one line.
+- ✅ Courses (10 seeded) with category filter; **Religious Studies moved into Courses** as a category (courses bc8/bc9). Removed from district top-level features (seed() now syncs DISTRICTS fields on every startup).
+- ✅ Course detail: expandable lessons + per-user "mark complete" progress persistence (db.bb_progress) + progress bar.
+- ✅ Quizzes (5 seeded): take → submit → server-scored (answer key stripped from GET) with correct/incorrect highlighting.
+- ✅ Fact of the Day: deterministic daily pick from a 120-fact pool (random.Random(20260202) shuffle, cycles by date) → GET /api/brainboost/facts.
+- ✅ Dictionary + Thesaurus (AI, gpt-5.4) via /api/brainboost/lexicon; Repair Guy (AI) via /api/brainboost/repair; Video lessons list; AI Tutor → Chatmonger.
+- Files: frontend/app/brainboost/* (index, courses, course/[id], quizzes, quiz/[id], facts, videos, lexicon, repair), district/[slug].tsx (BRAINBOOST_ACTIONS + hub), src/api/client.ts (bb* methods), backend/server.py (BB seed + routes), backend/tests/test_brainboost.py.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

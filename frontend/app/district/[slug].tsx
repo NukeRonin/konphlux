@@ -24,6 +24,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   bazaar: { route: "/(tabs)/bazaar", label: "Enter the Bazaar" },
   "sparking-dawn": { route: "/sparking-dawn", label: "Enter Sparking Dawn" },
   "author-anvil": { route: "/anvil", label: "Enter Author Anvil" },
+  brainboost: { route: "/brainboost", label: "Enter BrainBoost" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -34,7 +35,7 @@ const ANVIL_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Write & Submit Stories": { route: "/anvil/write?kind=story", icon: "feather" },
   "Write & Submit Scripts": { route: "/anvil/write?kind=script", icon: "script-text-play" },
   "Story Categories": { route: "/anvil", icon: "shape-outline" },
-  "GenoScribe": { route: "/anvil/write", icon: "auto-fix" },
+  "GenoScribe": { route: "/anvil/genoscribe", icon: "auto-fix" },
   "Co-writing": { route: "/anvil/cowriting", icon: "account-multiple" },
   "AIventure": { route: "/anvil/aiventure", icon: "compass-rose" },
 };
@@ -71,6 +72,19 @@ const ANSWERFIER_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Categories": { route: "/answerfier", icon: "shape-outline" },
 };
 
+// BrainBoost — every feature opens a real learning destination.
+const BRAINBOOST_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Courses": { route: "/brainboost/courses", icon: "book-education" },
+  "Fun Facts": { route: "/brainboost/facts", icon: "lightbulb-on" },
+  "Dictionary": { route: "/brainboost/lexicon?mode=dictionary", icon: "book-alphabet" },
+  "Thesaurus": { route: "/brainboost/lexicon?mode=thesaurus", icon: "book-search" },
+  "Quizzes": { route: "/brainboost/quizzes", icon: "help-circle" },
+  "Video lessons": { route: "/brainboost/videos", icon: "play-circle" },
+  "Saved progress": { route: "/brainboost/courses", icon: "progress-check" },
+  "AI tutoring": { route: "/chatmonger/brainboost", icon: "school" },
+  "Repair Guy": { route: "/brainboost/repair", icon: "wrench" },
+};
+
 // For the Roundtable district, each feature chip is a working shortcut.
 const ROUNDTABLE_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Create Community": { route: "/roundtable/new-community", icon: "account-multiple-plus" },
@@ -88,6 +102,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   bazaar: BAZAAR_ACTIONS,
   "sparking-dawn": SPARKING_ACTIONS,
   "author-anvil": ANVIL_ACTIONS,
+  brainboost: BRAINBOOST_ACTIONS,
 };
 
 export default function DistrictDetail() {

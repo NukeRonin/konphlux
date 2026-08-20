@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -117,6 +118,18 @@ export default function AnvilHub() {
               ))}
             </View>
 
+            {/* GenoScribe — AI writing studio (distinct from human writing above) */}
+            <Pressable testID="geno-banner" onPress={() => router.push("/anvil/genoscribe")} style={{ marginBottom: spacing.md }}>
+              <LinearGradient colors={colors.brassGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.banner, { borderColor: colors.brandSecondary }]}>
+                <MaterialCommunityIcons name="auto-fix" size={26} color={colors.onBrandPrimary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bannerTitle, { color: colors.onBrandPrimary }]}>GenoScribe · AI Studio</Text>
+                  <Text style={[styles.bannerSub, { color: colors.onBrandPrimary }]}>Generate stories, prompts & scripts, then post them</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onBrandPrimary} />
+              </LinearGradient>
+            </Pressable>
+
             {/* Kind tabs */}
             <View style={styles.tabs}>
               {KINDS.map((k) => (
@@ -163,6 +176,9 @@ const styles = StyleSheet.create({
   quickRow: { flexDirection: "row", gap: spacing.sm, paddingBottom: spacing.md },
   quick: { flex: 1, height: 74, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", gap: 6 },
   quickText: { fontFamily: fonts.bodyBold, fontSize: 11 },
+  banner: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  bannerTitle: { fontFamily: fonts.displaySemi, fontSize: 16 },
+  bannerSub: { fontFamily: fonts.body, fontSize: 12, opacity: 0.9, marginTop: 2 },
   tabs: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 42, borderRadius: radius.md, borderWidth: 1 },
   tabText: { fontFamily: fonts.bodyBold, fontSize: 14 },

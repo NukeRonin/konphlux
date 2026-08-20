@@ -219,6 +219,36 @@ class AdventureBody(BaseModel):
     action: str = Field(min_length=1, max_length=2000)
 
 
+class GenoBody(BaseModel):
+    tool: str = "story"  # story | script | prompt
+    topic: str = Field(min_length=1, max_length=800)
+    tone: str = Field(default="", max_length=40)
+    genre: str = Field(default="", max_length=40)
+    length: str = Field(default="short", max_length=20)  # short | medium
+
+
+class PromptCreate(BaseModel):
+    text: str = Field(min_length=8, max_length=400)
+
+
+class BBProgressBody(BaseModel):
+    lesson_index: int = Field(ge=0, le=200)
+    completed: bool = True
+
+
+class BBQuizSubmit(BaseModel):
+    answers: list[int] = Field(default_factory=list)
+
+
+class BBLexiconBody(BaseModel):
+    word: str = Field(min_length=1, max_length=60)
+    mode: str = "dictionary"  # dictionary | thesaurus
+
+
+class BBRepairBody(BaseModel):
+    problem: str = Field(min_length=3, max_length=1200)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -315,7 +345,7 @@ DISTRICTS = [
      "tagline": "Learn a new trade before supper.",
      "description": "Lessons, quizzes, progress tracking and an AI tutor at your elbow.",
      "chatmonger": {"name": "Brianna", "role": "Tutor", "greeting": "Ten minutes a day and you'll surprise yourself."},
-     "features": ["Courses", "Religious Studies", "Fun Facts", "Dictionary", "Thesaurus", "Quizzes", "Video lessons", "Saved progress", "AI tutoring", "Repair Guy"]},
+     "features": ["Courses", "Fun Facts", "Dictionary", "Thesaurus", "Quizzes", "Video lessons", "Saved progress", "AI tutoring", "Repair Guy"]},
     {"slug": "waypoint", "name": "Waypoint", "icon": "map-marker-radius",
      "tagline": "Somewhere to stay, somewhere to settle.",
      "description": "Book stays anywhere in Konphlux — and browse vacation houses, condos and cabins that are for sale.",
@@ -631,10 +661,283 @@ AF_ANSWERS = [
 ]
 
 
+# ----------------------------- BrainBoost (learning district) -----------------------------
+BB_CATEGORIES = ["Trades & Crafts", "Languages", "Science", "Technology", "Arts", "Wellness", "Religious Studies"]
+
+BB_COURSES = [
+    {"id": "bc1", "title": "Foundations of Blacksmithing", "category": "Trades & Crafts",
+     "level": "Beginner", "icon": "anvil",
+     "summary": "Fire, iron and patience — strike your first clean weld.",
+     "lessons": [
+        {"title": "Reading the Forge Fire", "body": "A good fire is the smith's first tool. Learn to read colour: dull red means too cool, bright orange to yellow is the working heat for mild steel. Keep the fuel banked and the air steady. Too much air burns the metal; too little starves the heat. Work in a shaded corner so you can judge colour honestly."},
+        {"title": "Drawing Out & Tapering", "body": "Drawing out lengthens and thins the stock. Strike with the hammer angled slightly and rotate the work a quarter turn between blows to keep it square. For a taper, reduce your hammer angle as the point forms. Finish on the flat of the anvil to true the faces."},
+        {"title": "The Scarf Weld", "body": "Forge-welding joins two pieces with heat and pressure. Shape matching scarfs, bring both to a sparkling welding heat, flux to keep scale out, then set the weld with firm, quick blows before the heat fades. Confidence beats force — hesitation lets the joint cool and fail."},
+     ]},
+    {"id": "bc2", "title": "Practical Watchmaking", "category": "Trades & Crafts",
+     "level": "Intermediate", "icon": "watch",
+     "summary": "Gears, springs and the tiny art of keeping time.",
+     "lessons": [
+        {"title": "Anatomy of a Movement", "body": "Every mechanical watch is a chain: mainspring stores energy, the gear train delivers it, the escapement doles it out in even beats, and the balance wheel counts them. Understand the flow of power and every repair becomes logical."},
+        {"title": "Cleaning & Oiling", "body": "Old oil turns to varnish and stops a watch faster than any broken part. Disassemble, clean each part, and re-oil only the pivots and escapement with the correct grade — a pinhead too much drags the whole train."},
+     ]},
+    {"id": "bc3", "title": "Conversational French", "category": "Languages",
+     "level": "Beginner", "icon": "translate",
+     "summary": "Order coffee, make friends, and sound the part.",
+     "lessons": [
+        {"title": "Greetings & Politeness", "body": "Bonjour (hello, daytime), bonsoir (evening), s'il vous plaît (please), merci (thank you), de rien (you're welcome). The French treat 'bonjour' as a small courtesy that opens every interaction — skip it and you'll seem brusque."},
+        {"title": "The Present Tense", "body": "Regular -er verbs follow one pattern: je parle, tu parles, il/elle parle, nous parlons, vous parlez, ils/elles parlent. Master this and hundreds of verbs open up at once."},
+        {"title": "Ordering in a Café", "body": "'Je voudrais un café, s'il vous plaît' — I would like a coffee, please. 'Voudrais' (the conditional) is softer and more polite than 'je veux' (I want). Small softeners matter enormously in French."},
+     ]},
+    {"id": "bc4", "title": "Everyday Astronomy", "category": "Science",
+     "level": "Beginner", "icon": "telescope",
+     "summary": "Find your way around the night sky without a telescope.",
+     "lessons": [
+        {"title": "Star-hopping from the Plough", "body": "The Big Dipper (the Plough) is your signpost. Follow the two 'pointer' stars to Polaris, the North Star, which barely moves all night. Once you find north, the rest of the sky becomes a map you can read."},
+        {"title": "Why the Moon Changes Shape", "body": "The Moon makes no light of its own; it reflects sunlight. As it orbits Earth, we see different fractions of its lit half — new, waxing, full, waning — over roughly 29.5 days."},
+     ]},
+    {"id": "bc5", "title": "Introduction to Electronics", "category": "Technology",
+     "level": "Beginner", "icon": "chip",
+     "summary": "Resistors, circuits and your first blinking light.",
+     "lessons": [
+        {"title": "Voltage, Current & Resistance", "body": "Ohm's Law ties them together: V = I × R. Voltage is the push, current is the flow, resistance is the friction. Change any two and you can predict the third — the single most useful equation in electronics."},
+        {"title": "Reading a Breadboard", "body": "A breadboard's rows are connected in short strips; the long rails down the sides carry power and ground. Plan your layout before you plug in and debugging becomes far easier."},
+     ]},
+    {"id": "bc6", "title": "Watercolour Basics", "category": "Arts",
+     "level": "Beginner", "icon": "palette",
+     "summary": "Light, water and the courage to leave white paper alone.",
+     "lessons": [
+        {"title": "Controlling Water", "body": "Watercolour is really water-control. More water means paler, softer washes; less water gives richer, sharper marks. Practice a graded wash from dark to light before painting anything real."},
+        {"title": "Wet-on-Wet vs Wet-on-Dry", "body": "Drop colour into a wet area and it blooms softly (wet-on-wet); paint onto dry paper for crisp edges (wet-on-dry). Combining both in one painting gives depth and life."},
+     ]},
+    {"id": "bc7", "title": "Mindful Breathing", "category": "Wellness",
+     "level": "Beginner", "icon": "meditation",
+     "summary": "Calm the nervous system in three unhurried minutes.",
+     "lessons": [
+        {"title": "The Physiological Sigh", "body": "Two short inhales through the nose followed by a long, slow exhale through the mouth is the fastest known way to calm the body. It reinflates collapsed air sacs and offloads carbon dioxide, easing stress in seconds."},
+        {"title": "Box Breathing", "body": "Inhale for four counts, hold for four, exhale for four, hold for four. Used by athletes and pilots, it steadies the heart rate and sharpens focus before any demanding task."},
+     ]},
+    {"id": "bc8", "title": "World Religions: An Overview", "category": "Religious Studies",
+     "level": "Beginner", "icon": "hands-pray",
+     "summary": "A respectful tour of the great faith traditions.",
+     "lessons": [
+        {"title": "The Abrahamic Faiths", "body": "Judaism, Christianity and Islam share a common ancestor in Abraham and a belief in one God. They differ in scripture and practice — the Torah, the Bible, and the Qur'an — yet each centres on covenant, ethics and community."},
+        {"title": "Dharmic Traditions", "body": "Hinduism, Buddhism, Jainism and Sikhism arose in the Indian subcontinent. Shared themes include karma (action and consequence), dharma (duty or right living), and the aim of liberation from cycles of rebirth."},
+        {"title": "Reading Sacred Texts Respectfully", "body": "Sacred texts are read differently within each tradition — literally, allegorically, or mystically. Studying religion well means understanding what believers themselves mean, not judging one tradition by another's rules."},
+     ]},
+    {"id": "bc9", "title": "Comparative Ethics & Belief", "category": "Religious Studies",
+     "level": "Intermediate", "icon": "scale-balance",
+     "summary": "How different traditions answer life's hardest questions.",
+     "lessons": [
+        {"title": "The Golden Rule Across Faiths", "body": "Nearly every tradition teaches a version of 'treat others as you wish to be treated' — from the Torah and the Gospels to the Analects of Confucius and the Buddhist Udana. This shared ethic is one of humanity's most striking agreements."},
+        {"title": "Ritual, Festival & Meaning", "body": "Festivals such as Passover, Easter, Eid, Diwali and Vesak mark sacred time and bind communities together. Understanding a festival's story reveals the values a tradition holds most dear."},
+     ]},
+    {"id": "bc10", "title": "Conversational Spanish", "category": "Languages",
+     "level": "Beginner", "icon": "translate",
+     "summary": "The world's second-most-spoken mother tongue, one phrase at a time.",
+     "lessons": [
+        {"title": "Sounds & Stress", "body": "Spanish vowels are pure and consistent: a, e, i, o, u never change. Stress usually falls on the second-to-last syllable unless an accent mark tells you otherwise. Get the vowels clean and you'll be understood."},
+        {"title": "Ser vs Estar", "body": "Both mean 'to be'. Use 'ser' for permanent traits (soy alto — I am tall) and 'estar' for states and locations (estoy cansado — I am tired). Mixing them is the classic beginner slip."},
+     ]},
+]
+
+BB_QUIZZES = [
+    {"id": "bq1", "title": "General Knowledge Warm-up", "category": "Science", "icon": "lightbulb-on",
+     "questions": [
+        {"q": "What is the largest planet in our solar system?", "options": ["Saturn", "Jupiter", "Neptune", "Earth"], "answer": 1},
+        {"q": "Water is made of hydrogen and which other element?", "options": ["Helium", "Nitrogen", "Oxygen", "Carbon"], "answer": 2},
+        {"q": "How many bones are in the adult human body?", "options": ["186", "206", "226", "246"], "answer": 1},
+        {"q": "What gas do plants absorb from the air?", "options": ["Oxygen", "Hydrogen", "Carbon dioxide", "Nitrogen"], "answer": 2},
+     ]},
+    {"id": "bq2", "title": "World Geography", "category": "Science", "icon": "earth",
+     "questions": [
+        {"q": "What is the longest river in the world?", "options": ["Amazon", "Nile", "Yangtze", "Mississippi"], "answer": 1},
+        {"q": "Which country has the most natural lakes?", "options": ["Russia", "USA", "Canada", "Finland"], "answer": 2},
+        {"q": "Mount Everest sits on the border of Nepal and which country?", "options": ["India", "China", "Bhutan", "Pakistan"], "answer": 1},
+        {"q": "What is the smallest country in the world?", "options": ["Monaco", "Nauru", "Vatican City", "San Marino"], "answer": 2},
+     ]},
+    {"id": "bq3", "title": "Trades & Making", "category": "Trades & Crafts", "icon": "hammer-wrench",
+     "questions": [
+        {"q": "What does flux do during forge-welding?", "options": ["Adds colour", "Keeps scale out of the joint", "Cools the metal", "Hardens the steel"], "answer": 1},
+        {"q": "In Ohm's Law, V equals I times what?", "options": ["Power", "Resistance", "Charge", "Frequency"], "answer": 1},
+        {"q": "What stores the energy in a mechanical watch?", "options": ["Balance wheel", "Escapement", "Mainspring", "Dial"], "answer": 2},
+     ]},
+    {"id": "bq4", "title": "Languages & Words", "category": "Languages", "icon": "translate",
+     "questions": [
+        {"q": "In French, what does 'merci' mean?", "options": ["Please", "Hello", "Thank you", "Goodbye"], "answer": 2},
+        {"q": "Spanish 'ser' and 'estar' both translate to which English verb?", "options": ["To have", "To be", "To go", "To do"], "answer": 1},
+        {"q": "A word opposite in meaning to another is a…", "options": ["Synonym", "Homonym", "Antonym", "Acronym"], "answer": 2},
+     ]},
+    {"id": "bq5", "title": "World Religions", "category": "Religious Studies", "icon": "hands-pray",
+     "questions": [
+        {"q": "Judaism, Christianity and Islam are collectively called the…", "options": ["Dharmic faiths", "Abrahamic faiths", "Eastern faiths", "Folk faiths"], "answer": 1},
+        {"q": "Diwali is a festival of light celebrated chiefly in which tradition?", "options": ["Islam", "Hinduism", "Judaism", "Shinto"], "answer": 1},
+        {"q": "The concept of 'karma' means action and its…", "options": ["Reward only", "Consequence", "Forgiveness", "Denial"], "answer": 1},
+     ]},
+]
+
+BB_VIDEOS = [
+    {"id": "bv1", "title": "How a Blacksmith Forges a Blade", "topic": "Trades & Crafts", "duration": "12 min"},
+    {"id": "bv2", "title": "The Beginner's Guide to Watercolour", "topic": "Arts", "duration": "18 min"},
+    {"id": "bv3", "title": "Understanding Ohm's Law", "topic": "Technology", "duration": "9 min"},
+    {"id": "bv4", "title": "French Pronunciation for Beginners", "topic": "Languages", "duration": "15 min"},
+    {"id": "bv5", "title": "A Tour of the Night Sky", "topic": "Science", "duration": "22 min"},
+    {"id": "bv6", "title": "The Physiological Sigh Explained", "topic": "Wellness", "duration": "6 min"},
+    {"id": "bv7", "title": "An Introduction to World Religions", "topic": "Religious Studies", "duration": "20 min"},
+    {"id": "bv8", "title": "How Mechanical Watches Work", "topic": "Trades & Crafts", "duration": "14 min"},
+]
+
+# Fact of the Day — a curated pool cycled deterministically by calendar date so
+# every device agrees and the fact changes each day.
+BB_FACTS = [
+    "Honey never spoils — archaeologists have found 3,000-year-old honey in Egyptian tombs that is still edible.",
+    "Octopuses have three hearts and blue, copper-based blood.",
+    "A day on Venus is longer than its year: it rotates once every 243 Earth days but orbits the Sun in 225.",
+    "Bananas are berries, but strawberries are not.",
+    "The Eiffel Tower can grow more than 15 cm taller in summer as the iron expands in the heat.",
+    "Wombats produce cube-shaped droppings.",
+    "There are more possible games of chess than there are atoms in the observable universe.",
+    "A group of flamingos is called a 'flamboyance'.",
+    "The shortest war in history lasted about 38 minutes, between Britain and Zanzibar in 1896.",
+    "Sharks existed before trees did — sharks are around 400 million years old, trees about 350 million.",
+    "The human brain uses roughly 20% of the body's total energy despite being about 2% of its weight.",
+    "Sea otters hold hands while sleeping so they don't drift apart.",
+    "The Great Wall of China is not a single wall but many walls built over centuries.",
+    "Lightning strikes the Earth about 8 million times a day.",
+    "A single strand of spider silk is thinner than a human hair but stronger by weight than steel.",
+    "The dot over a lowercase 'i' or 'j' is called a tittle.",
+    "Cows have best friends and can become stressed when separated from them.",
+    "Venus is the only planet in our solar system that spins clockwise.",
+    "The inventor of the Frisbee was turned into a Frisbee — his ashes were made into memorial discs.",
+    "A bolt of lightning is about five times hotter than the surface of the Sun.",
+    "Hot water can freeze faster than cold water under certain conditions — the Mpemba effect.",
+    "The heart of a shrimp is located in its head.",
+    "Bees can recognise human faces.",
+    "The world's oldest known living tree is a bristlecone pine over 4,800 years old.",
+    "An ostrich's eye is bigger than its brain.",
+    "Scotland's national animal is the unicorn.",
+    "The fingerprints of koalas are so similar to humans' they have confused crime scenes.",
+    "A jiffy is an actual unit of time: 1/100th of a second.",
+    "There is enough gold in the Earth's core to coat the entire planet in a layer half a metre deep.",
+    "Butterflies taste with their feet.",
+    "The Sahara Desert was green and full of lakes as recently as 6,000 years ago.",
+    "Sound cannot travel through the vacuum of space.",
+    "Polar bears have black skin under their translucent fur.",
+    "The longest recorded flight of a chicken is 13 seconds.",
+    "The word 'set' has the most definitions of any word in the English language.",
+    "Antarctica is the largest desert on Earth.",
+    "A snail can sleep for up to three years.",
+    "The Moon is slowly drifting away from Earth at about 3.8 cm per year.",
+    "The unicorn was described in ancient texts long before it became a fantasy creature.",
+    "Humans share about 60% of their DNA with bananas.",
+    "The first oranges were not orange — they were green.",
+    "A cloud can weigh more than a million pounds.",
+    "The Statue of Liberty was originally a shade of copper before oxidising to green.",
+    "Tigers have striped skin, not just striped fur.",
+    "The human nose can distinguish over one trillion different scents.",
+    "Saturn's rings are made mostly of ice and are only about 10 metres thick in places.",
+    "The blue whale's heart is so large a human could swim through its arteries.",
+    "Cleopatra lived closer in time to the Moon landing than to the building of the Great Pyramid.",
+    "There are more stars in the universe than grains of sand on all of Earth's beaches.",
+    "A hummingbird's heart can beat over 1,200 times per minute.",
+    "Pineapples take about two to three years to grow a single fruit.",
+    "The Pacific Ocean is wider than the Moon's diameter would fit across many times over.",
+    "The average cumulus cloud holds enough water for a small pond.",
+    "Elephants are the only mammals that can't jump.",
+    "The tongue is the fastest-healing part of the human body.",
+    "A crocodile cannot stick out its tongue.",
+    "The smell of freshly cut grass is actually a plant distress signal.",
+    "Some turtles can breathe through their rear ends.",
+    "The dot pattern on dice always adds up to seven on opposite faces.",
+    "Peanuts are not nuts — they are legumes, related to beans and lentils.",
+    "The Earth is not a perfect sphere; it bulges slightly at the equator.",
+    "Wombat teeth never stop growing throughout their lives.",
+    "A day on Mars is only about 40 minutes longer than a day on Earth.",
+    "Owls cannot move their eyeballs, so they turn their whole heads instead.",
+    "Bubble wrap was originally invented as textured wallpaper.",
+    "The human body contains enough carbon to fill about 9,000 pencils.",
+    "The wood frog can survive being frozen solid and thaw back to life.",
+    "The average person walks the equivalent of about five times around the world in a lifetime.",
+    "There is a species of jellyfish considered biologically immortal.",
+    "The loudest sound ever recorded was the 1883 eruption of Krakatoa, heard 3,000 miles away.",
+    "A teaspoon of neutron star material would weigh about six billion tons on Earth.",
+    "Rats laugh when they are tickled.",
+    "Coconuts kill more people each year than sharks do.",
+    "The letters in the word 'listen' can be rearranged to spell 'silent'.",
+    "Giraffes have the same number of neck bones as humans: seven.",
+    "The Hawaiian alphabet has only 13 letters.",
+    "A group of owls is called a parliament.",
+    "The average lightning bolt is only about as wide as a thumb.",
+    "Slugs have around 27,000 microscopic teeth.",
+    "The Amazon rainforest produces about 20% of the world's oxygen.",
+    "There are more trees on Earth than stars in the Milky Way.",
+    "Mosquitoes are attracted to the colour black more than other colours.",
+    "The shortest complete sentence in English is 'I am.'",
+    "A shrimp's heartbeat lives in its head, and its nervous system runs the length of its body.",
+    "Some cats are allergic to humans.",
+    "The Eiffel Tower was meant to be a temporary structure for the 1889 World's Fair.",
+    "Venus is the hottest planet in the solar system, even hotter than Mercury.",
+    "The average person spends about six months of their life waiting for red lights to turn green.",
+    "A group of pandas is called an embarrassment.",
+    "The tiny pocket in jeans was originally designed to hold a pocket watch.",
+    "Sloths can hold their breath longer than dolphins can.",
+    "The world's largest snowflake on record was reportedly 38 cm wide.",
+    "A bolt of lightning contains enough energy to toast about 100,000 slices of bread.",
+    "Norway once knighted a penguin.",
+    "The heart of a blue whale can weigh as much as a small car.",
+    "Your stomach gets a new lining every few days to avoid digesting itself.",
+    "The word 'muscle' comes from the Latin for 'little mouse'.",
+    "Cashews grow attached to the bottom of a cashew apple.",
+    "A snail can regenerate parts of its body, including its eyes.",
+    "The dot of an exclamation mark was once called a 'bang' by printers.",
+    "Some frogs can be frozen and then thawed and continue living.",
+    "The average human heart beats about 100,000 times a day.",
+    "Ketchup was once sold in the 1830s as medicine.",
+    "The longest place name in the world has 85 letters, a hill in New Zealand.",
+    "A day on the dwarf planet Pluto lasts about 153 hours.",
+    "Bananas are naturally slightly radioactive due to their potassium content.",
+    "The first computer mouse was made of wood.",
+    "Sharks can detect a single drop of blood in an Olympic-sized swimming pool.",
+    "The plastic tips on shoelaces are called aglets.",
+    "The human eye can distinguish about 10 million colours.",
+    "Starfish have no brain and no blood.",
+    "The Great Barrier Reef is the largest living structure on Earth, visible from space.",
+    "A group of crows is called a murder.",
+    "The average cloud floats because its water droplets are incredibly tiny and spread out.",
+    "Honeybees communicate the location of flowers by dancing.",
+    "The coldest temperature ever recorded on Earth was about -89°C in Antarctica.",
+    "Your ears and nose never stop growing throughout your life.",
+    "The world's smallest mammal is the bumblebee bat, weighing about two grams.",
+    "There are more possible ways to shuffle a deck of cards than there are atoms on Earth.",
+    "The average person blinks about 20 times a minute — over 10 million times a year.",
+]
+
+# Fixed-seed shuffle so the daily fact order is stable across devices and restarts.
+_BB_FACTS_POOL = list(BB_FACTS)
+random.Random(20260202).shuffle(_BB_FACTS_POOL)
+_BB_FACT_EPOCH = date(2026, 1, 1)
+
+
+def _bb_fact_for(day: date) -> str:
+    idx = (day - _BB_FACT_EPOCH).days % len(_BB_FACTS_POOL)
+    return _BB_FACTS_POOL[idx]
+
+
+
+
 async def seed():
     if await db.districts.count_documents({}) == 0:
         await db.districts.insert_many([dict(d) for d in DISTRICTS])
         logger.info("Seeded districts")
+    # Keep each district's features (and other rendered fields) in sync with the
+    # DISTRICTS constant so feature-list changes in code are reflected in the DB.
+    for d in DISTRICTS:
+        await db.districts.update_one(
+            {"slug": d["slug"]},
+            {"$set": {"features": d.get("features", []),
+                      "name": d.get("name"), "icon": d.get("icon"),
+                      "tagline": d.get("tagline"), "description": d.get("description"),
+                      "chatmonger": d.get("chatmonger")}},
+        )
     if await db.feed.count_documents({}) == 0:
         await db.feed.insert_many([dict(p) for p in FEED_POSTS])
         logger.info("Seeded feed")
@@ -662,6 +965,13 @@ async def seed():
         await db.af_questions.insert_many([dict(q) for q in AF_QUESTIONS])
         await db.af_answers.insert_many([dict(a) for a in AF_ANSWERS])
         logger.info("Seeded answerfier")
+    # BrainBoost courses & quizzes (idempotent).
+    for c in BB_COURSES:
+        if not await db.bb_courses.find_one({"id": c["id"]}):
+            await db.bb_courses.insert_one(dict(c))
+    for q in BB_QUIZZES:
+        if not await db.bb_quizzes.find_one({"id": q["id"]}):
+            await db.bb_quizzes.insert_one(dict(q))
     await db.af_questions.create_index("qotd_date", unique=True, sparse=True)
     await db.users.create_index("email", unique=True)
 
@@ -1305,7 +1615,68 @@ async def _anvil_llm(system: str, prompt: str, session: str) -> str:
 
 @api_router.get("/anvil/prompts")
 async def anvil_prompts(user: dict = Depends(require_user)):
-    return {"prompts": ANVIL_PROMPTS, "categories": ANVIL_CATEGORIES}
+    docs = await db.anvil_prompts.find({}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    user_prompts = [d["text"] for d in docs]
+    return {"prompts": user_prompts + ANVIL_PROMPTS, "categories": ANVIL_CATEGORIES}
+
+
+@api_router.post("/anvil/prompts", status_code=201)
+async def anvil_add_prompt(body: PromptCreate, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex,
+        "text": body.text.strip(),
+        "author": user["display_name"],
+        "author_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.anvil_prompts.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.post("/anvil/genoscribe")
+async def anvil_genoscribe(body: GenoBody, user: dict = Depends(require_user)):
+    if body.tool not in ("story", "script", "prompt"):
+        raise HTTPException(status_code=400, detail="Unknown GenoScribe tool.")
+    tone = f" Tone: {body.tone}." if body.tone else ""
+    genre = f" Genre: {body.genre}." if body.genre else ""
+    words = "about 180 words" if body.length == "short" else "about 450 words"
+    base = (
+        "You are GenoScribe, the AI writing studio of Author Anvil inside Konphlux, a whimsical steampunk world. "
+        "Write vivid, atmospheric, original content. Return ONLY the requested writing — no preamble or commentary."
+    )
+    if body.tool == "prompt":
+        system = base
+        prompt = (
+            f"Write ONE original, evocative writing prompt (one or two sentences) for a steampunk story "
+            f"inspired by: {body.topic}.{genre}{tone} Return only the prompt sentence, no quotes, no label."
+        )
+        try:
+            text = await _anvil_llm(system, prompt, session=f"geno-prompt:{user['id']}")
+        except Exception as e:  # noqa: BLE001
+            logger.exception("GenoScribe prompt error")
+            raise HTTPException(status_code=502, detail="GenoScribe's aether pen ran dry. Try again.") from e
+        return {"tool": "prompt", "title": "", "text": text.strip().strip('"')}
+
+    kind = "screenplay scene" if body.tool == "script" else "short story"
+    system = base
+    prompt = (
+        f"Write a complete {kind} ({words}) in a whimsical steampunk style about: {body.topic}.{genre}{tone} "
+        f"On the FIRST line output 'TITLE: <a short evocative title>' and then the {kind} on the following lines."
+    )
+    try:
+        raw = await _anvil_llm(system, prompt, session=f"geno-{body.tool}:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("GenoScribe error")
+        raise HTTPException(status_code=502, detail="GenoScribe's aether pen ran dry. Try again.") from e
+    title = ""
+    text = raw.strip()
+    lines = text.split("\n", 1)
+    if lines and lines[0].strip().upper().startswith("TITLE:"):
+        title = lines[0].split(":", 1)[1].strip()
+        text = lines[1].strip() if len(lines) > 1 else ""
+    return {"tool": body.tool, "title": title, "text": text}
 
 
 @api_router.get("/anvil/cowriting")
@@ -2027,6 +2398,167 @@ async def list_orders(user: dict = Depends(require_user)):
     docs = await db.orders.find({"user_id": user["id"], "payment_status": "paid"}, {"_id": 0}).to_list(500)
     docs.sort(key=lambda o: o.get("paid_at") or o.get("created_at", ""), reverse=True)
     return docs
+
+
+# ---------- BrainBoost (learning district) ----------
+def _bb_course_card(doc: dict) -> dict:
+    return {
+        "id": doc["id"],
+        "title": doc["title"],
+        "category": doc["category"],
+        "level": doc.get("level", "Beginner"),
+        "icon": doc.get("icon", "school"),
+        "summary": doc.get("summary", ""),
+        "lesson_count": len(doc.get("lessons", [])),
+    }
+
+
+async def _bb_completed(user_id: str, course_id: str) -> list[int]:
+    row = await db.bb_progress.find_one({"user_id": user_id, "course_id": course_id})
+    return sorted(row.get("completed", [])) if row else []
+
+
+@api_router.get("/brainboost")
+async def brainboost_hub(user: dict = Depends(require_user)):
+    courses = await db.bb_courses.find({}, {"_id": 0}).to_list(200)
+    quizzes = await db.bb_quizzes.find({}, {"_id": 0}).to_list(200)
+    prog = await db.bb_progress.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    lessons_done = sum(len(p.get("completed", [])) for p in prog)
+    return {
+        "fact_of_day": _bb_fact_for(date.today()),
+        "categories": BB_CATEGORIES,
+        "featured": [_bb_course_card(c) for c in courses[:4]],
+        "course_count": len(courses),
+        "quiz_count": len(quizzes),
+        "video_count": len(BB_VIDEOS),
+        "lessons_completed": lessons_done,
+    }
+
+
+@api_router.get("/brainboost/courses")
+async def brainboost_courses(user: dict = Depends(require_user), category: str | None = None):
+    query: dict = {}
+    if category and category != "All":
+        query["category"] = category
+    docs = await db.bb_courses.find(query, {"_id": 0}).to_list(300)
+    return {"courses": [_bb_course_card(c) for c in docs], "categories": BB_CATEGORIES}
+
+
+@api_router.get("/brainboost/courses/{course_id}")
+async def brainboost_course_detail(course_id: str, user: dict = Depends(require_user)):
+    doc = await db.bb_courses.find_one({"id": course_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Course not found")
+    doc["completed"] = await _bb_completed(user["id"], course_id)
+    return doc
+
+
+@api_router.post("/brainboost/courses/{course_id}/progress")
+async def brainboost_progress(course_id: str, body: BBProgressBody, user: dict = Depends(require_user)):
+    course = await db.bb_courses.find_one({"id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    op = "$addToSet" if body.completed else "$pull"
+    await db.bb_progress.update_one(
+        {"user_id": user["id"], "course_id": course_id},
+        {op: {"completed": body.lesson_index}},
+        upsert=True,
+    )
+    completed = await _bb_completed(user["id"], course_id)
+    return {"course_id": course_id, "completed": completed, "total": len(course.get("lessons", []))}
+
+
+@api_router.get("/brainboost/quizzes")
+async def brainboost_quizzes(user: dict = Depends(require_user)):
+    docs = await db.bb_quizzes.find({}, {"_id": 0}).to_list(200)
+    return [
+        {"id": d["id"], "title": d["title"], "category": d.get("category", "General"),
+         "icon": d.get("icon", "help-circle"), "question_count": len(d.get("questions", []))}
+        for d in docs
+    ]
+
+
+@api_router.get("/brainboost/quizzes/{quiz_id}")
+async def brainboost_quiz_detail(quiz_id: str, user: dict = Depends(require_user)):
+    doc = await db.bb_quizzes.find_one({"id": quiz_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    # Strip correct answers before sending to the client.
+    questions = [{"q": q["q"], "options": q["options"]} for q in doc.get("questions", [])]
+    return {"id": doc["id"], "title": doc["title"], "category": doc.get("category", "General"),
+            "icon": doc.get("icon", "help-circle"), "questions": questions}
+
+
+@api_router.post("/brainboost/quizzes/{quiz_id}/submit")
+async def brainboost_quiz_submit(quiz_id: str, body: BBQuizSubmit, user: dict = Depends(require_user)):
+    doc = await db.bb_quizzes.find_one({"id": quiz_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    questions = doc.get("questions", [])
+    correct = [q["answer"] for q in questions]
+    score = sum(1 for i, a in enumerate(body.answers) if i < len(correct) and a == correct[i])
+    return {"score": score, "total": len(questions), "correct": correct}
+
+
+@api_router.get("/brainboost/facts")
+async def brainboost_facts(user: dict = Depends(require_user)):
+    today = date.today()
+    upcoming = [_bb_fact_for(today - timedelta(days=i)) for i in range(1, 13)]
+    return {"fact_of_day": _bb_fact_for(today), "date": today.isoformat(), "more": upcoming}
+
+
+@api_router.get("/brainboost/videos")
+async def brainboost_videos(user: dict = Depends(require_user)):
+    out = []
+    for v in BB_VIDEOS:
+        query = v["title"].replace(" ", "+")
+        out.append({**v, "url": f"https://www.youtube.com/results?search_query={query}"})
+    return out
+
+
+@api_router.post("/brainboost/lexicon")
+async def brainboost_lexicon(body: BBLexiconBody, user: dict = Depends(require_user)):
+    word = body.word.strip()
+    if body.mode == "thesaurus":
+        system = "You are a concise thesaurus. Given a word, return synonyms and antonyms only."
+        prompt = (
+            f"For the word '{word}', return plain text in exactly this format:\n"
+            f"SYNONYMS: comma-separated list of 6-10 synonyms\n"
+            f"ANTONYMS: comma-separated list of up to 6 antonyms (or 'none')\n"
+            f"No other commentary."
+        )
+    else:
+        system = "You are a clear, friendly dictionary. Define words plainly and accurately."
+        prompt = (
+            f"Define the word '{word}'. Return plain text in exactly this format:\n"
+            f"PART OF SPEECH: (e.g. noun, verb)\n"
+            f"DEFINITION: one or two clear sentences\n"
+            f"EXAMPLE: one natural example sentence using the word\n"
+            f"No other commentary."
+        )
+    try:
+        text = await _anvil_llm(system, prompt, session=f"bb-lex:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("BrainBoost lexicon error")
+        raise HTTPException(status_code=502, detail="The library's aether lamp flickered. Try again.") from e
+    return {"word": word, "mode": body.mode, "text": text.strip()}
+
+
+@api_router.post("/brainboost/repair")
+async def brainboost_repair(body: BBRepairBody, user: dict = Depends(require_user)):
+    system = (
+        "You are Repair Guy, a friendly, practical repair expert in the steampunk world of Konphlux. "
+        "Give safe, clear, step-by-step repair guidance for household items, gadgets, bicycles, plumbing and the like. "
+        "Always mention any safety precaution first if relevant (power off, unplug, gloves). "
+        "Be concise and use numbered steps."
+    )
+    prompt = f"Help me fix this problem, step by step:\n{body.problem.strip()}"
+    try:
+        text = await _anvil_llm(system, prompt, session=f"bb-repair:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("BrainBoost repair error")
+        raise HTTPException(status_code=502, detail="Repair Guy is elbow-deep in a boiler. Try again.") from e
+    return {"steps": text.strip()}
 
 
 app.include_router(api_router)

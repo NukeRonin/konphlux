@@ -58,6 +58,7 @@ function RootNavigator() {
         <Stack.Screen name="anvil/prompts" />
         <Stack.Screen name="anvil/cowriting" />
         <Stack.Screen name="anvil/aiventure" />
+        <Stack.Screen name="anvil/genoscribe" />
         <Stack.Screen name="anvil/write" options={{ presentation: "modal" }} />
         <Stack.Screen name="saved" />
         <Stack.Screen name="cart" />
@@ -73,6 +74,15 @@ function RootNavigator() {
         <Stack.Screen name="answerfier/index" />
         <Stack.Screen name="answerfier/question/[id]" />
         <Stack.Screen name="answerfier/new-question" options={{ presentation: "modal" }} />
+        <Stack.Screen name="brainboost/index" />
+        <Stack.Screen name="brainboost/courses" />
+        <Stack.Screen name="brainboost/course/[id]" />
+        <Stack.Screen name="brainboost/quizzes" />
+        <Stack.Screen name="brainboost/quiz/[id]" />
+        <Stack.Screen name="brainboost/facts" />
+        <Stack.Screen name="brainboost/videos" />
+        <Stack.Screen name="brainboost/lexicon" />
+        <Stack.Screen name="brainboost/repair" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

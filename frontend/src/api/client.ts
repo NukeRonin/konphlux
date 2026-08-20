@@ -290,6 +290,31 @@ export type Question = {
 
 export type AnswerfierBoard = { qotd: Question; questions: Question[]; categories: string[] };
 
+export type BBCourseCard = {
+  id: string;
+  title: string;
+  category: string;
+  level: string;
+  icon: string;
+  summary: string;
+  lesson_count: number;
+};
+export type BBLesson = { title: string; body: string };
+export type BBCourse = BBCourseCard & { lessons: BBLesson[]; completed: number[] };
+export type BBHub = {
+  fact_of_day: string;
+  categories: string[];
+  featured: BBCourseCard[];
+  course_count: number;
+  quiz_count: number;
+  video_count: number;
+  lessons_completed: number;
+};
+export type BBQuizCard = { id: string; title: string; category: string; icon: string; question_count: number };
+export type BBQuizQuestion = { q: string; options: string[] };
+export type BBQuiz = { id: string; title: string; category: string; icon: string; questions: BBQuizQuestion[] };
+export type BBVideo = { id: string; title: string; topic: string; duration: string; url: string };
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -359,6 +384,10 @@ export const api = {
     request<{ text: string }>("/anvil/assist", { method: "POST", body: JSON.stringify(payload) }),
   anvilAdventure: (history: { role: string; content: string }[], action: string) =>
     request<{ text: string }>("/anvil/adventure", { method: "POST", body: JSON.stringify({ history, action }) }),
+  anvilGeno: (payload: { tool: string; topic: string; tone?: string; genre?: string; length?: string }) =>
+    request<{ tool: string; title: string; text: string }>("/anvil/genoscribe", { method: "POST", body: JSON.stringify(payload) }),
+  anvilAddPrompt: (text: string) =>
+    request<{ id: string; text: string }>("/anvil/prompts", { method: "POST", body: JSON.stringify({ text }) }),
   getProfile: () => request<Profile>("/profile"),
 
   toggleSave: (kind: SaveKind, item_id: string) =>
@@ -459,4 +488,33 @@ export const api = {
       body: JSON.stringify({ target_id, action }),
     }),
   datingMatches: () => request<SparkCard[]>("/dating/matches"),
+
+  // BrainBoost (learning district)
+  bbHub: () => request<BBHub>("/brainboost"),
+  bbCourses: (category?: string) =>
+    request<{ courses: BBCourseCard[]; categories: string[] }>(
+      `/brainboost/courses${category ? `?category=${encodeURIComponent(category)}` : ""}`,
+    ),
+  bbCourse: (id: string) => request<BBCourse>(`/brainboost/courses/${id}`),
+  bbProgress: (id: string, lesson_index: number, completed: boolean) =>
+    request<{ course_id: string; completed: number[]; total: number }>(`/brainboost/courses/${id}/progress`, {
+      method: "POST",
+      body: JSON.stringify({ lesson_index, completed }),
+    }),
+  bbQuizzes: () => request<BBQuizCard[]>("/brainboost/quizzes"),
+  bbQuiz: (id: string) => request<BBQuiz>(`/brainboost/quizzes/${id}`),
+  bbQuizSubmit: (id: string, answers: number[]) =>
+    request<{ score: number; total: number; correct: number[] }>(`/brainboost/quizzes/${id}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
+  bbFacts: () => request<{ fact_of_day: string; date: string; more: string[] }>("/brainboost/facts"),
+  bbVideos: () => request<BBVideo[]>("/brainboost/videos"),
+  bbLexicon: (word: string, mode: "dictionary" | "thesaurus") =>
+    request<{ word: string; mode: string; text: string }>("/brainboost/lexicon", {
+      method: "POST",
+      body: JSON.stringify({ word, mode }),
+    }),
+  bbRepair: (problem: string) =>
+    request<{ steps: string }>("/brainboost/repair", { method: "POST", body: JSON.stringify({ problem }) }),
 };
