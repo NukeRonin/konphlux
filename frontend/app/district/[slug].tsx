@@ -17,6 +17,21 @@ import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
+// Districts that have a dedicated functional hub (not just the Chatmonger chat).
+const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
+  roundtable: { route: "/roundtable", label: "Enter the Roundtable" },
+  answerfier: { route: "/answerfier", label: "Enter Answerfier" },
+};
+
+// For the Answerfier district, each feature chip opens the Q&A board with a filter.
+const ANSWERFIER_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "New Questions": { route: "/answerfier?filter=new", icon: "clock-outline" },
+  "Popular Questions": { route: "/answerfier?filter=popular", icon: "fire" },
+  "Trending Questions": { route: "/answerfier?filter=trending", icon: "trending-up" },
+  "Unanswered Questions": { route: "/answerfier?filter=unanswered", icon: "help-circle-outline" },
+  "Categories": { route: "/answerfier", icon: "shape-outline" },
+};
+
 // For the Roundtable district, each feature chip is a working shortcut.
 const ROUNDTABLE_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Create Community": { route: "/roundtable/new-community", icon: "account-multiple-plus" },
@@ -101,13 +116,13 @@ export default function DistrictDetail() {
             <Text style={[styles.tagline, { color: colors.brand }]}>{district.tagline}</Text>
             <Text style={[styles.description, { color: colors.muted }]}>{district.description}</Text>
             <ForgeButton
-              label={district.slug === "roundtable" ? "Enter the Roundtable" : `Enter & chat with ${district.chatmonger.name}`}
+              label={DISTRICT_HUBS[district.slug]?.label ?? `Enter & chat with ${district.chatmonger.name}`}
               style={{ marginTop: spacing.lg }}
               testID="district-enter"
               icon={<MaterialCommunityIcons name="arrow-right-bold-box" size={18} color={colors.onBrandPrimary} />}
               onPress={() =>
-                district.slug === "roundtable"
-                  ? router.push("/roundtable")
+                DISTRICT_HUBS[district.slug]
+                  ? router.push(DISTRICT_HUBS[district.slug].route as any)
                   : router.push(`/chatmonger/${district.slug}`)
               }
             />
@@ -116,15 +131,15 @@ export default function DistrictDetail() {
           {/* Features */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Inside {district.name}</Text>
-            {district.slug === "roundtable" ? (
+            {district.slug === "roundtable" || district.slug === "answerfier" ? (
               <View style={{ gap: spacing.sm }}>
                 {district.features.map((f) => {
-                  const action = ROUNDTABLE_ACTIONS[f];
+                  const action = (district.slug === "roundtable" ? ROUNDTABLE_ACTIONS : ANSWERFIER_ACTIONS)[f];
                   if (!action) return null;
                   return (
                     <Pressable
                       key={f}
-                      testID={`rt-feature-${f}`}
+                      testID={`feature-${f}`}
                       onPress={() => router.push(action.route as any)}
                       style={({ pressed }) => [
                         styles.featureRow,

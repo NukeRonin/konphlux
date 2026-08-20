@@ -156,6 +156,34 @@ export type Order = {
   paid_at?: string;
 };
 
+export type Answer = {
+  id: string;
+  question_id: string;
+  body: string;
+  author: string;
+  upvotes: number;
+  voted: boolean;
+  is_best: boolean;
+  created_at: string;
+};
+
+export type Question = {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  author: string;
+  is_author: boolean;
+  is_qotd: boolean;
+  best_answer_id: string | null;
+  answer_count: number;
+  total_upvotes: number;
+  created_at: string;
+  answers?: Answer[];
+};
+
+export type AnswerfierBoard = { qotd: Question; questions: Question[]; categories: string[] };
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -238,4 +266,27 @@ export const api = {
   checkoutStatus: (session_id: string) =>
     request<{ paid: boolean; order: Order }>(`/checkout/status/${session_id}`),
   getOrders: () => request<Order[]>("/orders"),
+
+  afBoard: () => request<AnswerfierBoard>("/answerfier"),
+  afQotd: () => request<Question>("/answerfier/qotd"),
+  afCreateQuestion: (title: string, body: string, category: string) =>
+    request<Question>("/answerfier/questions", {
+      method: "POST",
+      body: JSON.stringify({ title, body, category }),
+    }),
+  afQuestion: (id: string) => request<Question>(`/answerfier/questions/${id}`),
+  afAddAnswer: (id: string, body: string) =>
+    request<Answer>(`/answerfier/questions/${id}/answers`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+  afSetBest: (id: string, answer_id: string) =>
+    request<{ id: string; best_answer_id: string | null }>(`/answerfier/questions/${id}/best`, {
+      method: "POST",
+      body: JSON.stringify({ answer_id }),
+    }),
+  afVoteAnswer: (answer_id: string) =>
+    request<{ id: string; voted: boolean; upvotes: number }>(`/answerfier/answers/${answer_id}/vote`, {
+      method: "POST",
+    }),
 };

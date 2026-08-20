@@ -55,6 +55,9 @@ function RootNavigator() {
         <Stack.Screen name="roundtable/thread/[id]" />
         <Stack.Screen name="roundtable/new-community" options={{ presentation: "modal" }} />
         <Stack.Screen name="roundtable/new-thread" options={{ presentation: "modal" }} />
+        <Stack.Screen name="answerfier/index" />
+        <Stack.Screen name="answerfier/question/[id]" />
+        <Stack.Screen name="answerfier/new-question" options={{ presentation: "modal" }} />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

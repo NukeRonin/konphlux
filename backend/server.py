@@ -10,10 +10,11 @@ from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
 import uuid
 import jwt
+import random
 import stripe
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from email_service import send_order_receipt
 
@@ -140,6 +141,20 @@ class CartSet(BaseModel):
 
 class CheckoutBody(BaseModel):
     return_base: str
+
+
+class QuestionCreate(BaseModel):
+    title: str = Field(min_length=5, max_length=200)
+    body: str = Field(default="", max_length=4000)
+    category: str = Field(default="General", max_length=40)
+
+
+class AnswerCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class BestAnswerBody(BaseModel):
+    answer_id: str
 
 
 # ----------------------------- Seed data -----------------------------
@@ -384,6 +399,96 @@ RT_REPLIES = [
 ]
 
 
+# ----------------------------- Answerfier (Q&A) -----------------------------
+AF_CATEGORIES = [
+    "General", "Technology", "Life & Advice", "Craft & Making",
+    "Food & Drink", "Arts", "Science", "Philosophy", "Question of the Day",
+]
+
+# Question of the Day is deterministic per calendar date and never repeats
+# within the length of the pool (>1000), satisfying the "no repeat for 1,000 days" rule.
+_QOTD_TEMPLATES = [
+    "What are your honest thoughts on {x}?",
+    "How has {x} changed your life?",
+    "What's something most people get wrong about {x}?",
+    "What's your favourite thing about {x}?",
+    "If you could change one thing about {x}, what would it be?",
+    "What's a surprising fact you know about {x}?",
+    "What first drew you to {x}?",
+    "What advice would you give a beginner about {x}?",
+    "Is {x} overrated or underrated, and why?",
+    "Where do you think {x} is heading in the next ten years?",
+    "What's the best lesson {x} has taught you?",
+    "How do you make time for {x} in a busy week?",
+]
+
+_QOTD_TOPICS = [
+    "music", "travel", "cooking", "friendship", "technology", "reading", "art",
+    "science", "history", "nature", "exercise", "sleep", "coffee", "tea",
+    "gardening", "photography", "writing", "painting", "dancing", "gaming",
+    "film", "theatre", "fashion", "design", "architecture", "poetry",
+    "philosophy", "psychology", "economics", "politics", "education",
+    "parenting", "leadership", "teamwork", "creativity", "productivity",
+    "mindfulness", "meditation", "yoga", "running", "cycling", "swimming",
+    "hiking", "camping", "fishing", "baking", "wine", "chocolate",
+    "street food", "learning languages", "mathematics", "astronomy",
+    "space exploration", "robotics", "artificial intelligence",
+    "virtual reality", "social media", "journaling", "budgeting", "investing",
+    "entrepreneurship", "volunteering", "community", "spirituality",
+    "mythology", "folklore", "storytelling", "comedy", "jazz",
+    "classical music", "hip hop", "folk music", "opera", "ballet",
+    "sculpture", "pottery", "woodworking", "metalworking", "blacksmithing",
+    "calligraphy", "origami", "knitting", "sewing", "embroidery", "quilting",
+    "chess", "board games", "puzzles", "magic tricks", "card games",
+    "birdwatching", "stargazing", "meteorology", "geology", "oceanography",
+    "marine life", "wildlife", "conservation", "sustainability", "recycling",
+    "minimalism", "interior design", "urban planning", "public transport",
+    "classic cars", "motorcycles", "aviation", "sailing", "trains",
+    "handwriting", "collecting", "antiques", "vintage clocks", "clockwork",
+    "tinkering", "home repair", "coffee brewing", "tea ceremonies",
+    "board sports", "rock climbing", "kayaking", "surfing", "skiing",
+]
+
+# Fixed-seed shuffle so every device/day agrees on the same question order.
+_QOTD_POOL = [t.format(x=topic) for t in _QOTD_TEMPLATES for topic in _QOTD_TOPICS]
+random.Random(20260101).shuffle(_QOTD_POOL)
+_QOTD_EPOCH = date(2026, 1, 1)
+
+
+def _qotd_text_for(day: date) -> str:
+    idx = (day - _QOTD_EPOCH).days % len(_QOTD_POOL)
+    return _QOTD_POOL[idx]
+
+
+AF_QUESTIONS = [
+    {"id": "q1", "title": "What's the most reliable way to keep brass from tarnishing?",
+     "body": "My workshop fittings dull within weeks. Lacquer, oil, or something cleverer?",
+     "category": "Craft & Making", "author": "Wilhelmina Grast", "user_id": "seed",
+     "best_answer_id": "a2", "created_at": "2026-06-09T09:00:00+00:00"},
+    {"id": "q2", "title": "Best beginner project to learn soldering?",
+     "body": "I've got an iron and more enthusiasm than sense. Where should I start?",
+     "category": "Craft & Making", "author": "Tomas Krieg", "user_id": "seed",
+     "best_answer_id": None, "created_at": "2026-06-11T09:00:00+00:00"},
+    {"id": "q3", "title": "Why does my aether lamp hum at a low B-flat?",
+     "body": "Contentedly, mind you. Is this a fault or a feature?",
+     "category": "Science", "author": "Percival Oakes", "user_id": "seed",
+     "best_answer_id": None, "created_at": "2026-06-13T09:00:00+00:00"},
+    {"id": "q4", "title": "How do you stay productive on grey, low-pressure days?",
+     "body": "The barometer drops and so does my will to work. Tips welcome.",
+     "category": "Life & Advice", "author": "Nadia Bellweather", "user_id": "seed",
+     "best_answer_id": None, "created_at": "2026-06-14T09:00:00+00:00"},
+]
+
+AF_ANSWERS = [
+    {"id": "a1", "question_id": "q1", "body": "A thin coat of microcrystalline wax. Buffs up nicely and lasts months.",
+     "author": "Eugene Halloway", "user_id": "seed", "upvotes": 12, "created_at": "2026-06-09T10:00:00+00:00"},
+    {"id": "a2", "question_id": "q1", "body": "Renaissance wax is the conservator's secret. Invisible, reversible, and it won't yellow.",
+     "author": "Marlowe Quill", "user_id": "seed", "upvotes": 34, "created_at": "2026-06-09T11:00:00+00:00"},
+    {"id": "a3", "question_id": "q2", "body": "Wire a simple LED torch. Cheap, forgiving, and you'll learn clean joints fast.",
+     "author": "Klaus Ferro", "user_id": "seed", "upvotes": 8, "created_at": "2026-06-11T12:00:00+00:00"},
+]
+
+
 async def seed():
     if await db.districts.count_documents({}) == 0:
         await db.districts.insert_many([dict(d) for d in DISTRICTS])
@@ -399,6 +504,11 @@ async def seed():
         await db.rt_threads.insert_many([dict(t) for t in RT_THREADS])
         await db.rt_replies.insert_many([dict(r) for r in RT_REPLIES])
         logger.info("Seeded roundtable")
+    if await db.af_questions.count_documents({}) == 0:
+        await db.af_questions.insert_many([dict(q) for q in AF_QUESTIONS])
+        await db.af_answers.insert_many([dict(a) for a in AF_ANSWERS])
+        logger.info("Seeded answerfier")
+    await db.af_questions.create_index("qotd_date", unique=True, sparse=True)
     await db.users.create_index("email", unique=True)
 
 
@@ -809,6 +919,157 @@ async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(r
     await db.rt_replies.insert_one(dict(reply))
     reply.pop("_id", None)
     return reply
+
+
+# ---------- Answerfier (Q&A) ----------
+async def _question_meta(q: dict, user_id: str) -> dict:
+    d = {k: v for k, v in q.items() if k != "_id"}
+    answers = await db.af_answers.find({"question_id": d["id"]}, {"_id": 0, "upvotes": 1}).to_list(2000)
+    d["answer_count"] = len(answers)
+    d["total_upvotes"] = sum(a.get("upvotes", 0) for a in answers)
+    d["is_author"] = d.get("user_id") == user_id
+    d["is_qotd"] = bool(d.get("is_qotd"))
+    return d
+
+
+async def _ensure_qotd() -> dict:
+    today = datetime.now(timezone.utc).date()
+    key = today.isoformat()
+    existing = await db.af_questions.find_one({"qotd_date": key})
+    if existing:
+        return existing
+    q = {
+        "id": uuid.uuid4().hex,
+        "title": _qotd_text_for(today),
+        "body": "Konphlux's Question of the Day — everyone's invited to answer.",
+        "category": "Question of the Day",
+        "author": "Oskar",
+        "user_id": None,
+        "best_answer_id": None,
+        "is_qotd": True,
+        "qotd_date": key,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.af_questions.insert_one(dict(q))
+    except Exception:  # noqa: BLE001 — race: another request created it first
+        existing = await db.af_questions.find_one({"qotd_date": key})
+        if existing:
+            return existing
+    return q
+
+
+@api_router.get("/answerfier")
+async def af_board(user: dict = Depends(require_user)):
+    qotd_doc = await _ensure_qotd()
+    qotd = await _question_meta(qotd_doc, user["id"])
+    docs = await db.af_questions.find({"is_qotd": {"$ne": True}}).to_list(2000)
+    questions = [await _question_meta(q, user["id"]) for q in docs]
+    questions.sort(key=lambda q: q.get("created_at", ""), reverse=True)
+    used = {q["category"] for q in questions if q.get("category")}
+    categories = [c for c in AF_CATEGORIES if c != "Question of the Day"]
+    for c in sorted(used):
+        if c not in categories:
+            categories.append(c)
+    return {"qotd": qotd, "questions": questions, "categories": categories}
+
+
+@api_router.get("/answerfier/qotd")
+async def af_qotd(user: dict = Depends(require_user)):
+    return await _question_meta(await _ensure_qotd(), user["id"])
+
+
+@api_router.post("/answerfier/questions", status_code=201)
+async def af_create_question(body: QuestionCreate, user: dict = Depends(require_user)):
+    category = body.category if body.category in AF_CATEGORIES and body.category != "Question of the Day" else "General"
+    q = {
+        "id": uuid.uuid4().hex,
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "category": category,
+        "author": user["display_name"],
+        "user_id": user["id"],
+        "best_answer_id": None,
+        "is_qotd": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.af_questions.insert_one(dict(q))
+    return await _question_meta(q, user["id"])
+
+
+@api_router.get("/answerfier/questions/{question_id}")
+async def af_question_detail(question_id: str, user: dict = Depends(require_user)):
+    q = await db.af_questions.find_one({"id": question_id})
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    question = await _question_meta(q, user["id"])
+    best_id = question.get("best_answer_id")
+    voted_ids = {v["answer_id"] for v in await db.af_answer_votes.find({"user_id": user["id"]}, {"_id": 0, "answer_id": 1}).to_list(5000)}
+    raw = await db.af_answers.find({"question_id": question_id}, {"_id": 0}).to_list(5000)
+    answers = []
+    for a in raw:
+        a["voted"] = a["id"] in voted_ids
+        a["is_best"] = a["id"] == best_id
+        answers.append(a)
+    answers.sort(key=lambda a: (not a["is_best"], -a.get("upvotes", 0), a.get("created_at", "")))
+    question["answers"] = answers
+    return question
+
+
+@api_router.post("/answerfier/questions/{question_id}/answers", status_code=201)
+async def af_add_answer(question_id: str, body: AnswerCreate, user: dict = Depends(require_user)):
+    q = await db.af_questions.find_one({"id": question_id})
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    answer = {
+        "id": uuid.uuid4().hex,
+        "question_id": question_id,
+        "body": body.body.strip(),
+        "author": user["display_name"],
+        "user_id": user["id"],
+        "upvotes": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.af_answers.insert_one(dict(answer))
+    answer.pop("_id", None)
+    answer["voted"] = False
+    answer["is_best"] = False
+    return answer
+
+
+@api_router.post("/answerfier/questions/{question_id}/best")
+async def af_set_best(question_id: str, body: BestAnswerBody, user: dict = Depends(require_user)):
+    q = await db.af_questions.find_one({"id": question_id})
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if q.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the asker can mark the best answer.")
+    answer = await db.af_answers.find_one({"id": body.answer_id, "question_id": question_id})
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    new_best = None if q.get("best_answer_id") == body.answer_id else body.answer_id
+    await db.af_questions.update_one({"id": question_id}, {"$set": {"best_answer_id": new_best}})
+    return {"id": question_id, "best_answer_id": new_best}
+
+
+@api_router.post("/answerfier/answers/{answer_id}/vote")
+async def af_vote_answer(answer_id: str, user: dict = Depends(require_user)):
+    a = await db.af_answers.find_one({"id": answer_id})
+    if not a:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    qv = {"user_id": user["id"], "answer_id": answer_id}
+    existing = await db.af_answer_votes.find_one(qv)
+    if existing:
+        await db.af_answer_votes.delete_one(qv)
+        voted = False
+        delta = -1
+    else:
+        await db.af_answer_votes.insert_one(dict(qv))
+        voted = True
+        delta = 1
+    upvotes = max(0, a.get("upvotes", 0) + delta)
+    await db.af_answers.update_one({"id": answer_id}, {"$set": {"upvotes": upvotes}})
+    return {"id": answer_id, "voted": voted, "upvotes": upvotes}
 
 
 # ---------- Cart & Checkout (Stripe) ----------
