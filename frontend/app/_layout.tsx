@@ -105,6 +105,9 @@ function RootNavigator() {
         <Stack.Screen name="profession/marketplace/freelancer/[id]" />
         <Stack.Screen name="evention/interviews" />
         <Stack.Screen name="evention/index" />
+        <Stack.Screen name="evention/agenda" />
+        <Stack.Screen name="evention/lists" />
+        <Stack.Screen name="evention/list/[id]" />
         <Stack.Screen name="profession/contract/[id]" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />

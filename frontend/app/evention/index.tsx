@@ -84,6 +84,12 @@ export default function CalendarView() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Calendar</Text>
           <Eyebrow>Evention Center</Eyebrow>
         </View>
+        <Pressable testID="cal-agenda" onPress={() => router.push("/evention/agenda")} hitSlop={10} style={styles.iconBtn}>
+          <MaterialCommunityIcons name="view-agenda-outline" size={22} color={colors.onSurface} />
+        </Pressable>
+        <Pressable testID="cal-lists" onPress={() => router.push("/evention/lists")} hitSlop={10} style={styles.iconBtn}>
+          <MaterialCommunityIcons name="format-list-checks" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="cal-add" onPress={() => setAdding(true)} style={[styles.addBtn, { backgroundColor: colors.brand }]}>
           <MaterialCommunityIcons name="plus" size={16} color={colors.onBrandPrimary} />
           <Text style={[styles.addText, { color: colors.onBrandPrimary }]}>Add</Text>
@@ -193,6 +199,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
+  iconBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, height: 38, borderRadius: radius.pill },
   addText: { fontFamily: fonts.bodyBold, fontSize: 14 },
   legend: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },

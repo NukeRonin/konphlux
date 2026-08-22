@@ -153,6 +153,12 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Evention Center — Agendas + Lists; user self-testing)
+- ✅ **Agendas** (/evention/agenda, view-agenda icon in Calendar header + district "Agendas" button): pulls all calendar items (interviews + user events) into 4 tab views — Today / Tomorrow / This Week (through end of Sunday) / This Month (through month end). Client-side date filtering on eventionCalendar data (local timezone), color-coded rows, item counts. No backend change (reuses /evention/calendar).
+- ✅ **Lists** (/evention/lists, list-checks icon in Calendar header + district "Lists"/"Create a List" buttons): create/delete custom checklists NOT tied to a date (packing list, to-do, etc.). Inline create bar; cards show done/total; long-press or trash to delete. Detail /evention/list/[id]: add items, tap to check/uncheck (strikethrough), delete items; optimistic updates.
+- Backend: collection evention_lists {id,user_id,title,items:[{id,text,done}]}. Endpoints POST/GET/DELETE /evention/lists[/{id}], POST /evention/lists/{id}/items, POST /evention/lists/{id}/items/{item_id}/toggle, DELETE /evention/lists/{id}/items/{item_id}. Models EventionListBody, ListItemBody.
+- Curl-smoked full CRUD (create/add/toggle/delete item/delete list all pass). Lint clean. Files: backend/server.py, frontend app/evention/{agenda,lists,list/[id]}.tsx + index.tsx (header nav), _layout.tsx (routes), district/[slug].tsx (wiring), src/api/client.ts (EventionList types + methods).
+
 ### 2026-06 (PictureShow — real fal.ai rendering VERIFIED LIVE + model upgrade to Kling v3)
 - ✅ Upgraded fal.ai models to current Kling **v3 standard** (v1 deprecated): PS_T2V_MODEL=`fal-ai/kling-video/v3/standard/text-to-video`, PS_I2V_MODEL=`fal-ai/kling-video/v3/standard/image-to-video`. v3 image-to-video renamed the image arg to `start_image_url` (was `image_url`) — updated in `pictureshow_render`.
 - ✅ **Real render VERIFIED end-to-end (paid renders actually executed)**: text-to-video (no poster) → ready with playable ~5MB MP4 (~90s); image-to-video (with poster) → ready with playable MP4 (~3min). Both returned valid `https://v3b.fal.media/...output.mp4` (HTTP 200, content-type video/mp4). Poll flow (/render-status every 6s in UI) transitions rendering→ready and plays inline via VideoPlayer.

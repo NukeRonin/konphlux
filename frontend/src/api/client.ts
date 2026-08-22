@@ -562,6 +562,8 @@ export type FreelancerReview = { id: string; reviewer_name: string; rating: numb
 export type Interview = { id: string; job_id: string; conversation_id: string; poster_id: string; poster_name: string; applicant_id: string; applicant_name: string; title: string; scheduled_at: string; location: string; status: string; role?: string; created_at: string };
 
 export type CalendarItem = { id: string; type: string; title: string; when: string; location: string; note: string; status: string; color: string; deletable: boolean };
+export type EventionListItem = { id: string; text: string; done: boolean };
+export type EventionList = { id: string; title: string; items: EventionListItem[]; created_at: string };
 
 export type Contract = { id: string; offer_id: string; conversation_id: string; client_id: string; client_name: string; freelancer_id: string; freelancer_name: string; title: string; rate_text: string; note: string; status: string; accepted_at: string; role?: string };
 
@@ -931,4 +933,10 @@ export const api = {
   eventionCalendar: () => request<{ upcoming: CalendarItem[]; past: CalendarItem[] }>("/evention/calendar"),
   eventionAddEvent: (body: { type: string; title: string; when: string; location: string; note: string }) => request<CalendarItem>("/evention/events", { method: "POST", body: JSON.stringify(body) }),
   eventionDeleteEvent: (id: string) => request<{ deleted: boolean }>(`/evention/events/${id}`, { method: "DELETE" }),
+  eventionLists: () => request<EventionList[]>("/evention/lists"),
+  eventionCreateList: (title: string) => request<EventionList>("/evention/lists", { method: "POST", body: JSON.stringify({ title }) }),
+  eventionDeleteList: (id: string) => request<{ deleted: boolean }>(`/evention/lists/${id}`, { method: "DELETE" }),
+  eventionAddListItem: (listId: string, text: string) => request<EventionListItem>(`/evention/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ text }) }),
+  eventionToggleListItem: (listId: string, itemId: string) => request<{ done: boolean }>(`/evention/lists/${listId}/items/${itemId}/toggle`, { method: "POST" }),
+  eventionDeleteListItem: (listId: string, itemId: string) => request<{ deleted: boolean }>(`/evention/lists/${listId}/items/${itemId}`, { method: "DELETE" }),
 };

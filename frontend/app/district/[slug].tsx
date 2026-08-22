@@ -176,9 +176,9 @@ const EVENTION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Appointments": { route: "/evention", icon: "clock-outline" },
   "Events": { route: "/evention", icon: "calendar-star" },
   "Birthdays & Special Days": { route: "/evention", icon: "cake-variant" },
-  "Agendas": { route: "/evention", icon: "clipboard-list" },
-  "Lists": { route: "/chatmonger/evention-center", icon: "format-list-bulleted" },
-  "Create a List": { route: "/chatmonger/evention-center", icon: "playlist-plus" },
+  "Agendas": { route: "/evention/agenda", icon: "clipboard-list" },
+  "Lists": { route: "/evention/lists", icon: "format-list-bulleted" },
+  "Create a List": { route: "/evention/lists", icon: "playlist-plus" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

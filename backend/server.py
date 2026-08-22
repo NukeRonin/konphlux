@@ -488,6 +488,14 @@ class RescheduleBody(BaseModel):
     scheduled_at: str = Field(min_length=4, max_length=40)
 
 
+class EventionListBody(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+class ListItemBody(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -4333,6 +4341,66 @@ async def evention_calendar(user: dict = Depends(require_user)):
     items.sort(key=lambda x: x.get("when", ""))
     now_iso = datetime.now(timezone.utc).isoformat()
     return {"upcoming": [i for i in items if i["when"] >= now_iso], "past": [i for i in items if i["when"] < now_iso][::-1]}
+
+
+# ----- Evention Center: Lists (custom checklists, not date-bound) -----
+@api_router.post("/evention/lists", status_code=201)
+async def evention_create_list(body: EventionListBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "title": body.title.strip(),
+        "items": [], "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.evention_lists.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/evention/lists")
+async def evention_lists(user: dict = Depends(require_user)):
+    docs = await db.evention_lists.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api_router.delete("/evention/lists/{list_id}")
+async def evention_delete_list(list_id: str, user: dict = Depends(require_user)):
+    res = await db.evention_lists.delete_one({"id": list_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    return {"deleted": True}
+
+
+@api_router.post("/evention/lists/{list_id}/items", status_code=201)
+async def evention_add_list_item(list_id: str, body: ListItemBody, user: dict = Depends(require_user)):
+    item = {"id": uuid.uuid4().hex[:8], "text": body.text.strip(), "done": False}
+    res = await db.evention_lists.update_one({"id": list_id, "user_id": user["id"]}, {"$push": {"items": item}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    return item
+
+
+@api_router.post("/evention/lists/{list_id}/items/{item_id}/toggle")
+async def evention_toggle_list_item(list_id: str, item_id: str, user: dict = Depends(require_user)):
+    doc = await db.evention_lists.find_one({"id": list_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="List not found")
+    items = doc.get("items", [])
+    found = False
+    for it in items:
+        if it["id"] == item_id:
+            it["done"] = not it.get("done", False)
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Item not found")
+    await db.evention_lists.update_one({"id": list_id, "user_id": user["id"]}, {"$set": {"items": items}})
+    return {"done": next(it["done"] for it in items if it["id"] == item_id)}
+
+
+@api_router.delete("/evention/lists/{list_id}/items/{item_id}")
+async def evention_delete_list_item(list_id: str, item_id: str, user: dict = Depends(require_user)):
+    res = await db.evention_lists.update_one({"id": list_id, "user_id": user["id"]}, {"$pull": {"items": {"id": item_id}}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    return {"deleted": True}
 
 
 
