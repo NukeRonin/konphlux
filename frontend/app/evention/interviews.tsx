@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Interview } from "@/src/api/client";
@@ -21,11 +21,28 @@ export default function UpcomingInterviews() {
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<{ upcoming: Interview[]; past: Interview[] }>({ upcoming: [], past: [] });
   const [loading, setLoading] = useState(true);
+  const [reschedId, setReschedId] = useState("");
 
   const load = useCallback(async () => {
     try { setData(await api.eventionInterviews()); } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const slots: { label: string; iso: string }[] = (() => {
+    const out: { label: string; iso: string }[] = [];
+    for (const [dl, days] of [["Tomorrow", 1], ["In 3 days", 3], ["Next week", 7]] as [string, number][]) {
+      for (const h of [10, 14, 16]) {
+        const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0);
+        out.push({ label: `${dl} ${h}:00`, iso: d.toISOString() });
+      }
+    }
+    return out;
+  })();
+
+  const reschedule = async (iso: string) => {
+    try { await api.rescheduleInterview(reschedId, iso); setReschedId(""); await load(); }
+    catch { Alert.alert("Couldn't reschedule", "Try again."); }
+  };
 
   const respond = (iv: Interview, status: "confirmed" | "declined") => {
     Alert.alert(status === "confirmed" ? "Confirm interview" : "Decline interview", iv.title, [
@@ -62,6 +79,12 @@ export default function UpcomingInterviews() {
             </Pressable>
           </View>
         ) : null}
+        {upcoming && iv.status !== "declined" ? (
+          <Pressable onPress={() => setReschedId(iv.id)} style={styles.reschedLink} testID={`iv-resched-${iv.id}`}>
+            <MaterialCommunityIcons name="calendar-refresh" size={15} color={colors.brand} />
+            <Text style={[styles.reschedText, { color: colors.brand }]}>Propose a new time</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   };
@@ -93,6 +116,21 @@ export default function UpcomingInterviews() {
           {data.past.map((iv) => <Card key={iv.id} iv={iv} upcoming={false} />)}
         </ScrollView>
       )}
+
+      <Modal visible={!!reschedId} transparent animationType="slide" onRequestClose={() => setReschedId("")}>
+        <Pressable style={styles.backdrop} onPress={() => setReschedId("")}>
+          <Pressable style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: insets.bottom + spacing.lg }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>Propose a new time</Text>
+            <View style={styles.slotWrap}>
+              {slots.map((s) => (
+                <Pressable key={s.iso} onPress={() => reschedule(s.iso)} style={[styles.slot, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} testID={`resched-slot`}>
+                  <Text style={[styles.slotText, { color: colors.onSurface }]}>{s.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -115,4 +153,12 @@ const styles = StyleSheet.create({
   btnText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xxl },
   empty: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, textAlign: "center" },
+  reschedLink: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.md },
+  reschedText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, borderWidth: 1, padding: spacing.lg },
+  sheetTitle: { fontFamily: fonts.display, fontSize: 18, marginBottom: spacing.md },
+  slotWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  slot: { paddingHorizontal: spacing.md, height: 38, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  slotText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
 });

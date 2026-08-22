@@ -27,12 +27,13 @@ export default function Marketplace() {
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [me, setMe] = useState<Freelancer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sort, setSort] = useState("featured");
 
-  const loadTab = useCallback(async (t: Tab, query = "") => {
+  const loadTab = useCallback(async (t: Tab, query = "", srt = "featured") => {
     setLoading(true);
     try {
       if (t === "gigs") setGigs(await api.jobGigs(query));
-      else if (t === "freelancers") setFreelancers(await api.freelancers(query));
+      else if (t === "freelancers") setFreelancers(await api.freelancers(query, "", srt));
       else {
         const p = await api.freelancerMe();
         setMe(p && (p as Freelancer).id ? (p as Freelancer) : null);
@@ -44,7 +45,7 @@ export default function Marketplace() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { loadTab(tab, q); }, [loadTab, tab, q]));
+  useFocusEffect(useCallback(() => { loadTab(tab, q, sort); }, [loadTab, tab, q, sort]));
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -74,6 +75,16 @@ export default function Marketplace() {
             <TextInput value={q} onChangeText={setQ} placeholder={tab === "gigs" ? "Search gigs" : "Search freelancers, skills"} placeholderTextColor={colors.muted} style={[styles.searchInput, { color: colors.onSurface }]} testID="mkt-search" />
           </View>
         </View>
+      ) : null}
+
+      {tab === "freelancers" && !loading ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.sortRow}>
+          {([["featured", "Featured"], ["rating", "Top rated"], ["available", "Available"], ["recent", "Newest"]] as [string, string][]).map(([k, l]) => (
+            <Pressable key={k} testID={`mkt-sort-${k}`} onPress={() => setSort(k)} style={[styles.sortChip, { backgroundColor: sort === k ? colors.brand : colors.surfaceSecondary, borderColor: sort === k ? colors.brand : colors.border }]}>
+              <Text style={[styles.sortText, { color: sort === k ? colors.onBrandPrimary : colors.onSurface }]}>{l}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       ) : null}
 
       {loading ? (
@@ -200,6 +211,9 @@ const styles = StyleSheet.create({
   searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 44, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
+  sortRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
+  sortChip: { paddingHorizontal: spacing.md, height: 32, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  sortText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   list: { padding: spacing.lg, gap: spacing.sm },
   card: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   iconBox: { width: 44, height: 44, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },

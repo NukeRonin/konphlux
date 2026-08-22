@@ -208,6 +208,11 @@ export default function Conversation() {
                       </Pressable>
                     </View>
                   ) : null}
+                  {isOffer && meta.status === "accepted" && meta.contract_id ? (
+                    <Pressable onPress={() => router.push(`/profession/contract/${meta.contract_id}`)} style={[styles.cardBtn, { borderColor: colors.brand, borderWidth: 1, marginTop: spacing.sm }]} testID="view-agreement">
+                      <Text style={[styles.cardBtnText, { color: colors.brand }]}>View agreement</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               );
             }

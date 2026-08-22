@@ -153,6 +153,19 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (PictureShow — real fal.ai rendering VERIFIED LIVE + model upgrade to Kling v3)
+- ✅ Upgraded fal.ai models to current Kling **v3 standard** (v1 deprecated): PS_T2V_MODEL=`fal-ai/kling-video/v3/standard/text-to-video`, PS_I2V_MODEL=`fal-ai/kling-video/v3/standard/image-to-video`. v3 image-to-video renamed the image arg to `start_image_url` (was `image_url`) — updated in `pictureshow_render`.
+- ✅ **Real render VERIFIED end-to-end (paid renders actually executed)**: text-to-video (no poster) → ready with playable ~5MB MP4 (~90s); image-to-video (with poster) → ready with playable MP4 (~3min). Both returned valid `https://v3b.fal.media/...output.mp4` (HTTP 200, content-type video/mp4). Poll flow (/render-status every 6s in UI) transitions rendering→ready and plays inline via VideoPlayer.
+- Files: backend/server.py (PS_T2V_MODEL/PS_I2V_MODEL, start_image_url). No frontend change needed (psRender/psRenderStatus + VideoPlayer already wired in ai.tsx/projects.tsx).
+
+### 2026-06 (Evention Calendar + Profession Plaza v4 — reschedule, contracts, reminders, rating filters)
+- ✅ **Calendar View** (/evention, the Evention Center hub): unified color-coded agenda of Interviews (blue), Meetings (purple), Flights/Trips (orange), Appointments (teal), Events (pink), Birthdays (green). Add events (type + title + location + day/time slots), delete via long-press, filter by type legend. Interviews auto-appear (read-only here). Backend calendar_events CRUD + /evention/calendar unified feed.
+- ✅ **Reschedule Flow**: either party proposes a new time (interview card in chat + "Propose a new time" on the Evention interviews screen) → status returns to proposed, chat card updates, other party notified. Backend /profession/interviews/{id}/reschedule.
+- ✅ **Offer → Contract**: accepting an offer auto-creates a simple agreement (job_contracts); the accepted offer card shows "View agreement" → /profession/contract/[id] (client + freelancer, rate, scope, date). Backend /profession/contracts[+/{id}].
+- ✅ **Calendar Reminders**: lazy in-app nudge to both parties ~24h before a confirmed interview (fired on calendar fetch, once via reminded flag).
+- ✅ **Rating Filters**: marketplace Freelancers tab sort chips — Featured / Top rated / Available / Newest (backend sort param).
+- All flows verified via curl (calendar add/list/delete, reschedule, accept→contract, contracts list, rating sort). Calendar UI smoke-tested. User self-tests; automated tests skipped.
+
 
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.

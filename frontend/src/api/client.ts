@@ -561,6 +561,10 @@ export type FreelancerReview = { id: string; reviewer_name: string; rating: numb
 
 export type Interview = { id: string; job_id: string; conversation_id: string; poster_id: string; poster_name: string; applicant_id: string; applicant_name: string; title: string; scheduled_at: string; location: string; status: string; role?: string; created_at: string };
 
+export type CalendarItem = { id: string; type: string; title: string; when: string; location: string; note: string; status: string; color: string; deletable: boolean };
+
+export type Contract = { id: string; offer_id: string; conversation_id: string; client_id: string; client_name: string; freelancer_id: string; freelancer_name: string; title: string; rate_text: string; note: string; status: string; accepted_at: string; role?: string };
+
 export type PSProject = {
   id: string;
   title: string;
@@ -907,7 +911,7 @@ export const api = {
   jobGigs: (q?: string, category?: string) => request<Job[]>(`/profession/gigs?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}`),
   jobAlertPrefs: () => request<{ categories: string[]; keywords: string[] }>("/profession/alerts/prefs"),
   jobSetAlertPrefs: (categories: string[], keywords: string[]) => request<{ categories: string[]; keywords: string[] }>("/profession/alerts/prefs", { method: "PUT", body: JSON.stringify({ categories, keywords }) }),
-  freelancers: (q?: string, category?: string) => request<Freelancer[]>(`/profession/freelancers?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}`),
+  freelancers: (q?: string, category?: string, sort?: string) => request<Freelancer[]>(`/profession/freelancers?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}&sort=${sort || "featured"}`),
   freelancerMe: () => request<Freelancer | Record<string, never>>("/profession/freelancer/me"),
   freelancerSave: (body: FreelancerInput) => request<Freelancer>("/profession/freelancer/me", { method: "PUT", body: JSON.stringify(body) }),
   freelancerGet: (id: string) => request<Freelancer>(`/profession/freelancers/${id}`),
@@ -915,10 +919,16 @@ export const api = {
     request<FreelancerReview>(`/profession/freelancers/${id}/review`, { method: "POST", body: JSON.stringify({ rating, comment, job_title }) }),
   sendOffer: (body: { conversation_id: string; to_user_id: string; title: string; rate_text: string; note: string }) =>
     request<{ id: string }>("/profession/offers", { method: "POST", body: JSON.stringify(body) }),
-  respondOffer: (id: string, accept: boolean) => request<{ status: string }>(`/profession/offers/${id}/respond`, { method: "POST", body: JSON.stringify({ accept }) }),
+  respondOffer: (id: string, accept: boolean) => request<{ status: string; contract_id: string }>(`/profession/offers/${id}/respond`, { method: "POST", body: JSON.stringify({ accept }) }),
   scheduleInterview: (body: { to_user_id: string; conversation_id?: string; job_id?: string; title: string; scheduled_at: string; location: string }) =>
     request<Interview>("/profession/interviews", { method: "POST", body: JSON.stringify(body) }),
   respondInterview: (id: string, status: "confirmed" | "declined") =>
     request<{ status: string }>(`/profession/interviews/${id}/respond`, { method: "POST", body: JSON.stringify({ status }) }),
   eventionInterviews: () => request<{ upcoming: Interview[]; past: Interview[] }>("/evention/interviews"),
+  rescheduleInterview: (id: string, scheduled_at: string) => request<{ status: string }>(`/profession/interviews/${id}/reschedule`, { method: "POST", body: JSON.stringify({ scheduled_at }) }),
+  contracts: () => request<Contract[]>("/profession/contracts"),
+  contract: (id: string) => request<Contract>(`/profession/contracts/${id}`),
+  eventionCalendar: () => request<{ upcoming: CalendarItem[]; past: CalendarItem[] }>("/evention/calendar"),
+  eventionAddEvent: (body: { type: string; title: string; when: string; location: string; note: string }) => request<CalendarItem>("/evention/events", { method: "POST", body: JSON.stringify(body) }),
+  eventionDeleteEvent: (id: string) => request<{ deleted: boolean }>(`/evention/events/${id}`, { method: "DELETE" }),
 };

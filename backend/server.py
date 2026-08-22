@@ -476,6 +476,18 @@ class ReviewBody(BaseModel):
     job_title: str = Field(default="", max_length=120)
 
 
+class CalendarEventBody(BaseModel):
+    type: str = Field(pattern="^(meeting|flight|appointment|event|birthday)$")
+    title: str = Field(min_length=1, max_length=120)
+    when: str = Field(min_length=4, max_length=40)
+    location: str = Field(default="", max_length=200)
+    note: str = Field(default="", max_length=1000)
+
+
+class RescheduleBody(BaseModel):
+    scheduled_at: str = Field(min_length=4, max_length=40)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -3609,8 +3621,8 @@ async def pictureshow_delete_preset(preset_id: str, user: dict = Depends(require
 
 
 # ----- PictureShow: Real video rendering via fal.ai -----
-PS_T2V_MODEL = "fal-ai/kling-video/v1/standard/text-to-video"
-PS_I2V_MODEL = "fal-ai/kling-video/v1/standard/image-to-video"
+PS_T2V_MODEL = "fal-ai/kling-video/v3/standard/text-to-video"
+PS_I2V_MODEL = "fal-ai/kling-video/v3/standard/image-to-video"
 
 
 def _ps_video_prompt(doc: dict) -> str:
@@ -3640,7 +3652,7 @@ async def pictureshow_render(project_id: str, user: dict = Depends(require_user)
             content, ctype = await run_in_threadpool(get_object, doc["poster_path"])
             image_url = await fal_client.upload_async(content, ctype or "image/png")
             model = PS_I2V_MODEL
-            args = {"prompt": prompt, "image_url": image_url, "duration": "5", "aspect_ratio": "16:9"}
+            args = {"prompt": prompt, "start_image_url": image_url, "duration": "5", "aspect_ratio": "16:9"}
         else:
             model = PS_T2V_MODEL
             args = {"prompt": prompt, "duration": "5", "aspect_ratio": "16:9"}
@@ -4020,7 +4032,7 @@ async def _freelancer_rating(user_id: str) -> tuple[float, int]:
 
 
 @api_router.get("/profession/freelancers")
-async def profession_list_freelancers(user: dict = Depends(require_user), q: str = "", category: str = ""):
+async def profession_list_freelancers(user: dict = Depends(require_user), q: str = "", category: str = "", sort: str = "featured"):
     query: dict = {}
     if category and category != "All":
         query["category"] = category
@@ -4030,8 +4042,14 @@ async def profession_list_freelancers(user: dict = Depends(require_user), q: str
     docs = await db.freelancers.find(query, {"_id": 0}).to_list(500)
     for d in docs:
         d["avg_rating"], d["review_count"] = await _freelancer_rating(d["user_id"])
-    # Featured order: available first, then highest rating, then most recent.
-    docs.sort(key=lambda d: (d.get("available", False), d.get("avg_rating", 0), d.get("updated_at", "")), reverse=True)
+    if sort == "rating":
+        docs.sort(key=lambda d: (d.get("avg_rating", 0), d.get("review_count", 0)), reverse=True)
+    elif sort == "available":
+        docs.sort(key=lambda d: (d.get("available", False), d.get("updated_at", "")), reverse=True)
+    elif sort == "recent":
+        docs.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
+    else:  # featured
+        docs.sort(key=lambda d: (d.get("available", False), d.get("avg_rating", 0), d.get("updated_at", "")), reverse=True)
     for i, d in enumerate(docs):
         d["featured"] = bool(d.get("available") and (d.get("avg_rating", 0) >= 4 or i < 3))
     return docs
@@ -4141,12 +4159,62 @@ async def profession_respond_offer(offer_id: str, body: RespondBody, user: dict 
     new_status = "accepted" if body.accept else "declined"
     await db.job_offers.update_one({"id": offer_id}, {"$set": {"status": new_status}})
     await db.cb_messages.update_one({"conversation_id": offer["conversation_id"], "meta.offer_id": offer_id}, {"$set": {"meta.status": new_status}})
+    contract_id = ""
+    if body.accept:
+        existing = await db.job_contracts.find_one({"offer_id": offer_id}, {"_id": 0, "id": 1})
+        contract_id = existing["id"] if existing else uuid.uuid4().hex[:12]
+        if not existing:
+            contract = {
+                "id": contract_id, "offer_id": offer_id, "conversation_id": offer["conversation_id"],
+                "client_id": offer["from_user_id"], "client_name": offer["from_name"],
+                "freelancer_id": offer["to_user_id"], "freelancer_name": user.get("display_name", "Someone"),
+                "title": offer["title"], "rate_text": offer.get("rate_text", ""), "note": offer.get("note", ""),
+                "status": "active", "accepted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.job_contracts.insert_one(dict(contract))
+        await db.cb_messages.update_one({"conversation_id": offer["conversation_id"], "meta.offer_id": offer_id}, {"$set": {"meta.contract_id": contract_id}})
     await _cb_post_card(offer["conversation_id"], user, f"{'Accepted' if body.accept else 'Declined'} the offer: {offer['title']}", "system", {})
     try:
         await _notify(offer["from_user_id"], "job_offer", offer["conversation_id"], "Offer " + new_status, f"{user.get('display_name','Someone')} {new_status} your offer: {offer['title']}.")
     except Exception:  # noqa: BLE001
         pass
-    return {"status": new_status}
+    return {"status": new_status, "contract_id": contract_id}
+
+
+@api_router.get("/profession/contracts")
+async def profession_my_contracts(user: dict = Depends(require_user)):
+    docs = await db.job_contracts.find({"$or": [{"client_id": user["id"]}, {"freelancer_id": user["id"]}]}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("accepted_at", ""), reverse=True)
+    for d in docs:
+        d["role"] = "client" if d["client_id"] == user["id"] else "freelancer"
+    return docs
+
+
+@api_router.get("/profession/contracts/{contract_id}")
+async def profession_get_contract(contract_id: str, user: dict = Depends(require_user)):
+    doc = await db.job_contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not doc or user["id"] not in (doc["client_id"], doc["freelancer_id"]):
+        raise HTTPException(status_code=404, detail="Agreement not found")
+    doc["role"] = "client" if doc["client_id"] == user["id"] else "freelancer"
+    return doc
+
+
+@api_router.post("/profession/interviews/{interview_id}/reschedule")
+async def profession_reschedule_interview(interview_id: str, body: RescheduleBody, user: dict = Depends(require_user)):
+    iv = await db.interviews.find_one({"id": interview_id}, {"_id": 0})
+    if not iv or user["id"] not in (iv["applicant_id"], iv["poster_id"]):
+        raise HTTPException(status_code=404, detail="Interview not found")
+    await db.interviews.update_one({"id": interview_id}, {"$set": {"scheduled_at": body.scheduled_at, "status": "proposed"}})
+    if iv.get("conversation_id"):
+        await db.cb_messages.update_one({"conversation_id": iv["conversation_id"], "meta.interview_id": interview_id}, {"$set": {"meta.status": "proposed", "meta.scheduled_at": body.scheduled_at}})
+        await _cb_post_card(iv["conversation_id"], user, f"Proposed a new time for: {iv['title']}", "interview",
+                            {"interview_id": interview_id, "title": iv["title"], "scheduled_at": body.scheduled_at, "location": iv.get("location", ""), "status": "proposed", "to_user_id": iv["applicant_id"]})
+    other_id = iv["poster_id"] if user["id"] == iv["applicant_id"] else iv["applicant_id"]
+    try:
+        await _notify(other_id, "interview", iv.get("job_id") or iv.get("conversation_id"), "Interview rescheduled", f"{user.get('display_name','Someone')} proposed a new time for: {iv['title']}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": "proposed", "scheduled_at": body.scheduled_at}
 
 
 # ----- Profession Plaza + Evention Center: Interview scheduling -----
@@ -4207,6 +4275,64 @@ async def evention_interviews(user: dict = Depends(require_user)):
     for d in upcoming + past:
         d["role"] = "poster" if d["poster_id"] == user["id"] else "applicant"
     return {"upcoming": upcoming, "past": past}
+
+
+async def _fire_interview_reminders(user_id: str) -> None:
+    """Lazily nudge both parties ~24h before a confirmed interview (once)."""
+    now = datetime.now(timezone.utc)
+    soon = (now + timedelta(hours=24)).isoformat()
+    ivs = await db.interviews.find({"$or": [{"poster_id": user_id}, {"applicant_id": user_id}], "status": "confirmed", "reminded": {"$ne": True}}, {"_id": 0}).to_list(200)
+    for iv in ivs:
+        sa = iv.get("scheduled_at", "")
+        if now.isoformat() <= sa <= soon:
+            await db.interviews.update_one({"id": iv["id"]}, {"$set": {"reminded": True}})
+            for uid in (iv["poster_id"], iv["applicant_id"]):
+                try:
+                    await _notify(uid, "interview", iv.get("conversation_id"), "Interview soon", f"Reminder: \"{iv['title']}\" is coming up.")
+                except Exception:  # noqa: BLE001
+                    pass
+
+
+CAL_TYPE_COLORS = {"interview": "#3182CE", "meeting": "#805AD5", "flight": "#DD6B20", "appointment": "#319795", "event": "#D53F8C", "birthday": "#38A169"}
+
+
+@api_router.post("/evention/events", status_code=201)
+async def evention_create_event(body: CalendarEventBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "type": body.type,
+        "title": body.title.strip(), "when": body.when, "location": body.location.strip(),
+        "note": body.note.strip(), "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.calendar_events.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.delete("/evention/events/{event_id}")
+async def evention_delete_event(event_id: str, user: dict = Depends(require_user)):
+    res = await db.calendar_events.delete_one({"id": event_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {"deleted": True}
+
+
+@api_router.get("/evention/calendar")
+async def evention_calendar(user: dict = Depends(require_user)):
+    await _fire_interview_reminders(user["id"])
+    items: list[dict] = []
+    ivs = await db.interviews.find({"$or": [{"poster_id": user["id"]}, {"applicant_id": user["id"]}], "status": {"$ne": "declined"}}, {"_id": 0}).to_list(500)
+    for iv in ivs:
+        other = iv["applicant_name"] if iv["poster_id"] == user["id"] else iv["poster_name"]
+        items.append({"id": iv["id"], "type": "interview", "title": iv["title"], "when": iv.get("scheduled_at", ""),
+                      "location": iv.get("location", ""), "note": f"With {other}", "status": iv.get("status", ""),
+                      "color": CAL_TYPE_COLORS["interview"], "deletable": False})
+    evs = await db.calendar_events.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
+    for e in evs:
+        items.append({"id": e["id"], "type": e["type"], "title": e["title"], "when": e.get("when", ""),
+                      "location": e.get("location", ""), "note": e.get("note", ""), "status": "",
+                      "color": CAL_TYPE_COLORS.get(e["type"], "#718096"), "deletable": True})
+    items.sort(key=lambda x: x.get("when", ""))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    return {"upcoming": [i for i in items if i["when"] >= now_iso], "past": [i for i in items if i["when"] < now_iso][::-1]}
 
 
 

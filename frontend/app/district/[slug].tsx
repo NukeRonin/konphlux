@@ -30,7 +30,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   dreambacker: { route: "/dreambacker", label: "Enter Dreambacker" },
   "frankenstein-lab": { route: "/frankenstein-lab/audio", label: "Open Audio Studio" },
   "profession-plaza": { route: "/profession", label: "Open the Job Board" },
-  "evention-center": { route: "/evention/interviews", label: "Open Upcoming Interviews" },
+  "evention-center": { route: "/evention", label: "Open the Calendar" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -169,14 +169,14 @@ const PROFESSION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
 // Evention Center — the calendar district. Interviews open the live schedule.
 const EVENTION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Upcoming Interviews": { route: "/evention/interviews", icon: "calendar-account" },
-  "Calendar view": { route: "/evention/interviews", icon: "calendar-month" },
-  "Meetings": { route: "/chatmonger/evention-center", icon: "account-group" },
-  "Upcoming Flights & Trips": { route: "/chatmonger/evention-center", icon: "airplane" },
-  "Reminders": { route: "/chatmonger/evention-center", icon: "bell-outline" },
-  "Appointments": { route: "/chatmonger/evention-center", icon: "clock-outline" },
-  "Events": { route: "/chatmonger/evention-center", icon: "calendar-star" },
-  "Birthdays & Special Days": { route: "/chatmonger/evention-center", icon: "cake-variant" },
-  "Agendas": { route: "/chatmonger/evention-center", icon: "clipboard-list" },
+  "Calendar view": { route: "/evention", icon: "calendar-month" },
+  "Meetings": { route: "/evention", icon: "account-group" },
+  "Upcoming Flights & Trips": { route: "/evention", icon: "airplane" },
+  "Reminders": { route: "/evention", icon: "bell-outline" },
+  "Appointments": { route: "/evention", icon: "clock-outline" },
+  "Events": { route: "/evention", icon: "calendar-star" },
+  "Birthdays & Special Days": { route: "/evention", icon: "cake-variant" },
+  "Agendas": { route: "/evention", icon: "clipboard-list" },
   "Lists": { route: "/chatmonger/evention-center", icon: "format-list-bulleted" },
   "Create a List": { route: "/chatmonger/evention-center", icon: "playlist-plus" },
 };
