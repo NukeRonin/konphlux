@@ -34,12 +34,19 @@ export default function BusinessDetail() {
   const [rating, setRating] = useState(0);
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [fav, setFav] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    try { setBiz(await api.retroBusiness(id)); } catch { /* ignore */ } finally { setLoading(false); }
+    try { const b = await api.retroBusiness(id); setBiz(b); setFav(!!b.is_favorite); } catch { /* ignore */ } finally { setLoading(false); }
   }, [id]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const toggleFav = async () => {
+    if (!id) return;
+    const next = !fav; setFav(next);
+    try { next ? await api.retroAddFavorite(id) : await api.retroRemoveFavorite(id); } catch { setFav(!next); }
+  };
 
   const submit = async () => {
     if (!id || rating === 0 || submitting) return;
@@ -84,6 +91,9 @@ export default function BusinessDetail() {
           )}
           <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, { top: insets.top + spacing.sm, backgroundColor: "rgba(0,0,0,0.45)" }]} testID="biz-back">
             <MaterialCommunityIcons name="chevron-left" size={24} color="#fff" />
+          </Pressable>
+          <Pressable onPress={toggleFav} hitSlop={12} style={[styles.favBtn, { top: insets.top + spacing.sm, backgroundColor: "rgba(0,0,0,0.45)" }]} testID="biz-fav">
+            <MaterialCommunityIcons name={fav ? "heart" : "heart-outline"} size={22} color={fav ? "#FC8181" : "#fff"} />
           </Pressable>
         </View>
 
@@ -165,6 +175,7 @@ const styles = StyleSheet.create({
   hero: { position: "relative" },
   heroImg: { width: "100%", height: 220 },
   backBtn: { position: "absolute", left: spacing.lg, width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  favBtn: { position: "absolute", right: spacing.lg, width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   catPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, height: 24, borderRadius: radius.pill },
   catText: { fontFamily: fonts.bodyBold, fontSize: 11 },
   name: { fontFamily: fonts.display, fontSize: 26, marginTop: spacing.sm },

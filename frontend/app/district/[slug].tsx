@@ -192,6 +192,9 @@ const RETRO_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Opening Soon": { route: "/retrospections/status?tab=opening", icon: "storefront-outline" },
   "Recently Opened": { route: "/retrospections/status?tab=recent", icon: "storefront-check-outline" },
   "Health Inspection Updates": { route: "/retrospections/status?tab=health", icon: "clipboard-pulse-outline" },
+  "Put a Business Up for Sale": { route: "/retrospections/marketplace/sell", icon: "tag-plus" },
+  "Businesses For Sale": { route: "/retrospections/marketplace", icon: "store-search-outline" },
+  "Save Favorite Places": { route: "/retrospections/favorites", icon: "heart-outline" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

@@ -513,6 +513,17 @@ class RetroReviewBody(BaseModel):
     text: str = Field(default="", max_length=1500)
 
 
+class RetroListingBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str = Field(min_length=1, max_length=40)
+    asking_price: str = Field(min_length=1, max_length=40)
+    location: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=1500)
+    reason: str = Field(default="", max_length=300)
+    revenue: str = Field(default="", max_length=60)
+    contact: str = Field(min_length=1, max_length=120)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -580,7 +591,7 @@ DISTRICTS = [
      "tagline": "Honest word on every establishment.",
      "description": "Reviews, ratings and photographs of the places around you.",
      "chatmonger": {"name": "Shirley", "role": "Roving Critic", "greeting": "Been somewhere worth remarking upon? Let's set it down properly."},
-     "features": ["Reviews", "Submit Review", "Review Categories", "Put a Business Up for Sale", "Browse nearby", "Save favourite places", "Opening Soon", "Recently Opened", "Businesses For Sale", "Health Inspection Updates"]},
+     "features": ["Reviews", "Submit Review", "Review Categories", "Put a Business Up for Sale", "Browse nearby", "Save Favorite Places", "Opening Soon", "Recently Opened", "Businesses For Sale", "Health Inspection Updates"]},
     {"slug": "vault", "name": "Vault", "icon": "safe-square",
      "tagline": "Every good idea, filed and lit.",
      "description": "Collect and organise recipes, projects, tricks, hacks and inspiration into boards.",
@@ -805,6 +816,23 @@ RETRO_INSPECTIONS = {
     "rb-6": {"grade": "A", "score": 98, "days_ago": 1, "note": "Spotless — exemplary practices."},
     "rb-7": {"grade": "B", "score": 84, "days_ago": 6, "note": "Good; minor cold-storage notes."},
 }
+
+# Commercial Marketplace — seeded businesses for sale.
+RETRO_LISTINGS = [
+    {"id": "rl-1", "name": "The Copper Spoon Diner", "category": "Restaurants", "asking_price": "£185,000", "location": "14 Foundry Street",
+     "description": "A beloved 40-seat diner with a loyal regular trade, fully fitted kitchen and outdoor seating. Turn-key operation.",
+     "reason": "Owner retiring after 22 years.", "revenue": "£320k / yr", "contact": "spoon.sale@konphlux.mail",
+     "image": f"{_RIMG}1552566626-52f8b828add9?w=800&q=80"},
+    {"id": "rl-2", "name": "Gearhaven Cycles", "category": "Retail", "asking_price": "£92,000", "location": "3 Sprocket Lane",
+     "description": "Established bicycle & repair shop with workshop, tooling and stock included. Strong online presence.",
+     "reason": "Relocating abroad.", "revenue": "£140k / yr", "contact": "07•• ••• 4412",
+     "image": f"{_RIMG}1485965120184-e220f721d03e?w=800&q=80"},
+    {"id": "rl-3", "name": "Aether & Oak Salon", "category": "Services", "asking_price": "£64,500", "location": "9 Marble Row",
+     "description": "Six-chair salon in a prime footfall location. Lease assignable, staff willing to stay on.",
+     "reason": "Pursuing a new venture.", "revenue": "£110k / yr", "contact": "aetheroak@konphlux.mail",
+     "image": f"{_RIMG}1521590832167-7bcbfaa6381f?w=800&q=80"},
+]
+
 
 
 
@@ -1463,6 +1491,8 @@ async def seed():
         await db.retro_businesses.update_one({"id": bid}, {"$set": dict(st)})
     for bid, insp in RETRO_INSPECTIONS.items():
         await db.retro_businesses.update_one({"id": bid}, {"$set": {"inspection": dict(insp)}})
+    for lst in RETRO_LISTINGS:
+        await db.retro_listings.update_one({"id": lst["id"]}, {"$set": {**lst, "seller_id": "", "seller_name": "Konphlux Brokerage", "status": "active", "seeded": True}}, upsert=True)
     # Sparking Dawn seeded profiles (idempotent).
     for p in DATING_PROFILES:
         if not await db.dating_profiles.find_one({"user_id": p["user_id"]}):
@@ -4598,6 +4628,9 @@ async def retro_businesses(category: str = "", q: str = "",
         query["name"] = {"$regex": q.strip(), "$options": "i"}
     docs = await db.retro_businesses.find(query, {"_id": 0}).to_list(500)
     out = [await _retro_public(b) for b in docs]
+    fav_ids = await _retro_fav_ids(user["id"])
+    for o in out:
+        o["is_favorite"] = o["id"] in fav_ids
     if lat is not None and lng is not None:
         for o in out:
             if o.get("lat") is not None and o.get("lng") is not None:
@@ -4634,6 +4667,7 @@ async def retro_business_detail(business_id: str, user: dict = Depends(require_u
     reviews = await db.retro_reviews.find({"business_id": business_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
     pub["reviews"] = reviews
     pub["can_review"] = not any(r["user_id"] == user["id"] for r in reviews)
+    pub["is_favorite"] = await db.retro_favorites.find_one({"user_id": user["id"], "business_id": business_id}) is not None
     return pub
 
 
@@ -4706,6 +4740,105 @@ async def retro_status(user: dict = Depends(require_user)):
     inspections.sort(key=lambda x: x["date"], reverse=True)
     return {"opening_soon": opening_soon, "recently_opened": recently_opened,
             "closures": closures, "inspections": inspections}
+
+
+# ----- Retrospections: Save Favorite Places (personal bookmarks) -----
+async def _retro_fav_ids(user_id: str) -> set:
+    favs = await db.retro_favorites.find({"user_id": user_id}, {"_id": 0, "business_id": 1}).to_list(1000)
+    return {f["business_id"] for f in favs}
+
+
+@api_router.post("/retrospections/favorites/{business_id}", status_code=201)
+async def retro_add_favorite(business_id: str, user: dict = Depends(require_user)):
+    if not await db.retro_businesses.find_one({"id": business_id}):
+        raise HTTPException(status_code=404, detail="Business not found")
+    await db.retro_favorites.update_one(
+        {"user_id": user["id"], "business_id": business_id},
+        {"$setOnInsert": {"user_id": user["id"], "business_id": business_id, "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True)
+    return {"is_favorite": True}
+
+
+@api_router.delete("/retrospections/favorites/{business_id}")
+async def retro_remove_favorite(business_id: str, user: dict = Depends(require_user)):
+    await db.retro_favorites.delete_one({"user_id": user["id"], "business_id": business_id})
+    return {"is_favorite": False}
+
+
+@api_router.get("/retrospections/favorites")
+async def retro_favorites(user: dict = Depends(require_user)):
+    favs = await db.retro_favorites.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    out = []
+    for f in favs:
+        b = await db.retro_businesses.find_one({"id": f["business_id"]}, {"_id": 0})
+        if b:
+            pub = await _retro_public(b)
+            pub["is_favorite"] = True
+            out.append(pub)
+    return out
+
+
+# ----- Retrospections: Commercial Marketplace (businesses for sale) -----
+def _listing_public(lst: dict, user_id: str) -> dict:
+    return {
+        "id": lst["id"], "name": lst["name"], "category": lst["category"],
+        "asking_price": lst.get("asking_price", ""), "location": lst.get("location", ""),
+        "description": lst.get("description", ""), "reason": lst.get("reason", ""),
+        "revenue": lst.get("revenue", ""), "contact": lst.get("contact", ""),
+        "image": lst.get("image", ""), "seller_name": lst.get("seller_name", ""),
+        "created_at": lst.get("created_at", ""), "is_owner": lst.get("seller_id", "") == user_id,
+    }
+
+
+@api_router.get("/retrospections/listings")
+async def retro_listings(category: str = "", q: str = "", user: dict = Depends(require_user)):
+    query: dict = {"status": "active"}
+    if category and category != "All":
+        query["category"] = category
+    if q.strip():
+        query["name"] = {"$regex": q.strip(), "$options": "i"}
+    docs = await db.retro_listings.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # seeded listings have no created_at; keep them after user listings but visible
+    return [_listing_public(d, user["id"]) for d in docs]
+
+
+@api_router.get("/retrospections/my-listings")
+async def retro_my_listings(user: dict = Depends(require_user)):
+    docs = await db.retro_listings.find({"seller_id": user["id"], "status": "active"}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return [_listing_public(d, user["id"]) for d in docs]
+
+
+@api_router.post("/retrospections/listings", status_code=201)
+async def retro_create_listing(body: RetroListingBody, user: dict = Depends(require_user)):
+    if body.category not in RETRO_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Unknown category")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "seller_id": user["id"], "seller_name": user.get("display_name", "A seller"),
+        "name": body.name.strip(), "category": body.category, "asking_price": body.asking_price.strip(),
+        "location": body.location.strip(), "description": body.description.strip(), "reason": body.reason.strip(),
+        "revenue": body.revenue.strip(), "contact": body.contact.strip(), "image": "", "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.retro_listings.insert_one(dict(doc))
+    return _listing_public(doc, user["id"])
+
+
+@api_router.get("/retrospections/listings/{listing_id}")
+async def retro_listing_detail(listing_id: str, user: dict = Depends(require_user)):
+    lst = await db.retro_listings.find_one({"id": listing_id, "status": "active"}, {"_id": 0})
+    if not lst:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return _listing_public(lst, user["id"])
+
+
+@api_router.delete("/retrospections/listings/{listing_id}")
+async def retro_delete_listing(listing_id: str, user: dict = Depends(require_user)):
+    res = await db.retro_listings.delete_one({"id": listing_id, "seller_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Listing not found or not yours")
+    return {"deleted": True}
+
+
 
 
 

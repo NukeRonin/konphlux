@@ -574,7 +574,11 @@ export type RetroStatus = { opening_soon: RetroStatusItem[]; recently_opened: Re
 export type RetroBusiness = {
   id: string; name: string; category: string; address: string; description: string; image: string;
   lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
-  distance_km?: number | null; reviews?: RetroReview[]; can_review?: boolean;
+  distance_km?: number | null; reviews?: RetroReview[]; can_review?: boolean; is_favorite?: boolean; status?: string;
+};
+export type RetroListing = {
+  id: string; name: string; category: string; asking_price: string; location: string; description: string;
+  reason: string; revenue: string; contact: string; image: string; seller_name: string; created_at: string; is_owner: boolean;
 };
 
 export type PSProject = {
@@ -967,4 +971,19 @@ export const api = {
     request<RetroReview>(`/retrospections/businesses/${businessId}/reviews`, { method: "POST", body: JSON.stringify(body) }),
   retroNearby: (lat: number, lng: number) => request<{ center: { lat: number; lng: number }; businesses: RetroBusiness[] }>(`/retrospections/nearby?lat=${lat}&lng=${lng}`),
   retroStatus: () => request<RetroStatus>("/retrospections/status"),
+  retroFavorites: () => request<RetroBusiness[]>("/retrospections/favorites"),
+  retroAddFavorite: (id: string) => request<{ is_favorite: boolean }>(`/retrospections/favorites/${id}`, { method: "POST" }),
+  retroRemoveFavorite: (id: string) => request<{ is_favorite: boolean }>(`/retrospections/favorites/${id}`, { method: "DELETE" }),
+  retroListings: (params: { category?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.category) qs.set("category", params.category);
+    if (params.q) qs.set("q", params.q);
+    const s = qs.toString();
+    return request<RetroListing[]>(`/retrospections/listings${s ? `?${s}` : ""}`);
+  },
+  retroMyListings: () => request<RetroListing[]>("/retrospections/my-listings"),
+  retroCreateListing: (body: { name: string; category: string; asking_price: string; location?: string; description?: string; reason?: string; revenue?: string; contact: string }) =>
+    request<RetroListing>("/retrospections/listings", { method: "POST", body: JSON.stringify(body) }),
+  retroListing: (id: string) => request<RetroListing>(`/retrospections/listings/${id}`),
+  retroDeleteListing: (id: string) => request<{ deleted: boolean }>(`/retrospections/listings/${id}`, { method: "DELETE" }),
 };
