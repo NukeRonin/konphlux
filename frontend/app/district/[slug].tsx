@@ -146,6 +146,10 @@ const DREAMBACKER_ACTIONS: Record<string, { route: string; icon: IconName }> = {
 const FRANKENSTEIN_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   GenoTune: { route: "/frankenstein-lab/audio?mode=music", icon: "music-clef-treble" },
   GenoFX: { route: "/frankenstein-lab/audio?mode=sfx", icon: "waveform" },
+  GenoPic: { route: "/frankenstein-lab/visual?type=pic", icon: "image" },
+  GenoLogo: { route: "/frankenstein-lab/visual?type=logo", icon: "shield-star" },
+  GenoGIF: { route: "/frankenstein-lab/visual?type=gif", icon: "animation-play" },
+  GenoMeme: { route: "/frankenstein-lab/visual?type=meme", icon: "emoticon-lol" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

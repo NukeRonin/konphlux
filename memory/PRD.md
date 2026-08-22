@@ -94,6 +94,28 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Frankenstein Lab — Visual Creation Studio + private Vault; user self-testing)
+- ✅ New /frankenstein-lab/visual: type selector (GenoPic / GenoLogo / GenoGIF / GenoMeme) + prompt → AI image via _ps_generate_image (Gemini Nano Banana, Universal Key), kind-specific prompt engineering (VISUAL_PROMPTS). GIF/Meme show "animation/caption coming soon" notes (still image for now). Result shows image + "Save to Vault".
+- ✅ Private Vault: db.frank_vault. POST /frankenstein/vault (save), GET /frankenstein/vault?kind= (list, newest first), DELETE /frankenstein/vault/{id} (owner-only). New /frankenstein-lab/vault screen: 2-col grid, kind filter chips (All/Pics/Logos/GIFs/Memes/Music/SFX), delete with confirm.
+- ✅ "Save to Vault" added to BOTH studios: visual studio saves image; audio studio (GenoTune/GenoFX) also saves concept+image (covers the earlier "Save to Library"). Vault buttons (treasure-chest) in both studio headers.
+- ✅ District wiring: FRANKENSTEIN_ACTIONS now maps all six Geno tools — GenoPic/Logo/GIF/Meme → /frankenstein-lab/visual?type=…, GenoTune/GenoFX → audio.
+- Real animation (GIF/Meme) and real audio (Suno/ElevenLabs) still deferred.
+- Credit-free checks: visual 401 no-auth, 422 bad kind; vault save/list/filter/delete all pass. Web bundle compiles. No real image generation run (saves credits).
+- Files: backend/server.py (FrankVisualBody, FrankVaultBody, VISUAL_PROMPTS, frankenstein_visual + vault endpoints), frontend app/frankenstein-lab/{visual,vault,audio}.tsx, district/[slug].tsx, _layout.tsx, src/api/client.ts (FrankVaultItem + frankVisual/frankVault*).
+
+
+### 2026-06 (PictureShow — AI Video Suite: full Concept Studio + characters + projects; user self-testing)
+- ✅ /pictureshow/ai rebuilt as the "AI Video Suite" (Create AI Video + Create AI Animation Concept Studios). Prompt → shot-ready storyboard + script (sectioned: TITLE/LOGLINE/STYLE & LOOK/STORYBOARD/SCRIPT/SOUND & MUSIC) + Nano Banana poster keyframe, all driven by the chosen settings. "Save to Projects" persists the whole config + output.
+- ✅ Config options: Style (Cinematic, Documentary, Music Video, Noir, Splash Noir, Sepia, Cool Toon), Length (10s/30s/5m/20m/60m/90m/150m), Playback speed (0.5×–2×), and collapsible multi-select sections — Transition Effects (Swap/Cube/Page Curl Left/Cross Blur/Cross Dissolve/Cross Zoom/Ripple/Mosaic/Circle Close/Wipe Down), Atmospheric Presets (X-Ray/Film Grain/Aged Film/Glitchy/Negative/Sci-Fi), Titles (18: Slide…Scrolling Credits), Finishing Effects (Ken Burns, Reduce background noise), Audio Effects (Pitch Up/Down/Robot/Alien). All fed into the AI brief.
+- ✅ Soundtracks: upload audio (expo-document-picker → /api/pictureshow/upload-audio, Object Storage). Voice-overs: record (expo-audio + mic permission handling; web-gated) → uploaded + playable. Playback speed treatment noted in brief.
+- ✅ Characters: /pictureshow/characters — create reusable characters (name + description + reference photo via expo-image-picker/Object Storage), list, delete. Selectable in the suite; fed into storyboard + poster.
+- ✅ My Projects: /pictureshow/projects — grid of saved concepts (poster thumb, kind, style, length, effect count), tap to reopen (loads all settings), delete. Hub quick actions added (Characters, My Projects).
+- Real video/animation rendering still deferred (concept + poster only for now, as discussed).
+- Backend: PSCharacterBody/PSSuiteBody/PSProjectBody; endpoints /pictureshow/{upload-audio, characters[CRUD], ai/suite, projects[CRUD]}; collections ps_characters, ps_projects; PS_STYLE_NOTES style guidance. app.json: mic permission (iOS NSMicrophoneUsageDescription, Android RECORD_AUDIO, expo-audio plugin).
+- Files: backend/server.py; frontend app/pictureshow/{ai,characters,projects}.tsx, index.tsx (quick actions), _layout.tsx; src/utils/psSuite.ts; src/api/client.ts (uploadAudio + PSCharacter/PSProject types + ps* methods).
+- NOTE: user opted to self-test (skip automated tests to save credits). Backend loads clean (endpoints 401 without auth); frontend lint clean; suite screen renders end-to-end in preview.
+
+
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.
 - ✅ Backend POST /api/frankenstein/audio (FrankAudioBody kind=music|sfx): music → detailed MUSIC CONCEPT (title/genre&mood/instrumentation/structure/tempo&key/production) via _anvil_llm (gpt-5.4); sfx → SFX DESCRIPTION (name/category/description/layers/duration&dynamics/use). Visual via _ps_generate_image (Gemini Nano Banana). Returns {kind, concept, image_path}.

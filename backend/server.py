@@ -279,6 +279,19 @@ class FrankAudioBody(BaseModel):
     duration: str = Field(default="", max_length=40)
 
 
+class FrankVisualBody(BaseModel):
+    kind: str = Field(default="pic", pattern="^(pic|logo|gif|meme)$")
+    prompt: str = Field(min_length=1, max_length=600)
+
+
+class FrankVaultBody(BaseModel):
+    kind: str = Field(max_length=20)
+    prompt: str = Field(default="", max_length=600)
+    image_path: str = Field(default="", max_length=600)
+    concept: str = Field(default="", max_length=8000)
+    title: str = Field(default="", max_length=120)
+
+
 class PromptCreate(BaseModel):
     text: str = Field(min_length=8, max_length=400)
 
@@ -328,6 +341,48 @@ class PSAIConceptBody(BaseModel):
     prompt: str = Field(min_length=3, max_length=600)
     kind: str = "video"  # video | animation
     style: str = Field(default="", max_length=80)
+
+
+class PSCharacterBody(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=600)
+    reference_path: str = Field(default="", max_length=600)
+
+
+class PSSuiteBody(BaseModel):
+    prompt: str = Field(min_length=3, max_length=800)
+    kind: str = Field(default="video", pattern="^(video|animation)$")
+    style: str = Field(default="", max_length=40)
+    length: str = Field(default="", max_length=20)
+    speed: str = Field(default="", max_length=20)
+    transitions: list[str] = Field(default_factory=list, max_length=20)
+    atmospherics: list[str] = Field(default_factory=list, max_length=20)
+    titles: list[str] = Field(default_factory=list, max_length=20)
+    finishing: list[str] = Field(default_factory=list, max_length=10)
+    audio_effects: list[str] = Field(default_factory=list, max_length=10)
+    character_ids: list[str] = Field(default_factory=list, max_length=20)
+    has_soundtrack: bool = False
+    has_voiceover: bool = False
+
+
+class PSProjectBody(BaseModel):
+    title: str = Field(default="", max_length=120)
+    prompt: str = Field(min_length=1, max_length=800)
+    kind: str = Field(default="video", pattern="^(video|animation)$")
+    style: str = Field(default="", max_length=40)
+    length: str = Field(default="", max_length=20)
+    speed: str = Field(default="", max_length=20)
+    transitions: list[str] = Field(default_factory=list, max_length=20)
+    atmospherics: list[str] = Field(default_factory=list, max_length=20)
+    titles: list[str] = Field(default_factory=list, max_length=20)
+    finishing: list[str] = Field(default_factory=list, max_length=10)
+    audio_effects: list[str] = Field(default_factory=list, max_length=10)
+    character_ids: list[str] = Field(default_factory=list, max_length=20)
+    soundtrack_path: str = Field(default="", max_length=600)
+    voiceover_path: str = Field(default="", max_length=600)
+    storyboard: str = Field(default="", max_length=12000)
+    poster_path: str = Field(default="", max_length=600)
+
 
 
 # ---- Chatterbox ----
@@ -3204,6 +3259,198 @@ async def pictureshow_ai_concept(body: PSAIConceptBody, user: dict = Depends(req
     return {"kind": kind, "storyboard": storyboard.strip(), "poster_path": poster_path}
 
 
+# ----- PictureShow: AI Video Suite (Concept Studio + characters + projects) -----
+PS_STYLE_NOTES = {
+    "Cinematic": "big-budget cinematic film look: shallow depth of field, dramatic lighting, epic framing",
+    "Documentary": "authentic documentary style: handheld realism, natural light, observational framing, interview beats",
+    "Music Video": "rhythmic music-video style: bold colour, quick cuts synced to a beat, performance energy",
+    "Noir": "classic film noir: high-contrast black-and-white, hard shadows, venetian-blind light, moody mystery",
+    "Splash Noir": "film noir in black-and-white with a single splash of vivid colour on one key element (Sin City style)",
+    "Sepia": "warm sepia-toned vintage look, aged and nostalgic, soft golden-brown palette",
+    "Cool Toon": "live-action mixed with hand-drawn animation (Who Framed Roger Rabbit / Cool World), real footage sharing frames with cartoon characters",
+}
+
+
+def _ps_join(items: list[str]) -> str:
+    return ", ".join([i for i in items if i]) if items else ""
+
+
+async def _ps_characters_for(user_id: str, ids: list[str]) -> list[dict]:
+    if not ids:
+        return []
+    docs = await db.ps_characters.find({"user_id": user_id, "id": {"$in": ids}}, {"_id": 0}).to_list(50)
+    return docs
+
+
+@api_router.post("/pictureshow/upload-audio", status_code=201)
+async def pictureshow_upload_audio(user: dict = Depends(require_user), file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio too large (max 25MB).")
+    content_type = file.content_type or "audio/mpeg"
+    if not content_type.startswith("audio/"):
+        raise HTTPException(status_code=400, detail="Please choose an audio file.")
+    ext = {"audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/wav": "wav", "audio/x-wav": "wav", "audio/aac": "aac", "audio/ogg": "ogg", "audio/webm": "webm"}.get(content_type, "m4a")
+    path = f"{APP_NAME}/ps-audio/{user['id']}/{uuid.uuid4().hex}.{ext}"
+    try:
+        await run_in_threadpool(put_object, path, data, content_type)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("PS audio upload failed")
+        raise HTTPException(status_code=502, detail="Couldn't store the audio. Try again.") from e
+    return {"path": path}
+
+
+@api_router.post("/pictureshow/characters", status_code=201)
+async def pictureshow_create_character(body: PSCharacterBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user["id"],
+        "name": body.name.strip(),
+        "description": body.description.strip(),
+        "reference_path": body.reference_path,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.ps_characters.insert_one(dict(doc))
+    return doc
+
+
+@api_router.get("/pictureshow/characters")
+async def pictureshow_list_characters(user: dict = Depends(require_user)):
+    docs = await db.ps_characters.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.delete("/pictureshow/characters/{char_id}")
+async def pictureshow_delete_character(char_id: str, user: dict = Depends(require_user)):
+    res = await db.ps_characters.delete_one({"id": char_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return {"deleted": True}
+
+
+@api_router.post("/pictureshow/ai/suite")
+async def pictureshow_ai_suite(body: PSSuiteBody, user: dict = Depends(require_user)):
+    kind = "animation" if body.kind == "animation" else "video"
+    style = body.style.strip()
+    style_note = PS_STYLE_NOTES.get(style, style) or ("hand-drawn animation" if kind == "animation" else "cinematic short film")
+    chars = await _ps_characters_for(user["id"], body.character_ids)
+    char_lines = "\n".join([f"- {c['name']}: {c.get('description') or 'a recurring character'}" for c in chars])
+
+    directives: list[str] = []
+    if body.length:
+        directives.append(f"Target runtime: {body.length} — pace the beats to fit this length.")
+    if body.transitions:
+        directives.append(f"Use these transitions between shots where fitting: {_ps_join(body.transitions)}.")
+    if body.atmospherics:
+        directives.append(f"Apply atmospheric looks: {_ps_join(body.atmospherics)}.")
+    if body.titles:
+        directives.append(f"Include title/text animations: {_ps_join(body.titles)}.")
+    if body.finishing:
+        directives.append(f"Finishing polish: {_ps_join(body.finishing)}.")
+    if body.audio_effects:
+        directives.append(f"Voice/audio effects to apply: {_ps_join(body.audio_effects)}.")
+    if body.speed:
+        directives.append(f"Playback speed treatment: {body.speed}.")
+    if body.has_soundtrack:
+        directives.append("A custom uploaded soundtrack accompanies the piece — reference music cues in the beats.")
+    if body.has_voiceover:
+        directives.append("A recorded voice-over narration is provided — write narration to match it.")
+    if char_lines:
+        directives.append(f"Feature these characters consistently:\n{char_lines}")
+
+    system = (
+        f"You are the AI Video Suite director in the steampunk world of Konphlux, producing a shot-ready brief for a "
+        f"{'stylised animation' if kind == 'animation' else 'live-action film'} in a {style_note} style. "
+        f"Return a concise creative brief in plain text with exactly these section headers, each on its own line:\n"
+        f"TITLE: a short evocative title\n"
+        f"LOGLINE: one sentence\n"
+        f"STYLE & LOOK: 1-2 sentences describing the visual treatment (honour the requested style, atmosphere and titles)\n"
+        f"STORYBOARD: numbered shot list (scale beats to the target runtime), one line each with shot type, action and the transition into the next shot\n"
+        f"SCRIPT / NARRATION: the spoken lines or voice-over, matching any requested audio treatment\n"
+        f"SOUND & MUSIC: music and sound direction\n"
+        f"No other commentary."
+    )
+    prompt = f"Concept: {body.prompt.strip()}\nStyle: {style or style_note}\nKind: {kind}"
+    if directives:
+        prompt += "\n\nDirection:\n" + "\n".join(f"- {d}" for d in directives)
+
+    try:
+        storyboard = await _anvil_llm(system, prompt, session=f"ps-suite:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("PictureShow AI suite storyboard error")
+        raise HTTPException(status_code=502, detail="The projection engine sputtered. Try again.") from e
+
+    poster_path = ""
+    try:
+        char_visual = f" Featuring {_ps_join([c['name'] for c in chars])}." if chars else ""
+        atmos = f" {_ps_join(body.atmospherics)}." if body.atmospherics else ""
+        img_prompt = (
+            f"A {style_note} poster keyframe. Scene: {body.prompt.strip()}.{char_visual}{atmos} "
+            f"Ornate brass, aether glow, dramatic lighting, no text."
+        )
+        poster_path = await _ps_generate_image(img_prompt, user["id"])
+    except Exception:  # noqa: BLE001
+        logger.exception("PictureShow AI suite poster error")
+        poster_path = ""
+    return {"kind": kind, "storyboard": storyboard.strip(), "poster_path": poster_path}
+
+
+def _ps_project_public(doc: dict) -> dict:
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.post("/pictureshow/projects", status_code=201)
+async def pictureshow_save_project(body: PSProjectBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user["id"],
+        "title": body.title.strip() or (body.prompt.strip()[:60] or "Untitled project"),
+        "prompt": body.prompt.strip(),
+        "kind": body.kind,
+        "style": body.style,
+        "length": body.length,
+        "speed": body.speed,
+        "transitions": body.transitions,
+        "atmospherics": body.atmospherics,
+        "titles": body.titles,
+        "finishing": body.finishing,
+        "audio_effects": body.audio_effects,
+        "character_ids": body.character_ids,
+        "soundtrack_path": body.soundtrack_path,
+        "voiceover_path": body.voiceover_path,
+        "storyboard": body.storyboard.strip(),
+        "poster_path": body.poster_path,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.ps_projects.insert_one(dict(doc))
+    return _ps_project_public(doc)
+
+
+@api_router.get("/pictureshow/projects")
+async def pictureshow_list_projects(user: dict = Depends(require_user)):
+    docs = await db.ps_projects.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.get("/pictureshow/projects/{project_id}")
+async def pictureshow_get_project(project_id: str, user: dict = Depends(require_user)):
+    doc = await db.ps_projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return doc
+
+
+@api_router.delete("/pictureshow/projects/{project_id}")
+async def pictureshow_delete_project(project_id: str, user: dict = Depends(require_user)):
+    res = await db.ps_projects.delete_one({"id": project_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"deleted": True}
+
+
+
 # ----- Frankenstein Lab: Audio Creation Studio (GenoTune music + GenoFX sfx) -----
 @api_router.post("/frankenstein/audio")
 async def frankenstein_audio(body: FrankAudioBody, user: dict = Depends(require_user)):
@@ -3264,6 +3511,59 @@ async def frankenstein_audio(body: FrankAudioBody, user: dict = Depends(require_
         logger.exception("Frankenstein audio image error")
         image_path = ""
     return {"kind": body.kind, "concept": concept.strip(), "image_path": image_path}
+
+
+VISUAL_PROMPTS = {
+    "pic": "{p}. A high-quality, richly detailed, well-composed illustration.",
+    "logo": "A clean, iconic, modern logo design for: {p}. Simple vector style, centered, high contrast, solid background, no watermark.",
+    "gif": "A single vivid keyframe for a short animation about: {p}. Dynamic, expressive pose, bold colors.",
+    "meme": "A funny, bold, high-contrast meme image about: {p}. Expressive and shareable, leave clear space at top and bottom for a caption.",
+}
+
+
+@api_router.post("/frankenstein/visual")
+async def frankenstein_visual(body: FrankVisualBody, user: dict = Depends(require_user)):
+    img_prompt = VISUAL_PROMPTS[body.kind].format(p=body.prompt.strip())
+    try:
+        image_path = await _ps_generate_image(img_prompt, user["id"])
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Frankenstein visual error")
+        raise HTTPException(status_code=502, detail="The image forge sputtered. Try again.") from e
+    return {"kind": body.kind, "image_path": image_path}
+
+
+@api_router.post("/frankenstein/vault", status_code=201)
+async def frankenstein_vault_save(body: FrankVaultBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user["id"],
+        "kind": body.kind,
+        "prompt": body.prompt.strip(),
+        "image_path": body.image_path,
+        "concept": body.concept.strip(),
+        "title": body.title.strip() or (body.prompt.strip()[:60] or body.kind.upper()),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.frank_vault.insert_one(dict(doc))
+    return doc
+
+
+@api_router.get("/frankenstein/vault")
+async def frankenstein_vault_list(kind: str = "", user: dict = Depends(require_user)):
+    query: dict = {"user_id": user["id"]}
+    if kind:
+        query["kind"] = kind
+    docs = await db.frank_vault.find(query, {"_id": 0}).to_list(1000)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.delete("/frankenstein/vault/{item_id}")
+async def frankenstein_vault_delete(item_id: str, user: dict = Depends(require_user)):
+    res = await db.frank_vault.delete_one({"id": item_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"deleted": True}
 
 
 # ---------- Chatterbox (messaging: private DMs + group chats) ----------

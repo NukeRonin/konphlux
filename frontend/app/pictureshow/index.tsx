@@ -23,6 +23,8 @@ const QUICK: { label: string; icon: IconName; route: string }[] = [
   { label: "Upload", icon: "upload", route: "/pictureshow/upload" },
   { label: "AI Video", icon: "movie-filter", route: "/pictureshow/ai?kind=video" },
   { label: "AI Animation", icon: "animation-play", route: "/pictureshow/ai?kind=animation" },
+  { label: "Characters", icon: "account-star", route: "/pictureshow/characters" },
+  { label: "My Projects", icon: "folder-multiple", route: "/pictureshow/projects" },
 ];
 
 function VideoThumb({ item, wide }: { item: PSVideoCard; wide?: boolean }) {

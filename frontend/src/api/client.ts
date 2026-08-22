@@ -56,6 +56,26 @@ export async function uploadImage(uri: string, isWeb: boolean): Promise<string> 
   return `${BASE}/api/files/${(data as { path: string }).path}`;
 }
 
+/** Upload an audio file (soundtrack or recorded voice-over). Returns the stored object path. */
+export async function uploadAudio(uri: string, isWeb: boolean, mimeType = "audio/m4a", name = `audio_${Date.now()}.m4a`): Promise<string> {
+  const form = new FormData();
+  if (isWeb) {
+    const blob = await (await fetch(uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri, name, type: mimeType } as any);
+  }
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/api/pictureshow/upload-audio`, { method: "POST", headers, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = (data as any)?.detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${res.status})`, res.status);
+  }
+  return (data as { path: string }).path;
+}
+
 export type Chatmonger = { name: string; role: string; greeting: string };
 
 export type District = {
@@ -424,6 +444,48 @@ export type DBProject = {
   celebrate?: boolean;
 };
 
+export type FrankVaultItem = { id: string; kind: string; prompt: string; image_path: string; concept: string; title: string; created_at: string };
+
+export type PSCharacter = { id: string; name: string; description: string; reference_path: string; created_at: string };
+
+export type PSSuiteConfig = {
+  prompt: string;
+  kind: "video" | "animation";
+  style?: string;
+  length?: string;
+  speed?: string;
+  transitions?: string[];
+  atmospherics?: string[];
+  titles?: string[];
+  finishing?: string[];
+  audio_effects?: string[];
+  character_ids?: string[];
+  has_soundtrack?: boolean;
+  has_voiceover?: boolean;
+};
+
+export type PSProject = {
+  id: string;
+  title: string;
+  prompt: string;
+  kind: "video" | "animation";
+  style: string;
+  length: string;
+  speed: string;
+  transitions: string[];
+  atmospherics: string[];
+  titles: string[];
+  finishing: string[];
+  audio_effects: string[];
+  character_ids: string[];
+  soundtrack_path: string;
+  voiceover_path: string;
+  storyboard: string;
+  poster_path: string;
+  created_at: string;
+};
+
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -654,8 +716,25 @@ export const api = {
     request<{ following: boolean }>(`/pictureshow/streamora/${channel_id}/follow`, { method: "POST" }),
   psAiConcept: (body: { prompt: string; kind: "video" | "animation"; style?: string }) =>
     request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/concept", { method: "POST", body: JSON.stringify(body) }),
+  psAiSuite: (body: PSSuiteConfig) =>
+    request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/suite", { method: "POST", body: JSON.stringify(body) }),
+  psCharacters: () => request<PSCharacter[]>("/pictureshow/characters"),
+  psCreateCharacter: (body: { name: string; description: string; reference_path: string }) =>
+    request<PSCharacter>("/pictureshow/characters", { method: "POST", body: JSON.stringify(body) }),
+  psDeleteCharacter: (id: string) => request<{ deleted: boolean }>(`/pictureshow/characters/${id}`, { method: "DELETE" }),
+  psProjects: () => request<PSProject[]>("/pictureshow/projects"),
+  psProject: (id: string) => request<PSProject>(`/pictureshow/projects/${id}`),
+  psSaveProject: (body: Partial<PSProject> & { prompt: string; kind: "video" | "animation" }) =>
+    request<PSProject>("/pictureshow/projects", { method: "POST", body: JSON.stringify(body) }),
+  psDeleteProject: (id: string) => request<{ deleted: boolean }>(`/pictureshow/projects/${id}`, { method: "DELETE" }),
   frankAudio: (body: { kind: "music" | "sfx"; prompt: string; mood?: string; genre?: string; duration?: string }) =>
     request<{ kind: string; concept: string; image_path: string }>("/frankenstein/audio", { method: "POST", body: JSON.stringify(body) }),
+  frankVisual: (body: { kind: "pic" | "logo" | "gif" | "meme"; prompt: string }) =>
+    request<{ kind: string; image_path: string }>("/frankenstein/visual", { method: "POST", body: JSON.stringify(body) }),
+  frankVaultSave: (body: { kind: string; prompt?: string; image_path?: string; concept?: string; title?: string }) =>
+    request<FrankVaultItem>("/frankenstein/vault", { method: "POST", body: JSON.stringify(body) }),
+  frankVault: (kind?: string) => request<FrankVaultItem[]>(`/frankenstein/vault${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`),
+  frankVaultDelete: (id: string) => request<{ deleted: boolean }>(`/frankenstein/vault/${id}`, { method: "DELETE" }),
 
   // Chatterbox (private messaging + group chats)
   cbUsers: (q?: string) => request<CBUser[]>(`/chatterbox/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),

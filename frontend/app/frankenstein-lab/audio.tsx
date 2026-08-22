@@ -63,15 +63,31 @@ export default function AudioStudio() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ concept: string; image_path: string } | null>(null);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const switchMode = (m: Mode) => { setMode(m); setResult(null); setOpts({}); setError(""); };
+  const switchMode = (m: Mode) => { setMode(m); setResult(null); setOpts({}); setError(""); setSaved(false); };
   const setOpt = (k: "genre" | "mood" | "duration", v: string) => setOpts((o) => ({ ...o, [k]: o[k] === v ? undefined : v }));
+
+  const saveToVault = async () => {
+    if (!result || saving || saved) return;
+    setSaving(true);
+    try {
+      await api.frankVaultSave({ kind: mode, prompt: prompt.trim(), image_path: result.image_path, concept: result.concept });
+      setSaved(true);
+    } catch {
+      setError("Couldn't save to your Vault. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const generate = async () => {
     if (prompt.trim().length < 1 || loading) return;
     setLoading(true);
     setError("");
     setResult(null);
+    setSaved(false);
     try {
       const res = await api.frankAudio({ kind: mode, prompt: prompt.trim(), genre: opts.genre, mood: opts.mood, duration: opts.duration });
       setResult({ concept: res.concept, image_path: res.image_path });
@@ -94,6 +110,9 @@ export default function AudioStudio() {
           <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.headerTitle, { color: colors.onSurface }]}>Audio Creation Studio</Text>
           <Eyebrow>Frankenstein Lab</Eyebrow>
         </View>
+        <Pressable testID="audio-vault" onPress={() => router.push("/frankenstein-lab/vault")} hitSlop={8} style={styles.hdrBtn}>
+          <MaterialCommunityIcons name="treasure-chest" size={22} color={colors.brand} />
+        </Pressable>
       </View>
 
       <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
@@ -173,6 +192,17 @@ export default function AudioStudio() {
                 <MaterialCommunityIcons name="headphones" size={18} color={colors.brand} />
                 <Text style={[styles.comingSoonText, { color: colors.onSurface }]}>Playable audio is coming soon — we&apos;ll render the real sound from this blueprint once the audio engine is connected.</Text>
               </View>
+              <ForgeButton
+                label={saved ? "Saved to Vault" : "Save to Vault"}
+                fullWidth
+                variant={saved ? "outline" : "solid"}
+                loading={saving}
+                disabled={saved}
+                onPress={saveToVault}
+                testID="audio-save"
+                style={{ marginTop: spacing.md }}
+                icon={<MaterialCommunityIcons name={saved ? "check" : "treasure-chest"} size={18} color={saved ? colors.brand : colors.onBrandPrimary} />}
+              />
             </>
           ) : null}
         </ScrollView>
@@ -185,6 +215,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
+  hdrBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   tabs: { flexDirection: "row", borderBottomWidth: 1 },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md, borderBottomWidth: 2, borderBottomColor: "transparent" },
   tabText: { fontFamily: fonts.displaySemi, fontSize: 14 },

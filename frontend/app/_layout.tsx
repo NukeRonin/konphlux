@@ -93,6 +93,8 @@ function RootNavigator() {
         <Stack.Screen name="pictureshow/playlists" />
         <Stack.Screen name="pictureshow/playlist/[id]" />
         <Stack.Screen name="pictureshow/ai" />
+        <Stack.Screen name="pictureshow/characters" />
+        <Stack.Screen name="pictureshow/projects" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
         <Stack.Screen name="pictureshow/streamora/watch" />
@@ -115,6 +117,8 @@ function RootNavigator() {
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />
+        <Stack.Screen name="frankenstein-lab/visual" />
+        <Stack.Screen name="frankenstein-lab/vault" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

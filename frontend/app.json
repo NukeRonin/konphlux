@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.emergent.webtomobile.r0ghap",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
-        "NSCameraUsageDescription": "Take a photo for your Bazaar listing"
+        "NSCameraUsageDescription": "Take a photo for your Bazaar listing",
+        "NSMicrophoneUsageDescription": "Record voice-overs for your AI videos"
       }
     },
     "android": {
@@ -25,7 +26,8 @@
       "package": "com.emergent.webtomobile.r0ghap",
       "permissions": [
         "CAMERA",
-        "READ_MEDIA_IMAGES"
+        "READ_MEDIA_IMAGES",
+        "RECORD_AUDIO"
       ]
     },
     "web": {
@@ -45,7 +47,13 @@
         }
       ],
       "expo-web-browser",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Record voice-overs for your AI videos"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
