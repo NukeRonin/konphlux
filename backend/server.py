@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
 import uuid
+import base64
 import jwt
 import random
 import stripe
@@ -247,6 +248,49 @@ class BBLexiconBody(BaseModel):
 
 class BBRepairBody(BaseModel):
     problem: str = Field(min_length=3, max_length=1200)
+
+
+# ---- PictureShow ----
+class PSVideoCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=140)
+    video_url: str = Field(min_length=4, max_length=600)
+    category: str = "Shorts"
+    description: str = Field(default="", max_length=1000)
+    thumbnail: str = Field(default="", max_length=600)
+
+
+class PSPlaylistCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=80)
+
+
+class PSPlaylistAdd(BaseModel):
+    video_id: str
+
+
+class PSGoLiveBody(BaseModel):
+    title: str = Field(min_length=2, max_length=140)
+    category: str = "Live Recordings"
+    when: str = "now"  # "now" -> live, else ISO datetime -> upcoming
+
+
+class PSAIConceptBody(BaseModel):
+    prompt: str = Field(min_length=3, max_length=600)
+    kind: str = "video"  # video | animation
+    style: str = Field(default="", max_length=80)
+
+
+# ---- Chatterbox ----
+class CBStartDM(BaseModel):
+    user_id: str
+
+
+class CBCreateGroup(BaseModel):
+    title: str = Field(min_length=2, max_length=80)
+    member_ids: list[str] = Field(default_factory=list)
+
+
+class CBSendMessage(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
 
 
 # ----------------------------- Seed data -----------------------------
@@ -922,6 +966,132 @@ def _bb_fact_for(day: date) -> str:
     return _BB_FACTS_POOL[idx]
 
 
+# ----------------------------- PictureShow (video district) -----------------------------
+PS_CATEGORIES = ["Serials", "Documentaries", "Music", "Tutorials", "Comedy", "Shorts", "Live Recordings"]
+
+_V = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/"
+
+PS_CHANNELS = [
+    {"id": "ch1", "name": "Clockwork Serials", "avatar": "https://picsum.photos/seed/pschan1/200",
+     "subscribers": 48210, "description": "Weekly steampunk adventure serials."},
+    {"id": "ch2", "name": "The Aether Almanac", "avatar": "https://picsum.photos/seed/pschan2/200",
+     "subscribers": 31980, "description": "Documentaries on the wonders of the age."},
+    {"id": "ch3", "name": "GenoTune Records", "avatar": "https://picsum.photos/seed/pschan3/200",
+     "subscribers": 76540, "description": "Brass-band remixes and phonograph sessions."},
+    {"id": "ch4", "name": "Grast Workshop", "avatar": "https://picsum.photos/seed/pschan4/200",
+     "subscribers": 22110, "description": "Hands-on tinkering and repair tutorials."},
+    {"id": "ch5", "name": "Boiler Room Comedy", "avatar": "https://picsum.photos/seed/pschan5/200",
+     "subscribers": 40320, "description": "Late-night laughs from the furnace floor."},
+]
+
+PS_VIDEOS = [
+    {"id": "v1", "title": "The Clockwork Serial — Episode Nine", "channel_id": "ch1", "category": "Serials",
+     "thumbnail": "https://picsum.photos/seed/psv1/800/450", "video_url": f"{_V}BigBuckBunny.mp4",
+     "duration": "10:34", "views": 128400, "likes": 8420, "description": "Our heroes descend into the Tidal Orrery as the aether storm gathers."},
+    {"id": "v2", "title": "How Aether Lamps Really Work", "channel_id": "ch2", "category": "Documentaries",
+     "thumbnail": "https://picsum.photos/seed/psv2/800/450", "video_url": f"{_V}ElephantsDream.mp4",
+     "duration": "12:02", "views": 89230, "likes": 6110, "description": "A deep dive into the glowing heart of every Konphlux home."},
+    {"id": "v3", "title": "Brass Band Remix: Tidal Orrery", "channel_id": "ch3", "category": "Music",
+     "thumbnail": "https://picsum.photos/seed/psv3/800/450", "video_url": f"{_V}ForBiggerBlazes.mp4",
+     "duration": "3:48", "views": 210500, "likes": 19800, "description": "GenoTune reworks the serial's haunting theme."},
+    {"id": "v4", "title": "Repair Clinic: Fixing a Steam Gauge", "channel_id": "ch4", "category": "Tutorials",
+     "thumbnail": "https://picsum.photos/seed/psv4/800/450", "video_url": f"{_V}ForBiggerEscapes.mp4",
+     "duration": "8:15", "views": 45600, "likes": 3300, "description": "Step-by-step: bring a dead pressure reader back to life."},
+    {"id": "v5", "title": "The Furnace Floor — Stand-Up Night", "channel_id": "ch5", "category": "Comedy",
+     "thumbnail": "https://picsum.photos/seed/psv5/800/450", "video_url": f"{_V}ForBiggerFun.mp4",
+     "duration": "6:59", "views": 67800, "likes": 5900, "description": "The best bits from last week's boiler-room comedy hour."},
+    {"id": "v6", "title": "A Wayfarer's Journey — Short", "channel_id": "ch1", "category": "Shorts",
+     "thumbnail": "https://picsum.photos/seed/psv6/800/450", "video_url": f"{_V}ForBiggerJoyrides.mp4",
+     "duration": "1:22", "views": 302100, "likes": 24500, "description": "Sixty seconds of airship wanderlust."},
+    {"id": "v7", "title": "The Great Meltdown, Explained", "channel_id": "ch2", "category": "Documentaries",
+     "thumbnail": "https://picsum.photos/seed/psv7/800/450", "video_url": f"{_V}ForBiggerMeltdowns.mp4",
+     "duration": "14:40", "views": 51200, "likes": 4020, "description": "What really happened in the Copperline foundry fire."},
+    {"id": "v8", "title": "Sintel of the Skies (Fan Serial)", "channel_id": "ch1", "category": "Serials",
+     "thumbnail": "https://picsum.photos/seed/psv8/800/450", "video_url": f"{_V}Sintel.mp4",
+     "duration": "9:07", "views": 98700, "likes": 7700, "description": "A lone traveller and her mechanical companion."},
+    {"id": "v9", "title": "Phonograph Sessions: Vol. 3", "channel_id": "ch3", "category": "Music",
+     "thumbnail": "https://picsum.photos/seed/psv9/800/450", "video_url": f"{_V}TearsOfSteel.mp4",
+     "duration": "4:31", "views": 143000, "likes": 12200, "description": "Warm wax recordings from the GenoTune vault."},
+    {"id": "v10", "title": "Tinkering 101: Your First Gear Train", "channel_id": "ch4", "category": "Tutorials",
+     "thumbnail": "https://picsum.photos/seed/psv10/800/450", "video_url": f"{_V}WeAreGoingOnBullrun.mp4",
+     "duration": "7:44", "views": 38900, "likes": 2900, "description": "Assemble a working gear train on your workbench."},
+    {"id": "v11", "title": "Two Minutes of Pure Nonsense", "channel_id": "ch5", "category": "Shorts",
+     "thumbnail": "https://picsum.photos/seed/psv11/800/450", "video_url": f"{_V}VolkswagenGTIReview.mp4",
+     "duration": "2:05", "views": 175400, "likes": 15100, "description": "The furnace crew loses the plot entirely."},
+    {"id": "v12", "title": "Building the Tidal Orrery — Behind the Scenes", "channel_id": "ch1", "category": "Documentaries",
+     "thumbnail": "https://picsum.photos/seed/psv12/800/450", "video_url": f"{_V}WhatCarCanYouGetForAGrand.mp4",
+     "duration": "11:18", "views": 62300, "likes": 5400, "description": "How the serial's grandest set was engineered."},
+]
+
+PS_PLAYLISTS = [
+    {"id": "pl1", "title": "Clockwork Serial — Full Season", "video_ids": ["v1", "v8"], "seed": True},
+    {"id": "pl2", "title": "Best of GenoTune", "video_ids": ["v3", "v9"], "seed": True},
+    {"id": "pl3", "title": "Repair & Tinker", "video_ids": ["v4", "v10"], "seed": True},
+]
+
+PS_STREAMS = [
+    {"id": "ls1", "title": "Late-Night Forge — Live Build", "channel_id": "ch4", "category": "Live Recordings",
+     "thumbnail": "https://picsum.photos/seed/psl1/800/450", "video_url": f"{_V}ForBiggerBlazes.mp4",
+     "status": "live", "viewers": 1240, "scheduled_at": ""},
+    {"id": "ls2", "title": "GenoTune Live Set from the Boiler Room", "channel_id": "ch3", "category": "Music",
+     "thumbnail": "https://picsum.photos/seed/psl2/800/450", "video_url": f"{_V}ForBiggerFun.mp4",
+     "status": "live", "viewers": 3410, "scheduled_at": ""},
+    {"id": "ls3", "title": "Serial Table Read — Episode Ten", "channel_id": "ch1", "category": "Live Recordings",
+     "thumbnail": "https://picsum.photos/seed/psl3/800/450", "video_url": "",
+     "status": "upcoming", "viewers": 0, "scheduled_at": "2026-06-20T20:00:00+00:00"},
+    {"id": "ls4", "title": "Ask the Aether Almanac — AMA", "channel_id": "ch2", "category": "Documentaries",
+     "thumbnail": "https://picsum.photos/seed/psl4/800/450", "video_url": "",
+     "status": "upcoming", "viewers": 0, "scheduled_at": "2026-06-22T18:30:00+00:00"},
+    {"id": "ls5", "title": "Comedy Hour — Last Week's Live", "channel_id": "ch5", "category": "Comedy",
+     "thumbnail": "https://picsum.photos/seed/psl5/800/450", "video_url": f"{_V}ForBiggerJoyrides.mp4",
+     "status": "recent", "viewers": 8900, "scheduled_at": ""},
+    {"id": "ls6", "title": "Repair Marathon — Full Replay", "channel_id": "ch4", "category": "Tutorials",
+     "thumbnail": "https://picsum.photos/seed/psl6/800/450", "video_url": f"{_V}ForBiggerEscapes.mp4",
+     "status": "recent", "viewers": 5600, "scheduled_at": ""},
+]
+
+PS_CLIPS = [
+    {"id": "cl1", "title": "That Explosion Though 💥", "channel_id": "ch4", "category": "Shorts",
+     "thumbnail": "https://picsum.photos/seed/psc1/800/450", "video_url": f"{_V}ForBiggerMeltdowns.mp4",
+     "duration": "0:32", "views": 44100, "likes": 6800, "description": "Clip from the Late-Night Forge live build."},
+    {"id": "cl2", "title": "The Drop — GenoTune Live", "channel_id": "ch3", "category": "Music",
+     "thumbnail": "https://picsum.photos/seed/psc2/800/450", "video_url": f"{_V}Sintel.mp4",
+     "duration": "0:48", "views": 92300, "likes": 11200, "description": "Highlight from the boiler-room set."},
+    {"id": "cl3", "title": "Perfect Comic Timing", "channel_id": "ch5", "category": "Comedy",
+     "thumbnail": "https://picsum.photos/seed/psc3/800/450", "video_url": f"{_V}VolkswagenGTIReview.mp4",
+     "duration": "0:21", "views": 130500, "likes": 18900, "description": "Best moment from comedy hour."},
+]
+
+
+# ----------------------------- Chatterbox (messaging district) -----------------------------
+# Seeded conversational personas so private messaging is usable from a fresh account.
+# When you DM one of these, they send a canned steampunk-flavoured reply.
+CB_CONTACTS = [
+    {"id": "cb-alicia", "display_name": "Alicia (Switchboard)", "handle": "@switchboard",
+     "avatar": "https://picsum.photos/seed/cbalicia/200", "tagline": "Konphlux concierge — here to help",
+     "replies": ["Connected! How can I route you today?", "Happy to help — anything you need across Konphlux, just ask.",
+                 "I've noted that. Anything else I can line up for you?"]},
+    {"id": "cb-eugene", "display_name": "Eugene Halloway", "handle": "@eugene",
+     "avatar": "https://picsum.photos/seed/cbeugene/200", "tagline": "Tinkerer at the Roundtable",
+     "replies": ["Ha! Good one. So about that gear train…", "Let's meet at the workshop later?", "Agreed. Bring your calipers."]},
+    {"id": "cb-marlowe", "display_name": "Marlowe Quill", "handle": "@marlowe",
+     "avatar": "https://picsum.photos/seed/cbmarlowe/200", "tagline": "Scribe & conservator",
+     "replies": ["A fine thought — I'll pen it down.", "Renaissance wax, as always, my friend.", "Meet me at the Vault Bindery?"]},
+    {"id": "cb-isolde", "display_name": "Isolde Vayne", "handle": "@isolde",
+     "avatar": "https://picsum.photos/seed/cbisolde/200", "tagline": "Aetherworks engineer",
+     "replies": ["The lamp retrofit is holding beautifully.", "Ooh, tell me more!", "Sounds like a plan. ⚙️"]},
+    {"id": "cb-dorian", "display_name": "Dorian Kesh", "handle": "@dorian",
+     "avatar": "https://picsum.photos/seed/cbdorian/200", "tagline": "Airship navigator",
+     "replies": ["Charting a course now.", "Winds are fair today — perfect for a flight.", "Catch you on the observation deck."]},
+    {"id": "cb-beatrix", "display_name": "Beatrix Nolan", "handle": "@beatrix",
+     "avatar": "https://picsum.photos/seed/cbbeatrix/200", "tagline": "Bazaar booth-keeper",
+     "replies": ["New stock just came in — you'll love it.", "I'll set one aside for you.", "See you at the Bazaar!"]},
+]
+CB_CONTACT_MAP = {c["id"]: c for c in CB_CONTACTS}
+
+
+
+
 
 
 async def seed():
@@ -972,6 +1142,22 @@ async def seed():
     for q in BB_QUIZZES:
         if not await db.bb_quizzes.find_one({"id": q["id"]}):
             await db.bb_quizzes.insert_one(dict(q))
+    # PictureShow (idempotent).
+    for ch in PS_CHANNELS:
+        if not await db.ps_channels.find_one({"id": ch["id"]}):
+            await db.ps_channels.insert_one(dict(ch))
+    for v in PS_VIDEOS:
+        if not await db.ps_videos.find_one({"id": v["id"]}):
+            await db.ps_videos.insert_one({**v, "user_id": "seed", "created_at": "2026-06-01T09:00:00+00:00"})
+    for cl in PS_CLIPS:
+        if not await db.ps_clips.find_one({"id": cl["id"]}):
+            await db.ps_clips.insert_one(dict(cl))
+    for s in PS_STREAMS:
+        if not await db.ps_streams.find_one({"id": s["id"]}):
+            await db.ps_streams.insert_one({**s, "user_id": "seed"})
+    for pl in PS_PLAYLISTS:
+        if not await db.ps_playlists.find_one({"id": pl["id"]}):
+            await db.ps_playlists.insert_one({**pl, "user_id": "seed", "created_at": "2026-06-01T09:00:00+00:00"})
     await db.af_questions.create_index("qotd_date", unique=True, sparse=True)
     await db.users.create_index("email", unique=True)
 
@@ -1042,7 +1228,7 @@ async def me(user: dict = Depends(require_user)):
 # ---------- Districts ----------
 @api_router.get("/districts")
 async def get_districts():
-    docs = await db.districts.find({}, {"_id": 0}).to_list(100)
+    docs = await db.districts.find({"slug": {"$ne": "streamora"}}, {"_id": 0}).to_list(100)
     docs.sort(key=lambda d: d["name"])
     return docs
 
@@ -1052,7 +1238,7 @@ async def get_district(slug: str, user: dict = Depends(require_user)):
     doc = await db.districts.find_one({"slug": slug}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="District not found")
-    others = await db.districts.find({"slug": {"$nin": [slug, "home"]}}, {"_id": 0}).to_list(100)
+    others = await db.districts.find({"slug": {"$nin": [slug, "home", "streamora"]}}, {"_id": 0}).to_list(100)
     others.sort(key=lambda d: d["name"])
     doc["nearby"] = others[:6]
     saved_ids = {s["item_id"] for s in await _user_saves(user["id"], "district")}
@@ -2559,6 +2745,512 @@ async def brainboost_repair(body: BBRepairBody, user: dict = Depends(require_use
         logger.exception("BrainBoost repair error")
         raise HTTPException(status_code=502, detail="Repair Guy is elbow-deep in a boiler. Try again.") from e
     return {"steps": text.strip()}
+
+
+# ---------- PictureShow (video district + Streamora live branch) ----------
+async def _ps_channels_map() -> dict:
+    docs = await db.ps_channels.find({}, {"_id": 0}).to_list(200)
+    return {c["id"]: c for c in docs}
+
+
+def _ps_video_card(v: dict, channels: dict) -> dict:
+    ch = channels.get(v.get("channel_id"), {})
+    return {
+        "id": v["id"],
+        "title": v["title"],
+        "thumbnail": v.get("thumbnail", ""),
+        "duration": v.get("duration", ""),
+        "views": v.get("views", 0),
+        "likes": v.get("likes", 0),
+        "category": v.get("category", "Shorts"),
+        "channel_id": v.get("channel_id", ""),
+        "channel_name": ch.get("name", "Unknown Channel"),
+        "channel_avatar": ch.get("avatar", ""),
+    }
+
+
+@api_router.get("/pictureshow")
+async def pictureshow_hub(user: dict = Depends(require_user)):
+    channels = await _ps_channels_map()
+    videos = await db.ps_videos.find({}, {"_id": 0}).to_list(500)
+    videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
+    trending = sorted(videos, key=lambda v: v.get("views", 0), reverse=True)[:6]
+    subs = await db.ps_subs.count_documents({"user_id": user["id"]})
+    live_count = await db.ps_streams.count_documents({"status": "live"})
+    return {
+        "featured": [_ps_video_card(v, channels) for v in videos[:6]],
+        "trending": [_ps_video_card(v, channels) for v in trending],
+        "categories": PS_CATEGORIES,
+        "channels": [
+            {"id": c["id"], "name": c["name"], "avatar": c["avatar"], "subscribers": c["subscribers"]}
+            for c in list(channels.values())[:6]
+        ],
+        "video_count": len(videos),
+        "subscriptions": subs,
+        "live_count": live_count,
+    }
+
+
+@api_router.get("/pictureshow/videos")
+async def pictureshow_videos(user: dict = Depends(require_user), category: str | None = None, sort: str = "recent"):
+    query: dict = {}
+    if category and category != "All":
+        query["category"] = category
+    channels = await _ps_channels_map()
+    videos = await db.ps_videos.find(query, {"_id": 0}).to_list(500)
+    if sort == "trending":
+        videos.sort(key=lambda v: v.get("views", 0), reverse=True)
+    else:
+        videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
+    return {"videos": [_ps_video_card(v, channels) for v in videos], "categories": PS_CATEGORIES}
+
+
+@api_router.get("/pictureshow/trending")
+async def pictureshow_trending(user: dict = Depends(require_user)):
+    channels = await _ps_channels_map()
+    videos = await db.ps_videos.find({}, {"_id": 0}).to_list(500)
+    videos.sort(key=lambda v: v.get("views", 0), reverse=True)
+    return {"videos": [_ps_video_card(v, channels) for v in videos[:20]]}
+
+
+@api_router.get("/pictureshow/videos/{video_id}")
+async def pictureshow_video_detail(video_id: str, user: dict = Depends(require_user)):
+    v = await db.ps_videos.find_one({"id": video_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Video not found")
+    channels = await _ps_channels_map()
+    ch = channels.get(v.get("channel_id"), {})
+    liked = bool(await db.ps_likes.find_one({"user_id": user["id"], "video_id": video_id}))
+    subscribed = bool(await db.ps_subs.find_one({"user_id": user["id"], "channel_id": v.get("channel_id")}))
+    related = await db.ps_videos.find({"category": v.get("category"), "id": {"$ne": video_id}}, {"_id": 0}).to_list(20)
+    playlists = await db.ps_playlists.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    return {
+        **v,
+        "channel_name": ch.get("name", "Unknown Channel"),
+        "channel_avatar": ch.get("avatar", ""),
+        "channel_subscribers": ch.get("subscribers", 0),
+        "liked": liked,
+        "subscribed": subscribed,
+        "related": [_ps_video_card(r, channels) for r in related[:6]],
+        "my_playlists": [{"id": p["id"], "title": p["title"]} for p in playlists],
+    }
+
+
+@api_router.post("/pictureshow/videos/{video_id}/like")
+async def pictureshow_like(video_id: str, user: dict = Depends(require_user)):
+    v = await db.ps_videos.find_one({"id": video_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Video not found")
+    existing = await db.ps_likes.find_one({"user_id": user["id"], "video_id": video_id})
+    if existing:
+        await db.ps_likes.delete_one({"user_id": user["id"], "video_id": video_id})
+        await db.ps_videos.update_one({"id": video_id}, {"$inc": {"likes": -1}})
+        liked = False
+    else:
+        await db.ps_likes.insert_one({"user_id": user["id"], "video_id": video_id})
+        await db.ps_videos.update_one({"id": video_id}, {"$inc": {"likes": 1}})
+        liked = True
+    fresh = await db.ps_videos.find_one({"id": video_id}, {"_id": 0, "likes": 1})
+    return {"liked": liked, "likes": fresh.get("likes", 0)}
+
+
+@api_router.post("/pictureshow/videos", status_code=201)
+async def pictureshow_create_video(body: PSVideoCreate, user: dict = Depends(require_user)):
+    # Ensure the user has a personal channel.
+    ch_id = f"u-{user['id']}"
+    if not await db.ps_channels.find_one({"id": ch_id}):
+        await db.ps_channels.insert_one({
+            "id": ch_id, "name": user["display_name"], "avatar": "https://picsum.photos/seed/" + ch_id + "/200",
+            "subscribers": 0, "description": f"{user['display_name']}'s channel",
+        })
+    vid = uuid.uuid4().hex[:10]
+    doc = {
+        "id": vid, "title": body.title.strip(), "channel_id": ch_id,
+        "category": body.category if body.category in PS_CATEGORIES else "Shorts",
+        "thumbnail": body.thumbnail.strip() or f"https://picsum.photos/seed/{vid}/800/450",
+        "video_url": body.video_url.strip(), "duration": "", "views": 0, "likes": 0,
+        "description": body.description.strip(), "user_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.ps_videos.insert_one(dict(doc))
+    channels = await _ps_channels_map()
+    return _ps_video_card(doc, channels)
+
+
+@api_router.get("/pictureshow/channels")
+async def pictureshow_channels(user: dict = Depends(require_user)):
+    channels = await db.ps_channels.find({}, {"_id": 0}).to_list(200)
+    subs = {s["channel_id"] for s in await db.ps_subs.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)}
+    out = []
+    for c in channels:
+        count = await db.ps_videos.count_documents({"channel_id": c["id"]})
+        out.append({**c, "video_count": count, "subscribed": c["id"] in subs})
+    out.sort(key=lambda c: c.get("subscribers", 0), reverse=True)
+    return out
+
+
+@api_router.get("/pictureshow/channels/{channel_id}")
+async def pictureshow_channel_detail(channel_id: str, user: dict = Depends(require_user)):
+    c = await db.ps_channels.find_one({"id": channel_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channels = await _ps_channels_map()
+    videos = await db.ps_videos.find({"channel_id": channel_id}, {"_id": 0}).to_list(200)
+    videos.sort(key=lambda v: v.get("views", 0), reverse=True)
+    subscribed = bool(await db.ps_subs.find_one({"user_id": user["id"], "channel_id": channel_id}))
+    return {**c, "subscribed": subscribed, "videos": [_ps_video_card(v, channels) for v in videos]}
+
+
+@api_router.post("/pictureshow/channels/{channel_id}/subscribe")
+async def pictureshow_subscribe(channel_id: str, user: dict = Depends(require_user)):
+    c = await db.ps_channels.find_one({"id": channel_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    existing = await db.ps_subs.find_one({"user_id": user["id"], "channel_id": channel_id})
+    if existing:
+        await db.ps_subs.delete_one({"user_id": user["id"], "channel_id": channel_id})
+        await db.ps_channels.update_one({"id": channel_id}, {"$inc": {"subscribers": -1}})
+        subscribed = False
+    else:
+        await db.ps_subs.insert_one({"user_id": user["id"], "channel_id": channel_id})
+        await db.ps_channels.update_one({"id": channel_id}, {"$inc": {"subscribers": 1}})
+        subscribed = True
+    return {"subscribed": subscribed}
+
+
+@api_router.get("/pictureshow/subscriptions")
+async def pictureshow_subscriptions(user: dict = Depends(require_user)):
+    sub_ids = [s["channel_id"] for s in await db.ps_subs.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)]
+    channels = await _ps_channels_map()
+    subbed = [channels[cid] for cid in sub_ids if cid in channels]
+    videos = await db.ps_videos.find({"channel_id": {"$in": sub_ids}}, {"_id": 0}).to_list(500)
+    videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
+    return {
+        "channels": [{"id": c["id"], "name": c["name"], "avatar": c["avatar"], "subscribers": c["subscribers"]} for c in subbed],
+        "videos": [_ps_video_card(v, channels) for v in videos],
+    }
+
+
+@api_router.get("/pictureshow/playlists")
+async def pictureshow_playlists(user: dict = Depends(require_user)):
+    docs = await db.ps_playlists.find({"$or": [{"user_id": user["id"]}, {"seed": True}]}, {"_id": 0}).to_list(200)
+    channels = await _ps_channels_map()
+    out = []
+    for p in docs:
+        vids = await db.ps_videos.find({"id": {"$in": p.get("video_ids", [])}}, {"_id": 0}).to_list(200)
+        thumb = vids[0]["thumbnail"] if vids else ""
+        out.append({"id": p["id"], "title": p["title"], "count": len(p.get("video_ids", [])),
+                    "thumbnail": thumb, "mine": p.get("user_id") == user["id"]})
+    return out
+
+
+@api_router.get("/pictureshow/playlists/{playlist_id}")
+async def pictureshow_playlist_detail(playlist_id: str, user: dict = Depends(require_user)):
+    p = await db.ps_playlists.find_one({"id": playlist_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    channels = await _ps_channels_map()
+    vids = await db.ps_videos.find({"id": {"$in": p.get("video_ids", [])}}, {"_id": 0}).to_list(200)
+    order = {vid: i for i, vid in enumerate(p.get("video_ids", []))}
+    vids.sort(key=lambda v: order.get(v["id"], 999))
+    return {"id": p["id"], "title": p["title"], "videos": [_ps_video_card(v, channels) for v in vids]}
+
+
+@api_router.post("/pictureshow/playlists", status_code=201)
+async def pictureshow_create_playlist(body: PSPlaylistCreate, user: dict = Depends(require_user)):
+    pid = uuid.uuid4().hex[:10]
+    await db.ps_playlists.insert_one({
+        "id": pid, "title": body.title.strip(), "video_ids": [], "user_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"id": pid, "title": body.title.strip(), "count": 0}
+
+
+@api_router.post("/pictureshow/playlists/{playlist_id}/add")
+async def pictureshow_playlist_add(playlist_id: str, body: PSPlaylistAdd, user: dict = Depends(require_user)):
+    p = await db.ps_playlists.find_one({"id": playlist_id, "user_id": user["id"]}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    await db.ps_playlists.update_one({"id": playlist_id}, {"$addToSet": {"video_ids": body.video_id}})
+    fresh = await db.ps_playlists.find_one({"id": playlist_id}, {"_id": 0})
+    return {"id": playlist_id, "count": len(fresh.get("video_ids", []))}
+
+
+# ----- Streamora (live branch) -----
+def _ps_stream_card(s: dict, channels: dict) -> dict:
+    ch = channels.get(s.get("channel_id"), {})
+    return {
+        "id": s["id"], "title": s["title"], "thumbnail": s.get("thumbnail", ""),
+        "video_url": s.get("video_url", ""), "status": s.get("status", "recent"),
+        "viewers": s.get("viewers", 0), "category": s.get("category", "Live Recordings"),
+        "scheduled_at": s.get("scheduled_at", ""),
+        "channel_id": s.get("channel_id", ""),
+        "channel_name": ch.get("name", "Unknown"), "channel_avatar": ch.get("avatar", ""),
+    }
+
+
+@api_router.get("/pictureshow/streamora")
+async def streamora_hub(user: dict = Depends(require_user)):
+    channels = await _ps_channels_map()
+    streams = await db.ps_streams.find({}, {"_id": 0}).to_list(500)
+    follows = {f["channel_id"] for f in await db.ps_follows.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)}
+    live = [_ps_stream_card(s, channels) for s in streams if s.get("status") == "live"]
+    live.sort(key=lambda s: s["viewers"], reverse=True)
+    upcoming = [_ps_stream_card(s, channels) for s in streams if s.get("status") == "upcoming"]
+    upcoming.sort(key=lambda s: s.get("scheduled_at", ""))
+    recent = [_ps_stream_card(s, channels) for s in streams if s.get("status") == "recent"]
+    recent.sort(key=lambda s: s["viewers"], reverse=True)
+    clips = await db.ps_clips.find({}, {"_id": 0}).to_list(100)
+    followed = [
+        {"id": c["id"], "name": c["name"], "avatar": c["avatar"]}
+        for cid, c in channels.items() if cid in follows
+    ]
+    return {
+        "live": live, "upcoming": upcoming, "recent": recent,
+        "clips": [{**_ps_video_card(c, channels), "video_url": c.get("video_url", "")} for c in clips],
+        "followed": followed,
+    }
+
+
+@api_router.post("/pictureshow/streamora/golive", status_code=201)
+async def streamora_golive(body: PSGoLiveBody, user: dict = Depends(require_user)):
+    ch_id = f"u-{user['id']}"
+    if not await db.ps_channels.find_one({"id": ch_id}):
+        await db.ps_channels.insert_one({
+            "id": ch_id, "name": user["display_name"], "avatar": "https://picsum.photos/seed/" + ch_id + "/200",
+            "subscribers": 0, "description": f"{user['display_name']}'s channel",
+        })
+    sid = uuid.uuid4().hex[:10]
+    is_now = body.when == "now"
+    doc = {
+        "id": sid, "title": body.title.strip(), "channel_id": ch_id,
+        "category": body.category if body.category in PS_CATEGORIES else "Live Recordings",
+        "thumbnail": f"https://picsum.photos/seed/{sid}/800/450",
+        "video_url": f"{_V}BigBuckBunny.mp4" if is_now else "",
+        "status": "live" if is_now else "upcoming",
+        "viewers": 1 if is_now else 0,
+        "scheduled_at": "" if is_now else body.when,
+        "user_id": user["id"],
+    }
+    await db.ps_streams.insert_one(dict(doc))
+    channels = await _ps_channels_map()
+    return _ps_stream_card(doc, channels)
+
+
+@api_router.post("/pictureshow/streamora/{channel_id}/follow")
+async def streamora_follow(channel_id: str, user: dict = Depends(require_user)):
+    c = await db.ps_channels.find_one({"id": channel_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    existing = await db.ps_follows.find_one({"user_id": user["id"], "channel_id": channel_id})
+    if existing:
+        await db.ps_follows.delete_one({"user_id": user["id"], "channel_id": channel_id})
+        following = False
+    else:
+        await db.ps_follows.insert_one({"user_id": user["id"], "channel_id": channel_id})
+        following = True
+    return {"following": following}
+
+
+# ----- AI Video Concept Studio (Nano Banana poster + written storyboard) -----
+async def _ps_generate_image(prompt: str, user_id: str) -> str:
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"ps-img:{user_id}:{uuid.uuid4().hex[:8]}",
+        system_message="You are a cinematic concept-art illustration engine. Produce a single striking poster image.",
+    ).with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+    _, images = await chat.send_message_multimodal_response(UserMessage(text=prompt))
+    if not images:
+        raise RuntimeError("No image returned")
+    img = images[0]
+    mime = img.get("mime_type", "image/png")
+    ext = "png" if "png" in mime else "jpg"
+    data = base64.b64decode(img["data"])
+    path = f"{APP_NAME}/ai/{user_id}/{uuid.uuid4().hex}.{ext}"
+    await run_in_threadpool(put_object, path, data, mime)
+    return path
+
+
+@api_router.post("/pictureshow/ai/concept")
+async def pictureshow_ai_concept(body: PSAIConceptBody, user: dict = Depends(require_user)):
+    kind = "animation" if body.kind == "animation" else "video"
+    style = body.style.strip() or ("hand-drawn steampunk animation" if kind == "animation" else "cinematic steampunk short film")
+    # 1) Written storyboard / script via text LLM.
+    system = (
+        f"You are a {'animation' if kind == 'animation' else 'film'} director in the steampunk world of Konphlux. "
+        f"Given a concept, produce a concise creative brief in plain text with exactly these sections:\n"
+        f"TITLE: a short evocative title\n"
+        f"LOGLINE: one sentence\n"
+        f"STORYBOARD: 4-6 numbered beats/shots, one line each\n"
+        f"NARRATION: 2-3 sentences of voice-over or script\n"
+        f"No other commentary."
+    )
+    prompt = f"Concept: {body.prompt.strip()}\nStyle: {style}\nKind: {kind}"
+    try:
+        storyboard = await _anvil_llm(system, prompt, session=f"ps-ai:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("PictureShow AI storyboard error")
+        raise HTTPException(status_code=502, detail="The projection engine sputtered. Try again.") from e
+    # 2) Poster keyframe via Nano Banana.
+    poster_path = ""
+    try:
+        img_prompt = f"A {style} poster keyframe. Scene: {body.prompt.strip()}. Ornate brass, aether glow, dramatic lighting, no text."
+        poster_path = await _ps_generate_image(img_prompt, user["id"])
+    except Exception:  # noqa: BLE001
+        logger.exception("PictureShow AI poster error")
+        poster_path = ""
+    return {"kind": kind, "storyboard": storyboard.strip(), "poster_path": poster_path}
+
+
+# ---------- Chatterbox (messaging: private DMs + group chats) ----------
+def _cb_avatar_for(uid: str) -> str:
+    return f"https://picsum.photos/seed/cbuser{uid[:8]}/200"
+
+
+async def _cb_user(uid: str) -> dict:
+    if uid in CB_CONTACT_MAP:
+        c = CB_CONTACT_MAP[uid]
+        return {"id": c["id"], "display_name": c["display_name"], "handle": c["handle"], "avatar": c["avatar"], "bot": True}
+    u = await db.users.find_one({"id": uid}, {"_id": 0})
+    if not u:
+        return {"id": uid, "display_name": "Unknown", "handle": "@unknown", "avatar": _cb_avatar_for(uid), "bot": False}
+    return {"id": u["id"], "display_name": u["display_name"], "handle": u.get("handle", ""), "avatar": _cb_avatar_for(u["id"]), "bot": False}
+
+
+async def _cb_conv_summary(conv: dict, me: str) -> dict:
+    others = [p for p in conv["participants"] if p != me]
+    parts = [await _cb_user(p) for p in others]
+    read_at = (conv.get("reads") or {}).get(me, "")
+    unread = await db.cb_messages.count_documents({
+        "conversation_id": conv["id"], "sender_id": {"$ne": me},
+        "created_at": {"$gt": read_at or "1970"},
+    })
+    if conv["type"] == "group":
+        title = conv.get("title", "Group chat")
+        avatar = parts[0]["avatar"] if parts else _cb_avatar_for(conv["id"])
+    else:
+        title = parts[0]["display_name"] if parts else "Conversation"
+        avatar = parts[0]["avatar"] if parts else _cb_avatar_for(conv["id"])
+    return {
+        "id": conv["id"], "type": conv["type"], "title": title, "avatar": avatar,
+        "participants": parts, "member_count": len(conv["participants"]),
+        "last_message": conv.get("last_message", ""), "last_at": conv.get("last_at", ""),
+        "unread": unread,
+    }
+
+
+@api_router.get("/chatterbox/users")
+async def chatterbox_users(user: dict = Depends(require_user), q: str = ""):
+    ql = q.strip().lower()
+    out = []
+    for c in CB_CONTACTS:
+        if not ql or ql in c["display_name"].lower() or ql in c["handle"].lower():
+            out.append({"id": c["id"], "display_name": c["display_name"], "handle": c["handle"], "avatar": c["avatar"], "bot": True})
+    users = await db.users.find({"id": {"$ne": user["id"]}}, {"_id": 0}).to_list(500)
+    for u in users:
+        if not ql or ql in u["display_name"].lower() or ql in u.get("handle", "").lower():
+            out.append({"id": u["id"], "display_name": u["display_name"], "handle": u.get("handle", ""), "avatar": _cb_avatar_for(u["id"]), "bot": False})
+    return out
+
+
+@api_router.get("/chatterbox/conversations")
+async def chatterbox_conversations(user: dict = Depends(require_user)):
+    convs = await db.cb_conversations.find({"participants": user["id"]}, {"_id": 0}).to_list(500)
+    convs.sort(key=lambda c: c.get("last_at", ""), reverse=True)
+    summaries = [await _cb_conv_summary(c, user["id"]) for c in convs]
+    total_unread = sum(s["unread"] for s in summaries)
+    return {"conversations": summaries, "total_unread": total_unread}
+
+
+@api_router.post("/chatterbox/conversations/dm", status_code=201)
+async def chatterbox_start_dm(body: CBStartDM, user: dict = Depends(require_user)):
+    other = body.user_id
+    if other == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't message yourself.")
+    if other not in CB_CONTACT_MAP and not await db.users.find_one({"id": other}):
+        raise HTTPException(status_code=404, detail="Person not found.")
+    existing = await db.cb_conversations.find_one(
+        {"type": "dm", "participants": {"$all": [user["id"], other], "$size": 2}}, {"_id": 0}
+    )
+    if existing:
+        return await _cb_conv_summary(existing, user["id"])
+    now = datetime.now(timezone.utc).isoformat()
+    conv = {"id": uuid.uuid4().hex[:12], "type": "dm", "participants": [user["id"], other],
+            "title": "", "reads": {}, "last_message": "", "last_at": now, "created_at": now}
+    await db.cb_conversations.insert_one(dict(conv))
+    return await _cb_conv_summary(conv, user["id"])
+
+
+@api_router.post("/chatterbox/conversations/group", status_code=201)
+async def chatterbox_create_group(body: CBCreateGroup, user: dict = Depends(require_user)):
+    members = [m for m in dict.fromkeys(body.member_ids) if m != user["id"]]
+    valid = []
+    for m in members:
+        if m in CB_CONTACT_MAP or await db.users.find_one({"id": m}):
+            valid.append(m)
+    if len(valid) < 1:
+        raise HTTPException(status_code=400, detail="Add at least one other member.")
+    now = datetime.now(timezone.utc).isoformat()
+    conv = {"id": uuid.uuid4().hex[:12], "type": "group", "participants": [user["id"], *valid],
+            "title": body.title.strip(), "reads": {}, "last_message": "", "last_at": now, "created_at": now}
+    await db.cb_conversations.insert_one(dict(conv))
+    return await _cb_conv_summary(conv, user["id"])
+
+
+@api_router.get("/chatterbox/conversations/{conv_id}")
+async def chatterbox_conversation_detail(conv_id: str, user: dict = Depends(require_user)):
+    conv = await db.cb_conversations.find_one({"id": conv_id, "participants": user["id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    # Mark read.
+    await db.cb_conversations.update_one(
+        {"id": conv_id}, {"$set": {f"reads.{user['id']}": datetime.now(timezone.utc).isoformat()}}
+    )
+    msgs = await db.cb_messages.find({"conversation_id": conv_id}, {"_id": 0}).to_list(1000)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    summary = await _cb_conv_summary(conv, user["id"])
+    return {**summary, "messages": msgs, "me": user["id"]}
+
+
+@api_router.get("/chatterbox/conversations/{conv_id}/messages")
+async def chatterbox_poll(conv_id: str, user: dict = Depends(require_user), after: str = ""):
+    conv = await db.cb_conversations.find_one({"id": conv_id, "participants": user["id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    query: dict = {"conversation_id": conv_id}
+    if after:
+        query["created_at"] = {"$gt": after}
+    msgs = await db.cb_messages.find(query, {"_id": 0}).to_list(1000)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    return {"messages": msgs}
+
+
+@api_router.post("/chatterbox/conversations/{conv_id}/messages", status_code=201)
+async def chatterbox_send(conv_id: str, body: CBSendMessage, user: dict = Depends(require_user)):
+    conv = await db.cb_conversations.find_one({"id": conv_id, "participants": user["id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": uuid.uuid4().hex[:12], "conversation_id": conv_id, "sender_id": user["id"],
+           "sender_name": user["display_name"], "text": body.text.strip(), "created_at": now}
+    await db.cb_messages.insert_one(dict(msg))
+    await db.cb_conversations.update_one(
+        {"id": conv_id}, {"$set": {"last_message": body.text.strip()[:120], "last_at": now, f"reads.{user['id']}": now}}
+    )
+    # Canned auto-reply from any seeded persona participant.
+    bots = [p for p in conv["participants"] if p in CB_CONTACT_MAP]
+    if bots:
+        bot_id = bots[0]
+        persona = CB_CONTACT_MAP[bot_id]
+        reply_text = random.choice(persona["replies"])
+        reply_at = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+        reply = {"id": uuid.uuid4().hex[:12], "conversation_id": conv_id, "sender_id": bot_id,
+                 "sender_name": persona["display_name"], "text": reply_text, "created_at": reply_at}
+        await db.cb_messages.insert_one(dict(reply))
+        await db.cb_conversations.update_one(
+            {"id": conv_id}, {"$set": {"last_message": reply_text[:120], "last_at": reply_at}}
+        )
+    return {"message": msg}
 
 
 app.include_router(api_router)

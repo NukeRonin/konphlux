@@ -83,6 +83,25 @@ function RootNavigator() {
         <Stack.Screen name="brainboost/videos" />
         <Stack.Screen name="brainboost/lexicon" />
         <Stack.Screen name="brainboost/repair" />
+        <Stack.Screen name="pictureshow/index" />
+        <Stack.Screen name="pictureshow/videos" />
+        <Stack.Screen name="pictureshow/video/[id]" />
+        <Stack.Screen name="pictureshow/upload" options={{ presentation: "modal" }} />
+        <Stack.Screen name="pictureshow/channels" />
+        <Stack.Screen name="pictureshow/channel/[id]" />
+        <Stack.Screen name="pictureshow/subscriptions" />
+        <Stack.Screen name="pictureshow/playlists" />
+        <Stack.Screen name="pictureshow/playlist/[id]" />
+        <Stack.Screen name="pictureshow/ai" />
+        <Stack.Screen name="pictureshow/streamora/index" />
+        <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
+        <Stack.Screen name="pictureshow/streamora/watch" />
+        <Stack.Screen name="chatterbox/index" />
+        <Stack.Screen name="chatterbox/inbox" />
+        <Stack.Screen name="chatterbox/new" options={{ presentation: "modal" }} />
+        <Stack.Screen name="chatterbox/new-group" options={{ presentation: "modal" }} />
+        <Stack.Screen name="chatterbox/conversation/[id]" />
+        <Stack.Screen name="chatterbox/call" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

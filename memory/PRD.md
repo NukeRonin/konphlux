@@ -54,6 +54,25 @@
 - ✅ Dictionary + Thesaurus (AI, gpt-5.4) via /api/brainboost/lexicon; Repair Guy (AI) via /api/brainboost/repair; Video lessons list; AI Tutor → Chatmonger.
 - Files: frontend/app/brainboost/* (index, courses, course/[id], quizzes, quiz/[id], facts, videos, lexicon, repair), district/[slug].tsx (BRAINBOOST_ACTIONS + hub), src/api/client.ts (bb* methods), backend/server.py (BB seed + routes), backend/tests/test_brainboost.py.
 
+### 2026-06 (PictureShow video district + Streamora branch — COMPLETE; user self-testing)
+- ✅ Full PictureShow hub (/pictureshow): Theatre vs Streamora segmented layout, trending, channels, latest, quick actions. Title fits one line.
+- ✅ Streamora REMOVED as a standalone home district (get_districts + nearby now exclude slug "streamora"); it is now a branch inside PictureShow at /pictureshow/streamora (Live now / Upcoming / Recent / Clips / Go live / follow).
+- ✅ Videos: browse + category + trending sort; video detail with in-app player (expo-video), like, subscribe, save-to-playlist, related. Upload via link (/pictureshow/upload → auto-creates personal channel).
+- ✅ Channels + channel detail + subscribe; Subscriptions feed; Playlists (seed + create + add-to-playlist) + playlist detail.
+- ✅ AI Concept Studio (/pictureshow/ai): Nano Banana (gemini-3.1-flash-image-preview) poster keyframe + gpt-5.4 written storyboard for Video/Animation. Poster stored via Object Storage.
+- Backend collections: ps_videos, ps_channels, ps_playlists, ps_streams, ps_clips, ps_likes, ps_subs, ps_follows. Sample videos use Google gtv-videos-bucket MP4s; thumbnails via picsum.
+- Files: frontend/app/pictureshow/* (index, videos, video/[id], upload, channels, channel/[id], subscriptions, playlists, playlist/[id], ai, streamora/index, streamora/golive, streamora/watch), src/components/VideoPlayer.tsx, client.ts (ps*/streamora*), backend/server.py.
+- NOTE: not run through testing_agent (user opted to self-test to save credits). Backend smoke-tested via curl (hub/videos/like/subscribe/create/golive/AI concept all OK).
+
+### 2026-06 (Chatterbox messaging district — Private messaging + groups COMPLETE; user self-testing)
+- ✅ Chatterbox hub (/chatterbox): title fits one line; all 5 feature buttons functional; recent chats + unread.
+- ✅ PRIVATE MESSAGING (1:1): inbox (All/Direct/Groups filter + unread badges), new message (user search), conversation thread with send + 4s polling + read tracking. Seeded persona contacts (cb-*) send canned auto-replies so a solo account can test immediately.
+- ✅ Group chats: /chatterbox/new-group (name + multi-select members) → group thread (shows sender names).
+- ✅ Voice/Video calls: /chatterbox/call preview screen (connecting→timer, mute/speaker/cam toggles, end). Flagged in-UI that live audio/video needs an installed device build (WebRTC not available in Expo Go/preview).
+- ✅ Site-wide chat routing → unified inbox.
+- Backend collections: cb_conversations, cb_messages (reads map per conversation). Contacts are constant CB_CONTACTS (not real accounts).
+- Files: frontend/app/chatterbox/* (index, inbox, new, new-group, conversation/[id], call), client.ts (cb*), backend/server.py.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

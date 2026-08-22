@@ -29,6 +29,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** Build a public URL for a stored object path returned by the backend. */
+export function fileUrl(path: string): string {
+  return path ? `${BASE}/api/files/${path}` : "";
+}
+
 /** Upload a listing image (multipart). Returns the public file URL to store on the listing. */
 export async function uploadImage(uri: string, isWeb: boolean): Promise<string> {
   const name = `photo_${Date.now()}.jpg`;
@@ -315,6 +320,77 @@ export type BBQuizQuestion = { q: string; options: string[] };
 export type BBQuiz = { id: string; title: string; category: string; icon: string; questions: BBQuizQuestion[] };
 export type BBVideo = { id: string; title: string; topic: string; duration: string; url: string };
 
+// PictureShow
+export type PSVideoCard = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  duration: string;
+  views: number;
+  likes: number;
+  category: string;
+  channel_id: string;
+  channel_name: string;
+  channel_avatar: string;
+};
+export type PSChannelLite = { id: string; name: string; avatar: string; subscribers: number };
+export type PSHub = {
+  featured: PSVideoCard[];
+  trending: PSVideoCard[];
+  categories: string[];
+  channels: PSChannelLite[];
+  video_count: number;
+  subscriptions: number;
+  live_count: number;
+};
+export type PSVideoDetail = PSVideoCard & {
+  description: string;
+  video_url: string;
+  channel_subscribers: number;
+  liked: boolean;
+  subscribed: boolean;
+  related: PSVideoCard[];
+  my_playlists: { id: string; title: string }[];
+};
+export type PSChannel = PSChannelLite & { description: string; video_count?: number; subscribed?: boolean; videos?: PSVideoCard[] };
+export type PSPlaylistCard = { id: string; title: string; count: number; thumbnail?: string; mine?: boolean };
+export type PSStream = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  video_url: string;
+  status: "live" | "upcoming" | "recent";
+  viewers: number;
+  category: string;
+  scheduled_at: string;
+  channel_id: string;
+  channel_name: string;
+  channel_avatar: string;
+};
+export type PSStreamoraHub = {
+  live: PSStream[];
+  upcoming: PSStream[];
+  recent: PSStream[];
+  clips: (PSVideoCard & { video_url: string })[];
+  followed: { id: string; name: string; avatar: string }[];
+};
+
+// Chatterbox
+export type CBUser = { id: string; display_name: string; handle: string; avatar: string; bot: boolean };
+export type CBConvSummary = {
+  id: string;
+  type: "dm" | "group";
+  title: string;
+  avatar: string;
+  participants: CBUser[];
+  member_count: number;
+  last_message: string;
+  last_at: string;
+  unread: number;
+};
+export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string };
+export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string };
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -517,4 +593,42 @@ export const api = {
     }),
   bbRepair: (problem: string) =>
     request<{ steps: string }>("/brainboost/repair", { method: "POST", body: JSON.stringify({ problem }) }),
+
+  // PictureShow (video district + Streamora live branch)
+  psHub: () => request<PSHub>("/pictureshow"),
+  psVideos: (category?: string, sort: "recent" | "trending" = "recent") =>
+    request<{ videos: PSVideoCard[]; categories: string[] }>(
+      `/pictureshow/videos?sort=${sort}${category ? `&category=${encodeURIComponent(category)}` : ""}`,
+    ),
+  psTrending: () => request<{ videos: PSVideoCard[] }>("/pictureshow/trending"),
+  psVideo: (id: string) => request<PSVideoDetail>(`/pictureshow/videos/${id}`),
+  psLike: (id: string) => request<{ liked: boolean; likes: number }>(`/pictureshow/videos/${id}/like`, { method: "POST" }),
+  psCreateVideo: (body: { title: string; video_url: string; category: string; description: string; thumbnail?: string }) =>
+    request<PSVideoCard>("/pictureshow/videos", { method: "POST", body: JSON.stringify(body) }),
+  psChannels: () => request<PSChannel[]>("/pictureshow/channels"),
+  psChannel: (id: string) => request<PSChannel>(`/pictureshow/channels/${id}`),
+  psSubscribe: (id: string) => request<{ subscribed: boolean }>(`/pictureshow/channels/${id}/subscribe`, { method: "POST" }),
+  psSubscriptions: () => request<{ channels: PSChannelLite[]; videos: PSVideoCard[] }>("/pictureshow/subscriptions"),
+  psPlaylists: () => request<PSPlaylistCard[]>("/pictureshow/playlists"),
+  psPlaylist: (id: string) => request<{ id: string; title: string; videos: PSVideoCard[] }>(`/pictureshow/playlists/${id}`),
+  psCreatePlaylist: (title: string) => request<PSPlaylistCard>("/pictureshow/playlists", { method: "POST", body: JSON.stringify({ title }) }),
+  psPlaylistAdd: (id: string, video_id: string) =>
+    request<{ id: string; count: number }>(`/pictureshow/playlists/${id}/add`, { method: "POST", body: JSON.stringify({ video_id }) }),
+  streamoraHub: () => request<PSStreamoraHub>("/pictureshow/streamora"),
+  streamoraGoLive: (body: { title: string; category: string; when: string }) =>
+    request<PSStream>("/pictureshow/streamora/golive", { method: "POST", body: JSON.stringify(body) }),
+  streamoraFollow: (channel_id: string) =>
+    request<{ following: boolean }>(`/pictureshow/streamora/${channel_id}/follow`, { method: "POST" }),
+  psAiConcept: (body: { prompt: string; kind: "video" | "animation"; style?: string }) =>
+    request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/concept", { method: "POST", body: JSON.stringify(body) }),
+
+  // Chatterbox (private messaging + group chats)
+  cbUsers: (q?: string) => request<CBUser[]>(`/chatterbox/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  cbConversations: () => request<{ conversations: CBConvSummary[]; total_unread: number }>("/chatterbox/conversations"),
+  cbStartDm: (user_id: string) => request<CBConvSummary>("/chatterbox/conversations/dm", { method: "POST", body: JSON.stringify({ user_id }) }),
+  cbCreateGroup: (title: string, member_ids: string[]) =>
+    request<CBConvSummary>("/chatterbox/conversations/group", { method: "POST", body: JSON.stringify({ title, member_ids }) }),
+  cbConversation: (id: string) => request<CBConvDetail>(`/chatterbox/conversations/${id}`),
+  cbPoll: (id: string, after: string) => request<{ messages: CBMessage[] }>(`/chatterbox/conversations/${id}/messages?after=${encodeURIComponent(after)}`),
+  cbSend: (id: string, text: string) => request<{ message: CBMessage }>(`/chatterbox/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
 };

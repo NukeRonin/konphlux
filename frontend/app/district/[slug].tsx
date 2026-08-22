@@ -25,6 +25,8 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "sparking-dawn": { route: "/sparking-dawn", label: "Enter Sparking Dawn" },
   "author-anvil": { route: "/anvil", label: "Enter Author Anvil" },
   brainboost: { route: "/brainboost", label: "Enter BrainBoost" },
+  "pictureshow-theatre": { route: "/pictureshow", label: "Enter PictureShow" },
+  chatterbox: { route: "/chatterbox", label: "Enter Chatterbox" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -96,6 +98,29 @@ const ROUNDTABLE_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Site-wide discussion routing": { route: "/roundtable", icon: "sitemap" },
 };
 
+// PictureShow — every feature opens a real destination. Streamora is a branch.
+const PICTURESHOW_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Videos": { route: "/pictureshow/videos", icon: "movie-open" },
+  "Upload videos": { route: "/pictureshow/upload", icon: "upload" },
+  "Categories": { route: "/pictureshow/videos", icon: "shape-outline" },
+  "Streamora": { route: "/pictureshow/streamora", icon: "video-wireless" },
+  "Subscriptions": { route: "/pictureshow/subscriptions", icon: "bell-ring" },
+  "Playlists": { route: "/pictureshow/playlists", icon: "playlist-play" },
+  "Channels": { route: "/pictureshow/channels", icon: "account-group" },
+  "Trending": { route: "/pictureshow/videos", icon: "fire" },
+  "Create AI Video": { route: "/pictureshow/ai?kind=video", icon: "movie-filter" },
+  "Create AI Animation": { route: "/pictureshow/ai?kind=animation", icon: "animation-play" },
+};
+
+// Chatterbox — messaging district.
+const CHATTERBOX_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Private messaging": { route: "/chatterbox/inbox", icon: "message-text" },
+  "Group chats": { route: "/chatterbox/inbox?filter=group", icon: "account-multiple" },
+  "Voice calls": { route: "/chatterbox/new?call=voice", icon: "phone" },
+  "Video calls": { route: "/chatterbox/new?call=video", icon: "video" },
+  "Site-wide chat routing": { route: "/chatterbox/inbox", icon: "call-split" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -103,6 +128,8 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   "sparking-dawn": SPARKING_ACTIONS,
   "author-anvil": ANVIL_ACTIONS,
   brainboost: BRAINBOOST_ACTIONS,
+  "pictureshow-theatre": PICTURESHOW_ACTIONS,
+  chatterbox: CHATTERBOX_ACTIONS,
 };
 
 export default function DistrictDetail() {
