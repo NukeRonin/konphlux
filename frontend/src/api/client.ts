@@ -417,6 +417,7 @@ export type DBProject = {
   progress: number;
   is_creator: boolean;
   created_at: string;
+  category: string;
 };
 
 export const api = {
@@ -673,10 +674,13 @@ export const api = {
       review: string;
     }>(`/bluepaint/designs/${id}/review`, { method: "POST", body: JSON.stringify({ plan_width: planWidth }) }),
 
-  dbProjects: (filter: string) => request<DBProject[]>(`/dreambacker/projects?filter=${encodeURIComponent(filter)}`),
+  dbProjects: (filter: string, category?: string) => request<DBProject[]>(`/dreambacker/projects?filter=${encodeURIComponent(filter)}${category ? `&category=${encodeURIComponent(category)}` : ""}`),
   dbProject: (id: string) => request<DBProject>(`/dreambacker/projects/${id}`),
-  dbCreateProject: (data: { title: string; description: string; goal_cents: number; funding_model: DBFundingModel; deadline: string | null; cover_url: string | null; reward_tiers: { title: string; description: string; amount_cents: number }[] }) =>
+  dbCreateProject: (data: { title: string; description: string; goal_cents: number; funding_model: DBFundingModel; deadline: string | null; cover_url: string | null; reward_tiers: { title: string; description: string; amount_cents: number }[]; category: string }) =>
     request<DBProject>("/dreambacker/projects", { method: "POST", body: JSON.stringify(data) }),
+  dbEditProject: (id: string, data: { title?: string; description?: string; goal_cents?: number; cover_url?: string | null; category?: string }) =>
+    request<DBProject>(`/dreambacker/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  dbDeleteProject: (id: string) => request<{ deleted: boolean }>(`/dreambacker/projects/${id}`, { method: "DELETE" }),
   dbBackProject: (id: string, amount_cents: number, return_base: string, tier_id: string | null) =>
     request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base, tier_id }) }),
   dbContributionStatus: (session_id: string) =>
@@ -685,4 +689,6 @@ export const api = {
   dbUpdates: (id: string) => request<DBUpdate[]>(`/dreambacker/projects/${id}/updates`),
   dbCreateUpdate: (id: string, title: string, body: string) =>
     request<DBUpdate>(`/dreambacker/projects/${id}/updates`, { method: "POST", body: JSON.stringify({ title, body }) }),
+  dbAlerts: () => request<{ count: number; project_ids: string[] }>("/dreambacker/alerts"),
+  dbMarkSeen: (id: string) => request<{ ok: boolean }>(`/dreambacker/projects/${id}/seen`, { method: "POST" }),
 };

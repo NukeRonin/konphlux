@@ -48,3 +48,18 @@ export const fmtDeadline = (iso: string | null): string => {
   if (isNaN(d.getTime())) return "No deadline";
   return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 };
+
+export const DB_CATEGORIES: { key: string; label: string; icon: string }[] = [
+  { key: "art", label: "Art", icon: "palette" },
+  { key: "tech", label: "Tech", icon: "chip" },
+  { key: "community", label: "Community", icon: "account-group" },
+  { key: "games", label: "Games", icon: "controller-classic" },
+  { key: "music", label: "Music", icon: "music" },
+  { key: "film", label: "Film", icon: "movie-open" },
+  { key: "publishing", label: "Publishing", icon: "book-open-page-variant" },
+  { key: "food", label: "Food", icon: "silverware-fork-knife" },
+  { key: "fashion", label: "Fashion", icon: "tshirt-crew" },
+  { key: "other", label: "Other", icon: "shape" },
+];
+
+export const categoryMeta = (key: string) => DB_CATEGORIES.find((c) => c.key === key) ?? DB_CATEGORIES[DB_CATEGORIES.length - 1];

@@ -10,7 +10,7 @@ import { api, DBFundingModel, uploadImage } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { useTheme } from "@/src/theme/ThemeContext";
-import { FUNDING_MODELS, fmtDeadline } from "@/src/utils/dreambacker";
+import { FUNDING_MODELS, fmtDeadline, DB_CATEGORIES } from "@/src/utils/dreambacker";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -39,6 +39,7 @@ export default function NewFundraiser() {
   const [model, setModel] = useState<DBFundingModel>("all_or_nothing");
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [category, setCategory] = useState("other");
   const [tiers, setTiers] = useState<TierDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -86,6 +87,7 @@ export default function NewFundraiser() {
         deadline: deadlineISO,
         cover_url: coverUrl,
         reward_tiers,
+        category,
       });
       router.replace(`/dreambacker/${p.id}`);
     } catch {
@@ -132,6 +134,19 @@ export default function NewFundraiser() {
           <View style={[styles.goalRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             <Text style={[styles.currency, { color: colors.brand }]}>$</Text>
             <TextInput testID="new-goal" value={goal} onChangeText={setGoal} placeholder="5,000" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.goalInput, { color: colors.onSurface }]} />
+          </View>
+
+          <Text style={[styles.label, { color: colors.onSurface }]}>Category</Text>
+          <View style={styles.catWrap}>
+            {DB_CATEGORIES.map((c) => {
+              const active = category === c.key;
+              return (
+                <Pressable key={c.key} testID={`new-cat-${c.key}`} onPress={() => setCategory(c.key)} style={[styles.catChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
+                  <MaterialCommunityIcons name={c.icon as IconName} size={13} color={active ? colors.onBrandPrimary : colors.brand} />
+                  <Text style={[styles.catChipText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{c.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Text style={[styles.label, { color: colors.onSurface }]}>Describe your project</Text>
@@ -231,6 +246,9 @@ const styles = StyleSheet.create({
   tierAmountInput: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 15 },
   addTier: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 46, borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed" },
   addTierText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  catWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  catChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  catChipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   durationWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   durChip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   durChipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },

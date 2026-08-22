@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
@@ -11,7 +11,7 @@ import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
-import { FUNDING_MODELS, fmtDeadline, useCountdown } from "@/src/utils/dreambacker";
+import { FUNDING_MODELS, categoryMeta, fmtDeadline, useCountdown } from "@/src/utils/dreambacker";
 import { fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -73,6 +73,7 @@ export default function FundraiserDetail() {
       setBackerCount(b.count);
       setUpdates(u);
       setStatus("ready");
+      api.dbMarkSeen(id).catch(() => {});
     } catch {
       setStatus("error");
     }
@@ -136,6 +137,16 @@ export default function FundraiserDetail() {
     }
   };
 
+  const shareProject = async () => {
+    if (!project) return;
+    const pct = Math.round(project.progress * 100);
+    try {
+      await Share.share({
+        message: `Back "${project.title}" on Konphlux Dreambacker — ${pct}% funded of ${formatPrice(project.goal_cents)}. Help bring this dream to life!`,
+      });
+    } catch { /* user dismissed */ }
+  };
+
   if (status === "loading") return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><Loading label="Opening the fundraiser…" /></View>;
   if (status === "error" || !project) return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><ErrorState onRetry={load} /></View>;
 
@@ -149,7 +160,17 @@ export default function FundraiserDetail() {
         <Pressable onPress={() => router.back()} hitSlop={12} testID="detail-back">
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
-        <Eyebrow>Fundraiser</Eyebrow>
+        <View style={{ flex: 1 }}>
+          <Eyebrow>Fundraiser</Eyebrow>
+        </View>
+        {project.is_creator ? (
+          <Pressable testID="detail-edit" onPress={() => router.push(`/dreambacker/edit/${project.id}`)} hitSlop={8} style={styles.hdrBtn}>
+            <MaterialCommunityIcons name="pencil" size={20} color={colors.brand} />
+          </Pressable>
+        ) : null}
+        <Pressable testID="detail-share" onPress={shareProject} hitSlop={8} style={styles.hdrBtn}>
+          <MaterialCommunityIcons name="share-variant" size={20} color={colors.brand} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }} showsVerticalScrollIndicator={false}>
@@ -157,7 +178,13 @@ export default function FundraiserDetail() {
           <Image source={{ uri: project.cover_url }} style={styles.cover} contentFit="cover" transition={200} />
         ) : null}
         <Text style={[styles.title, { color: colors.onSurface }]}>{project.title}</Text>
-        <Text style={[styles.creator, { color: colors.muted }]}>by {project.creator_name}{project.is_creator ? " · you" : ""}</Text>
+        <View style={styles.creatorRow}>
+          <Text style={[styles.creator, { color: colors.muted }]}>by {project.creator_name}{project.is_creator ? " · you" : ""}</Text>
+          <View style={[styles.catChip, { backgroundColor: colors.surfaceTertiary }]}>
+            <MaterialCommunityIcons name={categoryMeta(project.category).icon as IconName} size={12} color={colors.brand} />
+            <Text style={[styles.catChipText, { color: colors.brand }]}>{categoryMeta(project.category).label}</Text>
+          </View>
+        </View>
 
         <View style={[styles.progressCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <Text style={[styles.raised, { color: colors.brand }]}>{formatPrice(project.raised_cents)}</Text>
@@ -307,7 +334,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   cover: { width: "100%", height: 190, borderRadius: radius.md, marginBottom: spacing.md },
   title: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32 },
-  creator: { fontFamily: fonts.body, fontSize: 13.5, marginTop: 4 },
+  hdrBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  creatorRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4, flexWrap: "wrap" },
+  creator: { fontFamily: fonts.body, fontSize: 13.5 },
+  catChip: { flexDirection: "row", alignItems: "center", gap: 4, height: 22, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
+  catChipText: { fontFamily: fonts.bodyBold, fontSize: 11 },
   progressCard: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.lg },
   raised: { fontFamily: fonts.display, fontSize: 28 },
   goal: { fontFamily: fonts.body, fontSize: 13, marginTop: 2 },

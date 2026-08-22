@@ -161,6 +161,15 @@ class DBProjectCreate(BaseModel):
     deadline: str | None = None
     cover_url: str | None = Field(default=None, max_length=600)
     reward_tiers: list[RewardTierIn] = Field(default_factory=list, max_length=8)
+    category: str = "other"
+
+
+class DBProjectEdit(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, min_length=10, max_length=4000)
+    goal_cents: int | None = Field(default=None, ge=100)
+    cover_url: str | None = Field(default=None, max_length=600)
+    category: str | None = None
 
 
 class DBBackBody(BaseModel):
@@ -3457,12 +3466,16 @@ async def bp_review_design(design_id: str, body: BPReviewBody, user: dict = Depe
 
 
 # ---------- Dreambacker (crowdfunding) ----------
+DB_CATEGORIES = ["art", "tech", "community", "games", "music", "film", "publishing", "food", "fashion", "other"]
+
+
 def _db_project_public(doc: dict, user_id: str) -> dict:
     d = {k: v for k, v in doc.items() if k != "_id"}
     d.setdefault("raised_cents", 0)
     d.setdefault("backer_count", 0)
     d.setdefault("cover_url", None)
     d.setdefault("reward_tiers", [])
+    d.setdefault("category", "other")
     d["progress"] = min(1.0, d["raised_cents"] / d["goal_cents"]) if d.get("goal_cents") else 0.0
     d["is_creator"] = d.get("creator_id") == user_id
     return d
@@ -3479,6 +3492,7 @@ async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_
         "backer_count": 0,
     } for t in body.reward_tiers]
     tiers.sort(key=lambda t: t["amount_cents"])
+    category = body.category if body.category in DB_CATEGORIES else "other"
     doc = {
         "id": uuid.uuid4().hex[:12],
         "creator_id": user["id"],
@@ -3490,12 +3504,49 @@ async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_
         "deadline": (body.deadline or None),
         "cover_url": (body.cover_url or None),
         "reward_tiers": tiers,
+        "category": category,
         "raised_cents": 0,
         "backer_count": 0,
         "created_at": now,
     }
     await db.db_projects.insert_one(dict(doc))
     return _db_project_public(doc, user["id"])
+
+
+@api_router.put("/dreambacker/projects/{project_id}")
+async def db_edit_project(project_id: str, body: DBProjectEdit, user: dict = Depends(require_user)):
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    if proj.get("creator_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the creator can edit this fundraiser.")
+    update: dict = {}
+    if body.title is not None:
+        update["title"] = body.title.strip()
+    if body.description is not None:
+        update["description"] = body.description.strip()
+    if body.goal_cents is not None:
+        update["goal_cents"] = body.goal_cents
+    if body.cover_url is not None:
+        update["cover_url"] = body.cover_url or None
+    if body.category is not None:
+        update["category"] = body.category if body.category in DB_CATEGORIES else "other"
+    if update:
+        await db.db_projects.update_one({"id": project_id}, {"$set": update})
+    fresh = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    return _db_project_public(fresh, user["id"])
+
+
+@api_router.delete("/dreambacker/projects/{project_id}")
+async def db_delete_project(project_id: str, user: dict = Depends(require_user)):
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    if proj.get("creator_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the creator can delete this fundraiser.")
+    await db.db_projects.delete_one({"id": project_id})
+    await db.db_updates.delete_many({"project_id": project_id})
+    return {"deleted": True}
 
 
 async def _db_recent_growth() -> dict:
@@ -3509,7 +3560,7 @@ async def _db_recent_growth() -> dict:
 
 
 @api_router.get("/dreambacker/projects")
-async def db_list_projects(filter: str = "all", user: dict = Depends(require_user)):
+async def db_list_projects(filter: str = "all", category: str = "", user: dict = Depends(require_user)):
     now = datetime.now(timezone.utc)
     query: dict = {}
     if filter == "mine":
@@ -3517,6 +3568,8 @@ async def db_list_projects(filter: str = "all", user: dict = Depends(require_use
     elif filter == "deadline":
         # Ending within the next 48 hours (and not already past).
         query = {"deadline": {"$gt": now.isoformat(), "$lte": (now + timedelta(hours=48)).isoformat()}}
+    if category and category in DB_CATEGORIES:
+        query["category"] = category
     docs = await db.db_projects.find(query, {"_id": 0}).to_list(500)
     if filter == "new":
         docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
@@ -3530,6 +3583,40 @@ async def db_list_projects(filter: str = "all", user: dict = Depends(require_use
     else:
         docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
     return [_db_project_public(d, user["id"]) for d in docs]
+
+
+@api_router.get("/dreambacker/alerts")
+async def db_alerts(user: dict = Depends(require_user)):
+    """Projects the user has backed that posted an update since the user last viewed them."""
+    contribs = await db.db_contributions.find(
+        {"user_id": user["id"], "status": "paid"}, {"_id": 0, "project_id": 1, "paid_at": 1}
+    ).to_list(2000)
+    if not contribs:
+        return {"count": 0, "project_ids": []}
+    backed: dict = {}
+    for c in contribs:
+        pid = c["project_id"]; pa = c.get("paid_at") or ""
+        if pid not in backed or pa < backed[pid]:
+            backed[pid] = pa
+    reads = await db.db_update_reads.find({"user_id": user["id"], "project_id": {"$in": list(backed)}}, {"_id": 0}).to_list(2000)
+    read_map = {r["project_id"]: r["last_seen_at"] for r in reads}
+    out = []
+    for pid, baseline in backed.items():
+        seen = read_map.get(pid) or baseline
+        newer = await db.db_updates.find_one({"project_id": pid, "created_at": {"$gt": seen}}, {"_id": 0, "id": 1})
+        if newer:
+            out.append(pid)
+    return {"count": len(out), "project_ids": out}
+
+
+@api_router.post("/dreambacker/projects/{project_id}/seen")
+async def db_mark_seen(project_id: str, user: dict = Depends(require_user)):
+    await db.db_update_reads.update_one(
+        {"user_id": user["id"], "project_id": project_id},
+        {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True}
 
 
 @api_router.get("/dreambacker/projects/{project_id}")

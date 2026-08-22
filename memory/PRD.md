@@ -94,6 +94,17 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Dreambacker phase 3 — edit, delete, share, categories, update alerts; user self-testing)
+- ✅ Edit Fundraiser: creator-only /dreambacker/edit/[id] (title, goal, cover image, category, description) → PUT /dreambacker/projects/{id} (partial; 403 for non-creators). Edit reachable from detail header (pencil) + Mine-tab cards.
+- ✅ My Fundraisers: the "Mine" tab lists all your projects; each card gets Edit + Delete buttons. Delete uses a native Alert confirmation popup → DELETE /dreambacker/projects/{id} (403 for non-creators; also removes the project's updates).
+- ✅ Share Fundraiser: detail header share button uses RN Share with a title/progress/goal message.
+- ✅ Category Tags: new DB_CATEGORIES (art/tech/community/games/music/film/publishing/food/fashion/other). Selected on create + edit; shown as a chip on cards and detail. Gallery has a second category-filter chip row (passes ?category= to the list API; browse by interest).
+- ✅ Update Alerts: db.db_update_reads tracks last-seen per user/project. GET /dreambacker/alerts returns backed projects with an update newer than last-seen (baseline = first contribution). Gallery shows a bell + count in the header and a "New update" badge on those cards. Opening a project detail calls POST /dreambacker/projects/{id}/seen to clear it.
+- Backend smoke-tested via curl: create(category), edit(title/goal/category), category filter include/exclude, alerts=0 when none backed, mark-seen 200, non-creator delete 403, creator delete 200, get-after-delete 404. Web bundle compiles clean.
+- Models: DBProjectEdit; DBProjectCreate+category. Files: frontend/app/dreambacker/{index,new,[id],edit/[id]}.tsx, src/api/client.ts (category + dbEditProject/dbDeleteProject/dbAlerts/dbMarkSeen), src/utils/dreambacker.ts (DB_CATEGORIES/categoryMeta), _layout.tsx, backend/server.py.
+- NOTE: user opted to self-test (skip automated tests).
+
+
 ### 2026-06 (Dreambacker phase 2 — reward tiers, updates, cover image, backer list, refined gallery; user self-testing)
 - ✅ Gallery/filters: tabs now All / New / Popular / Trending / Near Deadline / Mine, each with a contextual prompt banner. Popular = most backers; Trending = highest paid-contribution growth over last 7 days (_db_recent_growth); Near Deadline = ending within the next 48 hours only. Cards now show cover image (expo-image) when set, plus progress bar.
 - ✅ Reward tiers: creators add tiers (title/description/amount) on the create form; stored on project (id, amount, backer_count, sorted by amount). On the detail page backers tap a tier to select it (sets pledge amount); backing records tier_id/tier_title and increments that tier's backer_count on payment.

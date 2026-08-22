@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, DBProject } from "@/src/api/client";
@@ -10,7 +10,7 @@ import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
-import { FUNDING_MODELS, timeLeft } from "@/src/utils/dreambacker";
+import { DB_CATEGORIES, FUNDING_MODELS, categoryMeta, timeLeft } from "@/src/utils/dreambacker";
 import { fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -51,20 +51,31 @@ export default function DreambackerHome() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ filter?: string }>();
   const [filter, setFilter] = useState<string>(params.filter && FILTERS.some((f) => f.key === params.filter) ? params.filter : "all");
+  const [category, setCategory] = useState<string>("");
   const [projects, setProjects] = useState<DBProject[]>([]);
+  const [alertIds, setAlertIds] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      setProjects(await api.dbProjects(filter));
+      const [list, alerts] = await Promise.all([api.dbProjects(filter, category), api.dbAlerts().catch(() => ({ count: 0, project_ids: [] }))]);
+      setProjects(list);
+      setAlertIds(new Set(alerts.project_ids));
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, [filter]);
+  }, [filter, category]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const confirmDelete = (p: DBProject) => {
+    Alert.alert("Delete fundraiser?", `"${p.title}" and its updates will be permanently removed. This can't be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => { try { await api.dbDeleteProject(p.id); load(); } catch { /* ignore */ } } },
+    ]);
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -76,6 +87,14 @@ export default function DreambackerHome() {
           <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.headerTitle, { color: colors.onSurface }]}>Dreambacker</Text>
           <Eyebrow>Fund the improbable</Eyebrow>
         </View>
+        {alertIds.size > 0 ? (
+          <View testID="db-alert-bell" style={styles.bellWrap}>
+            <MaterialCommunityIcons name="bell-ring" size={22} color={colors.brand} />
+            <View style={[styles.bellBadge, { backgroundColor: colors.error ?? colors.brand }]}>
+              <Text style={styles.bellBadgeText}>{alertIds.size}</Text>
+            </View>
+          </View>
+        ) : null}
         <Pressable testID="db-start" onPress={() => router.push("/dreambacker/new")} style={[styles.iconBtn, { backgroundColor: colors.brand }]}>
           <MaterialCommunityIcons name="plus" size={20} color={colors.onBrandPrimary} />
         </Pressable>
@@ -101,6 +120,26 @@ export default function DreambackerHome() {
             );
           }}
         />
+        <FlatList
+          horizontal
+          data={[{ key: "", label: "All", icon: "shape-outline" }, ...DB_CATEGORIES]}
+          keyExtractor={(c) => c.key || "all-cat"}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.catFilterRow}
+          renderItem={({ item }) => {
+            const active = category === item.key;
+            return (
+              <Pressable
+                testID={`db-cat-${item.key || "all"}`}
+                onPress={() => setCategory(item.key)}
+                style={[styles.catFilterChip, { backgroundColor: active ? colors.surfaceTertiary : "transparent", borderColor: active ? colors.brand : colors.border }]}
+              >
+                <MaterialCommunityIcons name={item.icon as IconName} size={13} color={active ? colors.brand : colors.muted} />
+                <Text style={[styles.catFilterText, { color: active ? colors.brand : colors.muted }]}>{item.label}</Text>
+              </Pressable>
+            );
+          }}
+        />
       </View>
 
       <FlatList
@@ -116,19 +155,33 @@ export default function DreambackerHome() {
         }
         renderItem={({ item }) => {
           const fm = FUNDING_MODELS[item.funding_model];
+          const cat = categoryMeta(item.category);
+          const hasNew = alertIds.has(item.id);
           return (
-            <Pressable testID={`db-project-${item.id}`} onPress={() => router.push(`/dreambacker/${item.id}`)} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <Pressable testID={`db-project-${item.id}`} onPress={() => router.push(`/dreambacker/${item.id}`)} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: hasNew ? colors.brand : colors.border }]}>
               {item.cover_url ? (
                 <Image source={{ uri: item.cover_url }} style={styles.cover} contentFit="cover" transition={200} />
               ) : null}
               <View style={styles.cardBody}>
                 <View style={styles.cardTopRow}>
-                  <View style={[styles.fmBadge, { backgroundColor: colors.surfaceTertiary }]}>
-                    <MaterialCommunityIcons name={fm.icon as IconName} size={12} color={colors.brand} />
-                    <Text style={[styles.fmBadgeText, { color: colors.brand }]}>{fm.label}</Text>
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.fmBadge, { backgroundColor: colors.surfaceTertiary }]}>
+                      <MaterialCommunityIcons name={fm.icon as IconName} size={12} color={colors.brand} />
+                      <Text style={[styles.fmBadgeText, { color: colors.brand }]}>{fm.label}</Text>
+                    </View>
+                    <View style={[styles.fmBadge, { backgroundColor: colors.surfaceTertiary }]}>
+                      <MaterialCommunityIcons name={cat.icon as IconName} size={12} color={colors.muted} />
+                      <Text style={[styles.fmBadgeText, { color: colors.muted }]}>{cat.label}</Text>
+                    </View>
                   </View>
                   <Countdown deadline={item.deadline} color={colors.brand} muted={colors.muted} />
                 </View>
+                {hasNew ? (
+                  <View style={[styles.newBadge, { backgroundColor: colors.brand }]}>
+                    <MaterialCommunityIcons name="bell-ring" size={11} color={colors.onBrandPrimary} />
+                    <Text style={[styles.newBadgeText, { color: colors.onBrandPrimary }]}>New update</Text>
+                  </View>
+                ) : null}
                 <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{item.title}</Text>
                 <Text style={[styles.cardCreator, { color: colors.muted }]}>by {item.creator_name}</Text>
 
@@ -139,6 +192,19 @@ export default function DreambackerHome() {
                   <Text style={[styles.raised, { color: colors.onSurface }]}>{formatPrice(item.raised_cents)}</Text>
                   <Text style={[styles.goal, { color: colors.muted }]}>of {formatPrice(item.goal_cents)} · {item.backer_count} backers</Text>
                 </View>
+
+                {filter === "mine" ? (
+                  <View style={[styles.mineActions, { borderTopColor: colors.border }]}>
+                    <Pressable testID={`db-edit-${item.id}`} onPress={() => router.push(`/dreambacker/edit/${item.id}`)} style={styles.mineBtn}>
+                      <MaterialCommunityIcons name="pencil" size={16} color={colors.brand} />
+                      <Text style={[styles.mineBtnText, { color: colors.brand }]}>Edit</Text>
+                    </Pressable>
+                    <Pressable testID={`db-delete-${item.id}`} onPress={() => confirmDelete(item)} style={styles.mineBtn}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={16} color={colors.error ?? colors.muted} />
+                      <Text style={[styles.mineBtnText, { color: colors.error ?? colors.muted }]}>Delete</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           );
@@ -162,9 +228,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 22 },
   iconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  filterRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  bellWrap: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
+  bellBadge: { position: "absolute", top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: "center", justifyContent: "center" },
+  bellBadgeText: { color: "#fff", fontFamily: fonts.bodyBold, fontSize: 10 },
+  filterRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   filterChip: { height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   filterText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  catFilterRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm },
+  catFilterChip: { flexDirection: "row", alignItems: "center", gap: 4, height: 30, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  catFilterText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   prompt: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   promptText: { flex: 1, fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
@@ -172,8 +244,11 @@ const styles = StyleSheet.create({
   cover: { width: "100%", height: 140 },
   cardBody: { padding: spacing.md, gap: spacing.xs },
   cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  badgeRow: { flexDirection: "row", gap: 6, flexShrink: 1 },
   fmBadge: { flexDirection: "row", alignItems: "center", gap: 4, height: 22, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
   fmBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
+  newBadge: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 4, height: 20, paddingHorizontal: spacing.sm, borderRadius: radius.pill, marginTop: 6 },
+  newBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
   metaChip: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaChipText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
   cardTitle: { fontFamily: fonts.displaySemi, fontSize: 17, marginTop: 4, lineHeight: 22 },
@@ -183,5 +258,8 @@ const styles = StyleSheet.create({
   cardStatsRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm, marginTop: spacing.xs },
   raised: { fontFamily: fonts.displaySemi, fontSize: 16 },
   goal: { fontFamily: fonts.body, fontSize: 12.5 },
+  mineActions: { flexDirection: "row", gap: spacing.lg, borderTopWidth: 1, marginTop: spacing.sm, paddingTop: spacing.sm },
+  mineBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4 },
+  mineBtnText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1 },
 });
