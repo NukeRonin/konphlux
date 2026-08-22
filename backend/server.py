@@ -354,7 +354,7 @@ DISTRICTS = [
      "tagline": "Every conversation, one inbox.",
      "description": "Private messages, group chats and calls. Conversations begun anywhere on the site continue here.",
      "chatmonger": {"name": "Alicia", "role": "Switchboard", "greeting": "I'll connect you. Voice, video or written word?"},
-     "features": ["Private messaging", "Group chats", "Voice calls", "Video calls", "Site-wide chat routing"]},
+     "features": ["Private messaging", "Group chats", "Voice calls", "Video calls"]},
     {"slug": "entrepreneur-lobby", "name": "Entrepreneur Lobby", "icon": "office-building",
      "tagline": "Workspaces for working companies.",
      "description": "Team messaging, projects, tasks and voice channels for businesses.",

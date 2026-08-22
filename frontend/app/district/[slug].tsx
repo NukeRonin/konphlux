@@ -118,7 +118,6 @@ const CHATTERBOX_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Group chats": { route: "/chatterbox/inbox?filter=group", icon: "account-multiple" },
   "Voice calls": { route: "/chatterbox/new?call=voice", icon: "phone" },
   "Video calls": { route: "/chatterbox/new?call=video", icon: "video" },
-  "Site-wide chat routing": { route: "/chatterbox/inbox", icon: "call-split" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
