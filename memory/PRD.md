@@ -153,6 +153,12 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Retrospections — Business Status hub; user self-testing)
+- ✅ **Business Status hub** (/retrospections/status, clipboard-pulse icon in hub header): 4 tabbed sections — Opening Soon, Recently Opened, Health (inspection grades A/B/C + score + date), Temporary Closures (with reopen date). Cards show image, category, status date phrasing ("Opens in 10 days", "Opened 5 days ago", "Reopens in 6 days", "inspected 3 days ago") + note; tap → business detail. Accepts ?tab=opening|recent|health|closures.
+- Backend: GET /retrospections/status computes live dates from status_days/days_ago offsets (stays "real-time" regardless of seed time). Business docs gained status/status_days/status_note + inspection{grade,score,days_ago,note}. Added 2 opening-soon businesses (rb-11/12) EXCLUDED from normal browse + nearby (status!=opening_soon filter). _retro_public now returns status. Seed applies RETRO_UPCOMING + RETRO_STATUS + RETRO_INSPECTIONS idempotently.
+- Wiring: district "Opening Soon"/"Recently Opened"/"Health Inspection Updates" feature buttons → status?tab=…; hub header button opens the hub. Route registered.
+- Curl-verified: 4 sections populated (2/2/2/4), browse still returns 10 (opening-soon hidden). Lint clean. Files: backend/server.py, frontend app/retrospections/{status,index}.tsx, src/api/client.ts (RetroStatus types + retroStatus), app/_layout.tsx, app/district/[slug].tsx.
+
 ### 2026-06 (Retrospections — Review System with categories + nearby map; user self-testing)
 - ✅ **Review System**: browse businesses by category (Restaurants, Cafés, Retail, Services, Entertainment, Health) with search; each shows image, category pill, star rating, review count, address. Business detail (/retrospections/business/[id]): hero, live avg rating, reviews list, and inline "Rate this place" form (1–5★ + optional text; one review per user, 409 on dup).
 - ✅ **Submit a Review** (/retrospections/submit): "Find a place" (search existing → detail to review) or "Add a new place" (name + category + address + description + optional "Use my location" via expo-location) → creates the business then opens its detail to leave the first review.

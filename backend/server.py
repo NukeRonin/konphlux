@@ -780,6 +780,33 @@ RETRO_BUSINESSES = [
      "description": "Late-night teas, cordials and quiet corners for reading.", "image": f"{_RIMG}1495474472287-4d71bcdd2085?w=800&q=80", "base_rating": 4.5, "base_reviews": 97},
 ]
 
+# Upcoming businesses (Opening Soon) — listed in the Business Status hub before they open.
+RETRO_UPCOMING = [
+    {"id": "rb-11", "name": "The Gilded Fork", "category": "Restaurants", "address": "7 Lantern Row", "lat": 40.7606, "lng": -73.9835,
+     "description": "An ambitious new supper club of brass and candlelight.", "image": f"{_RIMG}1414235077428-338989a2e8c0?w=800&q=80", "base_rating": 0.0, "base_reviews": 0,
+     "status": "opening_soon", "status_days": 10, "status_note": "Grand opening next week."},
+    {"id": "rb-12", "name": "Vellum & Vine Bookshop", "category": "Retail", "address": "22 Quill Court", "lat": 40.7549, "lng": -73.9887,
+     "description": "Rare books, maps and a quiet wine nook.", "image": f"{_RIMG}1521587760476-6c12a4b040da?w=800&q=80", "base_rating": 0.0, "base_reviews": 0,
+     "status": "opening_soon", "status_days": 21, "status_note": "Coming later this month."},
+]
+
+# status_days: +future for opening/reopening, -past for recently opened.
+RETRO_STATUS = {
+    "rb-1": {"status": "temporary_closure", "status_days": 6, "status_note": "Closed for a kitchen refurbishment."},
+    "rb-9": {"status": "temporary_closure", "status_days": 3, "status_note": "Brief staff holiday — back soon."},
+    "rb-3": {"status": "recently_opened", "status_days": -5, "status_note": "Now open on Rivet Street."},
+    "rb-8": {"status": "recently_opened", "status_days": -12, "status_note": "New flagship store."},
+}
+
+# Health inspection updates (days_ago in the past).
+RETRO_INSPECTIONS = {
+    "rb-2": {"grade": "A", "score": 96, "days_ago": 3, "note": "Excellent hygiene throughout."},
+    "rb-5": {"grade": "A", "score": 92, "days_ago": 2, "note": "Clean, well-maintained venue."},
+    "rb-6": {"grade": "A", "score": 98, "days_ago": 1, "note": "Spotless — exemplary practices."},
+    "rb-7": {"grade": "B", "score": 84, "days_ago": 6, "note": "Good; minor cold-storage notes."},
+}
+
+
 
 
 def _portrait(pid: str) -> str:
@@ -1430,6 +1457,12 @@ async def seed():
     # Retrospections seeded businesses (idempotent; keep fields synced).
     for b in RETRO_BUSINESSES:
         await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)
+    for b in RETRO_UPCOMING:
+        await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)
+    for bid, st in RETRO_STATUS.items():
+        await db.retro_businesses.update_one({"id": bid}, {"$set": dict(st)})
+    for bid, insp in RETRO_INSPECTIONS.items():
+        await db.retro_businesses.update_one({"id": bid}, {"$set": {"inspection": dict(insp)}})
     # Sparking Dawn seeded profiles (idempotent).
     for p in DATING_PROFILES:
         if not await db.dating_profiles.find_one({"user_id": p["user_id"]}):
@@ -4545,6 +4578,7 @@ async def _retro_public(b: dict) -> dict:
         "lat": b.get("lat"), "lng": b.get("lng"),
         "avg_rating": round(avg, 1), "review_count": total_n,
         "owner_id": b.get("owner_id", ""),
+        "status": b.get("status", "open"),
     }
 
 
@@ -4557,7 +4591,7 @@ async def retro_meta(user: dict = Depends(require_user)):
 async def retro_businesses(category: str = "", q: str = "",
                            lat: float | None = None, lng: float | None = None,
                            user: dict = Depends(require_user)):
-    query: dict = {}
+    query: dict = {"status": {"$ne": "opening_soon"}}
     if category and category != "All":
         query["category"] = category
     if q.strip():
@@ -4621,7 +4655,7 @@ async def retro_add_review(business_id: str, body: RetroReviewBody, user: dict =
 
 @api_router.get("/retrospections/nearby")
 async def retro_nearby(lat: float, lng: float, user: dict = Depends(require_user)):
-    docs = await db.retro_businesses.find({}, {"_id": 0}).to_list(500)
+    docs = await db.retro_businesses.find({"status": {"$ne": "opening_soon"}}, {"_id": 0}).to_list(500)
     out = []
     for b in docs:
         o = await _retro_public(b)
@@ -4631,6 +4665,47 @@ async def retro_nearby(lat: float, lng: float, user: dict = Depends(require_user
         out.append(o)
     out.sort(key=lambda x: x["distance_km"])
     return {"center": {"lat": lat, "lng": lng}, "businesses": out}
+
+
+@api_router.get("/retrospections/status")
+async def retro_status(user: dict = Depends(require_user)):
+    """Real-time business status hub: opening soon, recently opened,
+    health inspection updates and temporary closures."""
+    now = datetime.now(timezone.utc)
+    docs = await db.retro_businesses.find({}, {"_id": 0}).to_list(1000)
+
+    def _base(b: dict) -> dict:
+        return {"id": b["id"], "name": b["name"], "category": b["category"],
+                "address": b.get("address", ""), "image": b.get("image", "")}
+
+    opening_soon, recently_opened, closures, inspections = [], [], [], []
+    for b in docs:
+        st = b.get("status", "open")
+        days = int(b.get("status_days", 0) or 0)
+        note = b.get("status_note", "")
+        if st == "opening_soon":
+            item = _base(b); item["date"] = (now + timedelta(days=days)).isoformat(); item["days"] = days; item["note"] = note
+            opening_soon.append(item)
+        elif st == "recently_opened":
+            item = _base(b); item["date"] = (now + timedelta(days=days)).isoformat(); item["days"] = days; item["note"] = note
+            recently_opened.append(item)
+        elif st == "temporary_closure":
+            item = _base(b); item["date"] = (now + timedelta(days=days)).isoformat() if days else None; item["days"] = days; item["note"] = note
+            closures.append(item)
+        insp = b.get("inspection")
+        if insp:
+            item = _base(b)
+            item.update({"grade": insp.get("grade", ""), "score": insp.get("score", 0),
+                         "date": (now - timedelta(days=int(insp.get("days_ago", 0) or 0))).isoformat(),
+                         "note": insp.get("note", "")})
+            inspections.append(item)
+
+    opening_soon.sort(key=lambda x: x["days"])
+    recently_opened.sort(key=lambda x: x["days"], reverse=True)  # most recent first (days negative)
+    closures.sort(key=lambda x: (x["days"] is None, x["days"] or 0))
+    inspections.sort(key=lambda x: x["date"], reverse=True)
+    return {"opening_soon": opening_soon, "recently_opened": recently_opened,
+            "closures": closures, "inspections": inspections}
 
 
 

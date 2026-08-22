@@ -49,6 +49,9 @@ export default function RetrospectionsHub() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Retrospections</Text>
           <Eyebrow>Reviews near you</Eyebrow>
         </View>
+        <Pressable onPress={() => router.push("/retrospections/status")} hitSlop={10} style={styles.iconBtn} testID="retro-status">
+          <MaterialCommunityIcons name="clipboard-pulse-outline" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable onPress={() => router.push("/retrospections/map")} hitSlop={10} style={styles.iconBtn} testID="retro-map">
           <MaterialCommunityIcons name="map-search-outline" size={22} color={colors.onSurface} />
         </Pressable>

@@ -189,6 +189,9 @@ const RETRO_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Review Categories": { route: "/retrospections", icon: "shape" },
   "Browse nearby": { route: "/retrospections/map", icon: "map-search-outline" },
   "Save favourite places": { route: "/saved", icon: "heart-outline" },
+  "Opening Soon": { route: "/retrospections/status?tab=opening", icon: "storefront-outline" },
+  "Recently Opened": { route: "/retrospections/status?tab=recent", icon: "storefront-check-outline" },
+  "Health Inspection Updates": { route: "/retrospections/status?tab=health", icon: "clipboard-pulse-outline" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

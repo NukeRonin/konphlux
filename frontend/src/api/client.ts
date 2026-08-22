@@ -569,6 +569,8 @@ export type EventionList = { id: string; title: string; items: EventionListItem[
 export type Contract = { id: string; offer_id: string; conversation_id: string; client_id: string; client_name: string; freelancer_id: string; freelancer_name: string; title: string; rate_text: string; note: string; status: string; accepted_at: string; role?: string };
 
 export type RetroReview = { id: string; business_id: string; user_id: string; author_name: string; rating: number; text: string; created_at: string };
+export type RetroStatusItem = { id: string; name: string; category: string; address: string; image: string; date?: string | null; days?: number; note?: string; grade?: string; score?: number };
+export type RetroStatus = { opening_soon: RetroStatusItem[]; recently_opened: RetroStatusItem[]; closures: RetroStatusItem[]; inspections: RetroStatusItem[] };
 export type RetroBusiness = {
   id: string; name: string; category: string; address: string; description: string; image: string;
   lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
@@ -964,4 +966,5 @@ export const api = {
   retroAddReview: (businessId: string, body: { rating: number; text?: string }) =>
     request<RetroReview>(`/retrospections/businesses/${businessId}/reviews`, { method: "POST", body: JSON.stringify(body) }),
   retroNearby: (lat: number, lng: number) => request<{ center: { lat: number; lng: number }; businesses: RetroBusiness[] }>(`/retrospections/nearby?lat=${lat}&lng=${lng}`),
+  retroStatus: () => request<RetroStatus>("/retrospections/status"),
 };
