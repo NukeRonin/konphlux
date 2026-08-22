@@ -587,6 +587,11 @@ export type Transaction = {
 export type WalletSummary = {
   balance_cents: number; total_in_cents: number; total_out_cents: number; payments_count: number; transfers_count: number;
 };
+export type WorkspaceMember = { user_id: string; name: string; handle: string; role: string };
+export type Workspace = {
+  id: string; name: string; description: string; owner_id: string; owner_name: string;
+  is_owner: boolean; member_count: number; members: WorkspaceMember[]; created_at: string;
+};
 export type TrackerEntry = { id: string; source: string; title: string; subtitle: string; amount_cents: number; link: string; created_at: string };
 export type Trackers = {
   sections: { dreambacker: TrackerEntry[]; bazaar: TrackerEntry[]; waypoint: TrackerEntry[]; retrospections: TrackerEntry[] };
@@ -1007,4 +1012,10 @@ export const api = {
   treasurySetSecurity: (method: string, pin?: string) => request<{ method: string; has_pin: boolean }>("/treasury/security", { method: "PUT", body: JSON.stringify({ method, pin: pin ?? null }) }),
   treasuryVerifyPin: (pin: string) => request<{ verified: boolean }>("/treasury/security/verify-pin", { method: "POST", body: JSON.stringify({ pin }) }),
   retroRecordDeal: (listingId: string) => request<TrackerEntry>(`/retrospections/listings/${listingId}/deal`, { method: "POST" }),
+  lobbyWorkspaces: () => request<Workspace[]>("/lobby/workspaces"),
+  lobbyCreateWorkspace: (name: string, description: string) => request<Workspace>("/lobby/workspaces", { method: "POST", body: JSON.stringify({ name, description }) }),
+  lobbyWorkspace: (id: string) => request<Workspace>(`/lobby/workspaces/${id}`),
+  lobbyDeleteWorkspace: (id: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}`, { method: "DELETE" }),
+  lobbyAddMember: (id: string, recipient: string) => request<WorkspaceMember>(`/lobby/workspaces/${id}/members`, { method: "POST", body: JSON.stringify({ recipient }) }),
+  lobbyRemoveMember: (id: string, memberId: string) => request<{ removed: boolean }>(`/lobby/workspaces/${id}/members/${memberId}`, { method: "DELETE" }),
 };

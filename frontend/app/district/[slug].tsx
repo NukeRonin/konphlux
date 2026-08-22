@@ -33,6 +33,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "evention-center": { route: "/evention", label: "Open the Calendar" },
   retrospections: { route: "/retrospections", label: "Enter Retrospections" },
   treasury: { route: "/treasury", label: "Open Konphlux Balance" },
+  "entrepreneur-lobby": { route: "/lobby", label: "Open Workspaces" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -212,6 +213,12 @@ const TREASURY_ACTIONS: Record<string, { route: string; icon: IconName }> = {
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   retrospections: RETRO_ACTIONS,
   treasury: TREASURY_ACTIONS,
+  "entrepreneur-lobby": {
+    "Business workspaces": { route: "/lobby", icon: "office-building" },
+    "Add Workspace": { route: "/lobby", icon: "plus-box" },
+    "Add Teammates": { route: "/lobby", icon: "account-multiple-plus" },
+    "My Team": { route: "/lobby", icon: "account-group" },
+  },
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
   bazaar: BAZAAR_ACTIONS,

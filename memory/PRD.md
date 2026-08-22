@@ -153,6 +153,13 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Entrepreneur Lobby — Business Workspaces & Teams; user self-testing)
+- ✅ **Workspaces** (/lobby): create business workspaces (name + description), delete (owner only, with confirm), list of workspaces you own or belong to (shows member count + your role).
+- ✅ **Workspace detail / My Team** (/lobby/[id]): owner can add teammates by email or @handle and remove them; "My Team" lists everyone with Owner/Member role tags + avatars. Owner can't be removed; duplicate add → 409; non-owner can't add/remove/delete.
+- Backend: collection workspaces {id, owner_id, owner_name, name, description, members:[{user_id,name,handle,role}]}. Endpoints GET/POST /lobby/workspaces, GET/DELETE /lobby/workspaces/{id}, POST /lobby/workspaces/{id}/members, DELETE /lobby/workspaces/{id}/members/{member_id}. Owner auto-added as first member on create; _find_member resolves email/@handle. Models WorkspaceBody, MemberBody.
+- Wiring: DISTRICT_HUBS entrepreneur-lobby→/lobby; ACTIONS "Business workspaces"/"Add Workspace"/"Add Teammates"/"My Team"→/lobby. Routes registered.
+- Curl-verified: create, add member, dup-409, My Team list, member sees workspace (is_owner false), non-owner delete 404, remove member, owner-remove 400, delete workspace. Lint + bundle clean. Files: backend/server.py, frontend app/lobby/{index,[id]}.tsx, src/api/client.ts, app/_layout.tsx, app/district/[slug].tsx.
+
 ### 2026-06 (Treasury — Security Settings: PIN + Biometric lock gate; user self-testing)
 - ✅ **Security Settings** (/treasury/security, shield icon in Treasury dashboard header): choose entry method — Neither / PIN only / Biometrics only / PIN + Biometrics. Set/change 4–6 digit PIN (with confirm). Shows a note when biometrics unavailable on the device/preview.
 - ✅ **Lock gate** (src/components/TreasuryGate.tsx) wraps /treasury/index AND /treasury/trackers: on opening the district it checks the user's method and requires verification — biometric prompt (expo-local-authentication) and/or a numeric PIN keypad. "both" requires biometric then PIN. In-memory unlock TTL 90s (src/utils/treasuryLock.ts) so brief in-district navigation doesn't re-nag; re-locks after leaving/timeout and on settings change. Graceful fallbacks: web/Expo Go without biometrics shows a Continue path (biometric can't be verified there); "both" falls back to PIN when biometrics unavailable.

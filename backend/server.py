@@ -550,6 +550,15 @@ class PinVerifyBody(BaseModel):
     pin: str = Field(min_length=4, max_length=6)
 
 
+class WorkspaceBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=300)
+
+
+class MemberBody(BaseModel):
+    recipient: str = Field(min_length=1, max_length=120)  # email or @handle
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -5142,6 +5151,92 @@ async def treasury_verify_pin(body: PinVerifyBody, user: dict = Depends(require_
     await db.treasury_security.update_one({"user_id": user["id"]},
         {"$set": {"failed_pin_attempts": 0, "pin_locked_until": None}})
     return {"verified": True}
+
+
+# ----- Entrepreneur Lobby: Business Workspaces & Teams -----
+def _ws_public(ws: dict, user_id: str) -> dict:
+    members = ws.get("members", [])
+    return {
+        "id": ws["id"], "name": ws["name"], "description": ws.get("description", ""),
+        "owner_id": ws["owner_id"], "owner_name": ws.get("owner_name", ""),
+        "is_owner": ws["owner_id"] == user_id,
+        "member_count": len(members), "members": members,
+        "created_at": ws.get("created_at", ""),
+    }
+
+
+async def _find_member(recipient: str) -> dict | None:
+    key = recipient.strip()
+    handle = key if key.startswith("@") else f"@{key}"
+    return await db.users.find_one({"$or": [{"email": key.lower()}, {"handle": handle}, {"handle": key}]})
+
+
+@api_router.get("/lobby/workspaces")
+async def lobby_workspaces(user: dict = Depends(require_user)):
+    docs = await db.workspaces.find(
+        {"members.user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(300)
+    return [_ws_public(w, user["id"]) for w in docs]
+
+
+@api_router.post("/lobby/workspaces", status_code=201)
+async def lobby_create_workspace(body: WorkspaceBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12], "owner_id": user["id"], "owner_name": user.get("display_name", "Owner"),
+        "name": body.name.strip(), "description": body.description.strip(),
+        "members": [{"user_id": user["id"], "name": user.get("display_name", "Owner"),
+                     "handle": user.get("handle", ""), "role": "owner"}],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.workspaces.insert_one(dict(doc))
+    return _ws_public(doc, user["id"])
+
+
+@api_router.get("/lobby/workspaces/{ws_id}")
+async def lobby_workspace_detail(ws_id: str, user: dict = Depends(require_user)):
+    ws = await db.workspaces.find_one({"id": ws_id, "members.user_id": user["id"]}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return _ws_public(ws, user["id"])
+
+
+@api_router.delete("/lobby/workspaces/{ws_id}")
+async def lobby_delete_workspace(ws_id: str, user: dict = Depends(require_user)):
+    res = await db.workspaces.delete_one({"id": ws_id, "owner_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Workspace not found or you're not the owner")
+    return {"deleted": True}
+
+
+@api_router.post("/lobby/workspaces/{ws_id}/members", status_code=201)
+async def lobby_add_member(ws_id: str, body: MemberBody, user: dict = Depends(require_user)):
+    ws = await db.workspaces.find_one({"id": ws_id}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if ws["owner_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can add teammates")
+    member = await _find_member(body.recipient)
+    if not member:
+        raise HTTPException(status_code=404, detail="No Konphlux member found for that email or handle")
+    if any(m["user_id"] == member["id"] for m in ws.get("members", [])):
+        raise HTTPException(status_code=409, detail="They're already in this workspace")
+    entry = {"user_id": member["id"], "name": member.get("display_name", "Teammate"),
+             "handle": member.get("handle", ""), "role": "member"}
+    await db.workspaces.update_one({"id": ws_id}, {"$push": {"members": entry}})
+    return entry
+
+
+@api_router.delete("/lobby/workspaces/{ws_id}/members/{member_id}")
+async def lobby_remove_member(ws_id: str, member_id: str, user: dict = Depends(require_user)):
+    ws = await db.workspaces.find_one({"id": ws_id}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if ws["owner_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can remove teammates")
+    if member_id == ws["owner_id"]:
+        raise HTTPException(status_code=400, detail="The owner can't be removed")
+    await db.workspaces.update_one({"id": ws_id}, {"$pull": {"members": {"user_id": member_id}}})
+    return {"removed": True}
+
 
 
 
