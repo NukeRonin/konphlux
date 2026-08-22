@@ -1,11 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
-import { api, DBProject } from "@/src/api/client";
+import { api, DBBacker, DBProject, DBUpdate } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { ErrorState, Loading } from "@/src/components/States";
@@ -49,16 +50,28 @@ export default function FundraiserDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [project, setProject] = useState<DBProject | null>(null);
+  const [backers, setBackers] = useState<DBBacker[]>([]);
+  const [backerCount, setBackerCount] = useState(0);
+  const [updates, setUpdates] = useState<DBUpdate[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [amount, setAmount] = useState("25");
+  const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState("");
+  const [showUpdate, setShowUpdate] = useState(false);
+  const [upTitle, setUpTitle] = useState("");
+  const [upBody, setUpBody] = useState("");
+  const [posting, setPosting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setStatus("loading");
-      setProject(await api.dbProject(id));
+      const [p, b, u] = await Promise.all([api.dbProject(id), api.dbBackers(id), api.dbUpdates(id)]);
+      setProject(p);
+      setBackers(b.backers);
+      setBackerCount(b.count);
+      setUpdates(u);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -68,6 +81,12 @@ export default function FundraiserDetail() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const amountCents = Math.round((parseFloat(amount.replace(/[^0-9.]/g, "")) || 0) * 100);
+
+  const selectTier = (tierId: string, tierAmountCents: number) => {
+    setSelectedTier(tierId);
+    setAmount(String(tierAmountCents / 100));
+    setNotice("");
+  };
 
   const pollStatus = async (sessionId: string) => {
     for (let i = 0; i < 8; i++) {
@@ -85,7 +104,7 @@ export default function FundraiserDetail() {
     setPaying(true);
     setNotice("");
     try {
-      const { checkout_url, session_id } = await api.dbBackProject(project.id, amountCents, RETURN_BASE);
+      const { checkout_url, session_id } = await api.dbBackProject(project.id, amountCents, RETURN_BASE, selectedTier);
       await WebBrowser.openBrowserAsync(checkout_url);
       const paid = await pollStatus(session_id);
       if (paid) {
@@ -98,6 +117,22 @@ export default function FundraiserDetail() {
       setNotice("Couldn't start the contribution. Please try again.");
     } finally {
       setPaying(false);
+    }
+  };
+
+  const postUpdate = async () => {
+    if (!project || posting || upTitle.trim().length < 3 || upBody.trim().length < 5) return;
+    setPosting(true);
+    try {
+      await api.dbCreateUpdate(project.id, upTitle.trim(), upBody.trim());
+      setUpTitle("");
+      setUpBody("");
+      setShowUpdate(false);
+      setUpdates(await api.dbUpdates(project.id));
+    } catch {
+      /* ignore */
+    } finally {
+      setPosting(false);
     }
   };
 
@@ -118,6 +153,9 @@ export default function FundraiserDetail() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }} showsVerticalScrollIndicator={false}>
+        {project.cover_url ? (
+          <Image source={{ uri: project.cover_url }} style={styles.cover} contentFit="cover" transition={200} />
+        ) : null}
         <Text style={[styles.title, { color: colors.onSurface }]}>{project.title}</Text>
         <Text style={[styles.creator, { color: colors.muted }]}>by {project.creator_name}{project.is_creator ? " · you" : ""}</Text>
 
@@ -156,12 +194,83 @@ export default function FundraiserDetail() {
           </View>
         </View>
 
+        {project.reward_tiers && project.reward_tiers.length > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Reward tiers</Text>
+            {project.reward_tiers.map((t) => {
+              const active = selectedTier === t.id;
+              return (
+                <Pressable key={t.id} testID={`detail-tier-${t.id}`} onPress={() => selectTier(t.id, t.amount_cents)} style={[styles.tier, { backgroundColor: colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border, borderWidth: active ? 2 : 1 }]}>
+                  <View style={styles.tierTop}>
+                    <Text style={[styles.tierAmount, { color: colors.brand }]}>{formatPrice(t.amount_cents)}+</Text>
+                    <MaterialCommunityIcons name={active ? "check-circle" : "circle-outline"} size={20} color={active ? colors.brand : colors.muted} />
+                  </View>
+                  <Text style={[styles.tierTitle, { color: colors.onSurface }]}>{t.title}</Text>
+                  {t.description ? <Text style={[styles.tierDesc, { color: colors.muted }]}>{t.description}</Text> : null}
+                  <Text style={[styles.tierBackers, { color: colors.muted }]}>{t.backer_count} {t.backer_count === 1 ? "backer" : "backers"}</Text>
+                </Pressable>
+              );
+            })}
+          </>
+        ) : null}
+
         <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>About this project</Text>
         <Text style={[styles.description, { color: colors.onSurface }]}>{project.description}</Text>
+
+        <View style={styles.updatesHead}>
+          <Text style={[styles.sectionTitle, { color: colors.onSurface, marginTop: 0 }]}>Updates</Text>
+          {project.is_creator ? (
+            <Pressable testID="detail-post-update" onPress={() => setShowUpdate(true)} style={[styles.postBtn, { borderColor: colors.brand }]}>
+              <MaterialCommunityIcons name="plus" size={15} color={colors.brand} />
+              <Text style={[styles.postBtnText, { color: colors.brand }]}>Post</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {updates.length === 0 ? (
+          <Text style={[styles.emptyLine, { color: colors.muted }]}>No updates yet. Backers will see progress here.</Text>
+        ) : (
+          updates.map((u) => (
+            <View key={u.id} style={[styles.update, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <Text style={[styles.updateTitle, { color: colors.onSurface }]}>{u.title}</Text>
+              <Text style={[styles.updateMeta, { color: colors.muted }]}>{u.author_name} · {fmtDeadline(u.created_at)}</Text>
+              <Text style={[styles.updateBody, { color: colors.onSurface }]}>{u.body}</Text>
+            </View>
+          ))
+        )}
+
+        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Backers{backerCount ? ` (${backerCount})` : ""}</Text>
+        {backers.length === 0 ? (
+          <Text style={[styles.emptyLine, { color: colors.muted }]}>Be the first to back this project.</Text>
+        ) : (
+          <>
+            <View style={[styles.thankYou, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="heart" size={16} color={colors.brand} />
+              <Text style={[styles.thankYouText, { color: colors.onSurface }]}>Thank you to {backerCount} {backerCount === 1 ? "backer" : "backers"} bringing this dream to life!</Text>
+            </View>
+            {backers.map((b, i) => (
+              <View key={i} style={styles.backerRow}>
+                <View style={[styles.backerAvatar, { backgroundColor: colors.surfaceTertiary }]}>
+                  <Text style={[styles.backerInitial, { color: colors.brand }]}>{(b.backer_name || "?").charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.backerName, { color: colors.onSurface }]}>{b.backer_name}</Text>
+                  {b.tier_title ? <Text style={[styles.backerTier, { color: colors.muted }]}>{b.tier_title}</Text> : null}
+                </View>
+                <Text style={[styles.backerAmount, { color: colors.brand }]}>{formatPrice(b.amount_cents)}</Text>
+              </View>
+            ))}
+          </>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         {notice ? <Text style={[styles.notice, { color: colors.brand }]}>{notice}</Text> : null}
+        {selectedTier ? (
+          <Pressable testID="detail-clear-tier" onPress={() => setSelectedTier(null)} style={styles.tierChosen}>
+            <MaterialCommunityIcons name="gift-outline" size={14} color={colors.brand} />
+            <Text style={[styles.tierChosenText, { color: colors.brand }]}>Reward: {project.reward_tiers.find((t) => t.id === selectedTier)?.title} · tap to remove</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.presetRow}>
           {PRESETS.map((c) => (
             <Pressable key={c} testID={`detail-preset-${c}`} onPress={() => setAmount(String(c / 100))} style={[styles.preset, { backgroundColor: amountCents === c ? colors.brand : colors.surfaceSecondary, borderColor: amountCents === c ? colors.brand : colors.border }]}>
@@ -178,6 +287,17 @@ export default function FundraiserDetail() {
         </View>
         <Text style={[styles.secure, { color: colors.muted }]}>Secure payment via Stripe · minimum $1.00</Text>
       </View>
+
+      <Modal visible={showUpdate} transparent animationType="fade" onRequestClose={() => setShowUpdate(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setShowUpdate(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.onSurface }]}>Post an update</Text>
+            <TextInput testID="update-title" value={upTitle} onChangeText={setUpTitle} placeholder="Update title" placeholderTextColor={colors.muted} maxLength={120} style={[styles.modalInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]} />
+            <TextInput testID="update-body" value={upBody} onChangeText={setUpBody} placeholder="Share your progress with backers…" placeholderTextColor={colors.muted} multiline maxLength={4000} style={[styles.modalInput, { minHeight: 110, textAlignVertical: "top", marginTop: spacing.sm, backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]} />
+            <ForgeButton label="Post update" fullWidth loading={posting} disabled={upTitle.trim().length < 3 || upBody.trim().length < 5} onPress={postUpdate} testID="update-submit" style={{ marginTop: spacing.md }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -185,6 +305,7 @@ export default function FundraiserDetail() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
+  cover: { width: "100%", height: 190, borderRadius: radius.md, marginBottom: spacing.md },
   title: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32 },
   creator: { fontFamily: fonts.body, fontSize: 13.5, marginTop: 4 },
   progressCard: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.lg },
@@ -211,6 +332,28 @@ const styles = StyleSheet.create({
   fmNoteText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, lineHeight: 19 },
   sectionTitle: { fontFamily: fonts.displaySemi, fontSize: 16, marginTop: spacing.lg, marginBottom: spacing.sm },
   description: { fontFamily: fonts.body, fontSize: 15, lineHeight: 23 },
+  tier: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  tierTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  tierAmount: { fontFamily: fonts.display, fontSize: 18 },
+  tierTitle: { fontFamily: fonts.displaySemi, fontSize: 15, marginTop: 2 },
+  tierDesc: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  tierBackers: { fontFamily: fonts.body, fontSize: 12, marginTop: spacing.sm },
+  updatesHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.lg },
+  postBtn: { flexDirection: "row", alignItems: "center", gap: 4, height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  postBtnText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  emptyLine: { fontFamily: fonts.body, fontSize: 13.5, marginTop: spacing.xs },
+  update: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.sm },
+  updateTitle: { fontFamily: fonts.displaySemi, fontSize: 15 },
+  updateMeta: { fontFamily: fonts.body, fontSize: 12, marginTop: 2, marginBottom: spacing.sm },
+  updateBody: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21 },
+  thankYou: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginBottom: spacing.sm },
+  thankYouText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13.5, lineHeight: 19 },
+  backerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
+  backerAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  backerInitial: { fontFamily: fonts.displaySemi, fontSize: 16 },
+  backerName: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  backerTier: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
+  backerAmount: { fontFamily: fonts.displaySemi, fontSize: 15 },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1 },
   notice: { fontFamily: fonts.bodyBold, fontSize: 13, textAlign: "center", marginBottom: spacing.sm },
   presetRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
@@ -221,4 +364,10 @@ const styles = StyleSheet.create({
   amountCurrency: { fontFamily: fonts.display, fontSize: 18, marginRight: 4 },
   amountInput: { flex: 1, fontFamily: fonts.display, fontSize: 18 },
   secure: { fontFamily: fonts.body, fontSize: 11.5, textAlign: "center", marginTop: spacing.sm },
+  tierChosen: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: spacing.sm },
+  tierChosenText: { fontFamily: fonts.bodyMedium, fontSize: 12.5 },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: spacing.lg },
+  modalCard: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg },
+  modalTitle: { fontFamily: fonts.display, fontSize: 18, marginBottom: spacing.md },
+  modalInput: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontFamily: fonts.body, fontSize: 15 },
 });

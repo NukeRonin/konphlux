@@ -94,6 +94,18 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Dreambacker phase 2 — reward tiers, updates, cover image, backer list, refined gallery; user self-testing)
+- ✅ Gallery/filters: tabs now All / New / Popular / Trending / Near Deadline / Mine, each with a contextual prompt banner. Popular = most backers; Trending = highest paid-contribution growth over last 7 days (_db_recent_growth); Near Deadline = ending within the next 48 hours only. Cards now show cover image (expo-image) when set, plus progress bar.
+- ✅ Reward tiers: creators add tiers (title/description/amount) on the create form; stored on project (id, amount, backer_count, sorted by amount). On the detail page backers tap a tier to select it (sets pledge amount); backing records tier_id/tier_title and increments that tier's backer_count on payment.
+- ✅ Cover image: create form has an image picker (expo-image-picker → reuses /api/bazaar/upload via uploadImage). Shown as hero on detail + on gallery cards.
+- ✅ Project updates: creator-only "Post update" modal (title+body) → POST /dreambacker/projects/{id}/updates (403 for non-creators); everyone sees the updates list on the detail page.
+- ✅ Backers: GET /dreambacker/projects/{id}/backers returns paid contributions (name, amount, tier, paid_at); detail page shows a thank-you banner + recent backer list (initial avatar, name, tier, amount).
+- Backend: db_projects gains cover_url + reward_tiers; new db_updates collection; _fulfill_contribution increments tier backer_count. Models: RewardTierIn, DBUpdateCreate; DBProjectCreate+cover_url/reward_tiers; DBBackBody+tier_id.
+- Smoke-tested via curl: create w/ tiers+cover, get (2 tiers), near-deadline 48h include, backers empty, creator update 201, non-creator 403, trending 200. Web bundle compiles clean.
+- Files: frontend/app/dreambacker/{index,new,[id]}.tsx, src/api/client.ts (DBRewardTier/DBUpdate/DBBacker + db* methods), backend/server.py.
+- NOTE: user opted to self-test (skip automated tests).
+
+
 ### 2026-06 (Dreambacker crowdfunding — Start a Fundraiser + backing; user self-testing)
 - ✅ Dreambacker is now a functional district (hub at /dreambacker). Feature buttons wired: Start a Fundraiser → /dreambacker/new; All/New/Trending/Popular/Near Deadline/Fundraisers I Created → /dreambacker?filter=… . "Recurring support" & "Backer updates" left unmapped (hidden) — not built.
 - ✅ Create fundraiser (/dreambacker/new): title, funding goal ($), description, optional deadline via duration chips (none/7/14/30/60/90 days → ISO date), and funding-model selector (All-or-Nothing vs Keep-What-You-Raise) with clear blurbs. All-or-Nothing = funds only if goal met by deadline; Keep-What-You-Raise = keep every contribution.

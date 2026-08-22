@@ -147,17 +147,31 @@ class CheckoutBody(BaseModel):
     return_base: str
 
 
+class RewardTierIn(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=400)
+    amount_cents: int = Field(ge=100)
+
+
 class DBProjectCreate(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=10, max_length=4000)
     goal_cents: int = Field(ge=100)
     funding_model: str = Field(pattern="^(all_or_nothing|keep_what_you_raise)$")
     deadline: str | None = None
+    cover_url: str | None = Field(default=None, max_length=600)
+    reward_tiers: list[RewardTierIn] = Field(default_factory=list, max_length=8)
 
 
 class DBBackBody(BaseModel):
     amount_cents: int = Field(ge=100)
     return_base: str
+    tier_id: str | None = None
+
+
+class DBUpdateCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    body: str = Field(min_length=5, max_length=4000)
 
 
 class QuestionCreate(BaseModel):
@@ -3447,6 +3461,8 @@ def _db_project_public(doc: dict, user_id: str) -> dict:
     d = {k: v for k, v in doc.items() if k != "_id"}
     d.setdefault("raised_cents", 0)
     d.setdefault("backer_count", 0)
+    d.setdefault("cover_url", None)
+    d.setdefault("reward_tiers", [])
     d["progress"] = min(1.0, d["raised_cents"] / d["goal_cents"]) if d.get("goal_cents") else 0.0
     d["is_creator"] = d.get("creator_id") == user_id
     return d
@@ -3455,6 +3471,14 @@ def _db_project_public(doc: dict, user_id: str) -> dict:
 @api_router.post("/dreambacker/projects", status_code=201)
 async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_user)):
     now = datetime.now(timezone.utc).isoformat()
+    tiers = [{
+        "id": uuid.uuid4().hex[:8],
+        "title": t.title.strip(),
+        "description": t.description.strip(),
+        "amount_cents": t.amount_cents,
+        "backer_count": 0,
+    } for t in body.reward_tiers]
+    tiers.sort(key=lambda t: t["amount_cents"])
     doc = {
         "id": uuid.uuid4().hex[:12],
         "creator_id": user["id"],
@@ -3464,6 +3488,8 @@ async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_
         "goal_cents": body.goal_cents,
         "funding_model": body.funding_model,
         "deadline": (body.deadline or None),
+        "cover_url": (body.cover_url or None),
+        "reward_tiers": tiers,
         "raised_cents": 0,
         "backer_count": 0,
         "created_at": now,
@@ -3472,20 +3498,33 @@ async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_
     return _db_project_public(doc, user["id"])
 
 
+async def _db_recent_growth() -> dict:
+    """Sum of paid contributions per project over the last 7 days (for Trending)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    growth: dict = {}
+    cursor = db.db_contributions.find({"status": "paid", "paid_at": {"$gte": since}}, {"_id": 0, "project_id": 1, "amount_cents": 1})
+    async for c in cursor:
+        growth[c["project_id"]] = growth.get(c["project_id"], 0) + c.get("amount_cents", 0)
+    return growth
+
+
 @api_router.get("/dreambacker/projects")
 async def db_list_projects(filter: str = "all", user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc)
     query: dict = {}
     if filter == "mine":
         query = {"creator_id": user["id"]}
     elif filter == "deadline":
-        query = {"deadline": {"$gt": datetime.now(timezone.utc).isoformat()}}
+        # Ending within the next 48 hours (and not already past).
+        query = {"deadline": {"$gt": now.isoformat(), "$lte": (now + timedelta(hours=48)).isoformat()}}
     docs = await db.db_projects.find(query, {"_id": 0}).to_list(500)
     if filter == "new":
         docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
-    elif filter == "trending":
-        docs.sort(key=lambda p: (p.get("backer_count", 0), p.get("created_at", "")), reverse=True)
     elif filter == "popular":
-        docs.sort(key=lambda p: p.get("raised_cents", 0), reverse=True)
+        docs.sort(key=lambda p: (p.get("backer_count", 0), p.get("raised_cents", 0)), reverse=True)
+    elif filter == "trending":
+        growth = await _db_recent_growth()
+        docs.sort(key=lambda p: (growth.get(p["id"], 0), p.get("created_at", "")), reverse=True)
     elif filter == "deadline":
         docs.sort(key=lambda p: p.get("deadline") or "")
     else:
@@ -3511,16 +3550,25 @@ async def db_back_project(project_id: str, body: DBBackBody, user: dict = Depend
     base = body.return_base.rstrip("/")
     if not base.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid return URL")
+    tier_title = None
+    if body.tier_id:
+        tier = next((t for t in proj.get("reward_tiers", []) if t["id"] == body.tier_id), None)
+        if not tier:
+            raise HTTPException(status_code=400, detail="That reward tier no longer exists.")
+        if body.amount_cents < tier["amount_cents"]:
+            raise HTTPException(status_code=400, detail="Contribution is below this reward's minimum.")
+        tier_title = tier["title"]
     contribution_id = uuid.uuid4().hex
     success_url = f"{base}/api/checkout/return?result=success&session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{base}/api/checkout/return?result=cancel"
+    product_name = f"Backing: {proj['title']}" + (f" — {tier_title}" if tier_title else "")
     try:
         session = stripe.checkout.Session.create(
             mode="payment",
             line_items=[{
                 "price_data": {
                     "currency": CURRENCY,
-                    "product_data": {"name": f"Backing: {proj['title']}"},
+                    "product_data": {"name": product_name},
                     "unit_amount": body.amount_cents,
                 },
                 "quantity": 1,
@@ -3540,6 +3588,8 @@ async def db_back_project(project_id: str, body: DBBackBody, user: dict = Depend
         "project_id": project_id,
         "session_id": session.id,
         "amount_cents": body.amount_cents,
+        "tier_id": body.tier_id,
+        "tier_title": tier_title,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -3559,6 +3609,11 @@ async def _fulfill_contribution(session_id: str):
         {"id": c["project_id"]},
         {"$inc": {"raised_cents": c["amount_cents"], "backer_count": 1}},
     )
+    if c.get("tier_id"):
+        await db.db_projects.update_one(
+            {"id": c["project_id"], "reward_tiers.id": c["tier_id"]},
+            {"$inc": {"reward_tiers.$.backer_count": 1}},
+        )
 
 
 @api_router.get("/dreambacker/contributions/status/{session_id}")
@@ -3575,6 +3630,42 @@ async def db_contribution_status(session_id: str, user: dict = Depends(require_u
         except Exception:  # noqa: BLE001
             logger.exception("Stripe contribution status error")
     return {"paid": c["status"] == "paid", "contribution": c}
+
+
+@api_router.get("/dreambacker/projects/{project_id}/backers")
+async def db_project_backers(project_id: str, user: dict = Depends(require_user)):
+    docs = await db.db_contributions.find(
+        {"project_id": project_id, "status": "paid"},
+        {"_id": 0, "backer_name": 1, "amount_cents": 1, "tier_title": 1, "paid_at": 1},
+    ).to_list(500)
+    docs.sort(key=lambda c: c.get("paid_at") or "", reverse=True)
+    return {"count": len(docs), "backers": docs[:50]}
+
+
+@api_router.get("/dreambacker/projects/{project_id}/updates")
+async def db_list_updates(project_id: str, user: dict = Depends(require_user)):
+    docs = await db.db_updates.find({"project_id": project_id}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda u: u.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.post("/dreambacker/projects/{project_id}/updates", status_code=201)
+async def db_create_update(project_id: str, body: DBUpdateCreate, user: dict = Depends(require_user)):
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    if proj.get("creator_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the creator can post updates.")
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "project_id": project_id,
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "author_name": user.get("display_name", "The creator"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.db_updates.insert_one(dict(doc))
+    return doc
 
 
 app.include_router(api_router)

@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
@@ -17,11 +18,20 @@ type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
-  { key: "trending", label: "Trending" },
   { key: "popular", label: "Popular" },
+  { key: "trending", label: "Trending" },
   { key: "deadline", label: "Near Deadline" },
   { key: "mine", label: "Mine" },
 ];
+
+const FILTER_PROMPTS: Record<string, { icon: IconName; text: string }> = {
+  all: { icon: "hand-heart", text: "Every dream currently seeking backers." },
+  new: { icon: "new-box", text: "Freshly launched — be an early backer." },
+  popular: { icon: "account-group", text: "The fundraisers with the most backers." },
+  trending: { icon: "trending-up", text: "Gaining the most support right now." },
+  deadline: { icon: "clock-alert-outline", text: "Ending within 48 hours — back them before time runs out." },
+  mine: { icon: "account-star", text: "Fundraisers you've launched." },
+};
 
 function Countdown({ deadline, color, muted }: { deadline: string | null; color: string; muted: string }) {
   const c = timeLeft(deadline);
@@ -98,26 +108,37 @@ export default function DreambackerHome() {
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View style={[styles.prompt, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name={FILTER_PROMPTS[filter].icon} size={18} color={colors.brand} />
+            <Text style={[styles.promptText, { color: colors.onSurface }]}>{FILTER_PROMPTS[filter].text}</Text>
+          </View>
+        }
         renderItem={({ item }) => {
           const fm = FUNDING_MODELS[item.funding_model];
           return (
             <Pressable testID={`db-project-${item.id}`} onPress={() => router.push(`/dreambacker/${item.id}`)} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <View style={styles.cardTopRow}>
-                <View style={[styles.fmBadge, { backgroundColor: colors.surfaceTertiary }]}>
-                  <MaterialCommunityIcons name={fm.icon as IconName} size={12} color={colors.brand} />
-                  <Text style={[styles.fmBadgeText, { color: colors.brand }]}>{fm.label}</Text>
+              {item.cover_url ? (
+                <Image source={{ uri: item.cover_url }} style={styles.cover} contentFit="cover" transition={200} />
+              ) : null}
+              <View style={styles.cardBody}>
+                <View style={styles.cardTopRow}>
+                  <View style={[styles.fmBadge, { backgroundColor: colors.surfaceTertiary }]}>
+                    <MaterialCommunityIcons name={fm.icon as IconName} size={12} color={colors.brand} />
+                    <Text style={[styles.fmBadgeText, { color: colors.brand }]}>{fm.label}</Text>
+                  </View>
+                  <Countdown deadline={item.deadline} color={colors.brand} muted={colors.muted} />
                 </View>
-                <Countdown deadline={item.deadline} color={colors.brand} muted={colors.muted} />
-              </View>
-              <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{item.title}</Text>
-              <Text style={[styles.cardCreator, { color: colors.muted }]}>by {item.creator_name}</Text>
+                <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{item.title}</Text>
+                <Text style={[styles.cardCreator, { color: colors.muted }]}>by {item.creator_name}</Text>
 
-              <View style={[styles.track, { backgroundColor: colors.surfaceTertiary }]}>
-                <View style={[styles.fill, { backgroundColor: colors.brand, width: `${Math.round(item.progress * 100)}%` }]} />
-              </View>
-              <View style={styles.cardStatsRow}>
-                <Text style={[styles.raised, { color: colors.onSurface }]}>{formatPrice(item.raised_cents)}</Text>
-                <Text style={[styles.goal, { color: colors.muted }]}>of {formatPrice(item.goal_cents)} · {item.backer_count} backers</Text>
+                <View style={[styles.track, { backgroundColor: colors.surfaceTertiary }]}>
+                  <View style={[styles.fill, { backgroundColor: colors.brand, width: `${Math.round(item.progress * 100)}%` }]} />
+                </View>
+                <View style={styles.cardStatsRow}>
+                  <Text style={[styles.raised, { color: colors.onSurface }]}>{formatPrice(item.raised_cents)}</Text>
+                  <Text style={[styles.goal, { color: colors.muted }]}>of {formatPrice(item.goal_cents)} · {item.backer_count} backers</Text>
+                </View>
               </View>
             </Pressable>
           );
@@ -145,7 +166,11 @@ const styles = StyleSheet.create({
   filterChip: { height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   filterText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
-  card: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: spacing.xs },
+  prompt: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  promptText: { flex: 1, fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
+  card: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  cover: { width: "100%", height: 140 },
+  cardBody: { padding: spacing.md, gap: spacing.xs },
   cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   fmBadge: { flexDirection: "row", alignItems: "center", gap: 4, height: 22, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
   fmBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },

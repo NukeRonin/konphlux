@@ -398,6 +398,9 @@ export type BPDesignSummary = { id: string; name: string; wall_count: number; it
 export type BPDesign = { id: string; name: string; walls: BPWall[]; items: BPItem[]; created_at: string; updated_at: string };
 
 export type DBFundingModel = "all_or_nothing" | "keep_what_you_raise";
+export type DBRewardTier = { id: string; title: string; description: string; amount_cents: number; backer_count: number };
+export type DBUpdate = { id: string; project_id: string; title: string; body: string; author_name: string; created_at: string };
+export type DBBacker = { backer_name: string; amount_cents: number; tier_title: string | null; paid_at: string };
 export type DBProject = {
   id: string;
   creator_id: string;
@@ -407,6 +410,8 @@ export type DBProject = {
   goal_cents: number;
   funding_model: DBFundingModel;
   deadline: string | null;
+  cover_url: string | null;
+  reward_tiers: DBRewardTier[];
   raised_cents: number;
   backer_count: number;
   progress: number;
@@ -670,10 +675,14 @@ export const api = {
 
   dbProjects: (filter: string) => request<DBProject[]>(`/dreambacker/projects?filter=${encodeURIComponent(filter)}`),
   dbProject: (id: string) => request<DBProject>(`/dreambacker/projects/${id}`),
-  dbCreateProject: (data: { title: string; description: string; goal_cents: number; funding_model: DBFundingModel; deadline: string | null }) =>
+  dbCreateProject: (data: { title: string; description: string; goal_cents: number; funding_model: DBFundingModel; deadline: string | null; cover_url: string | null; reward_tiers: { title: string; description: string; amount_cents: number }[] }) =>
     request<DBProject>("/dreambacker/projects", { method: "POST", body: JSON.stringify(data) }),
-  dbBackProject: (id: string, amount_cents: number, return_base: string) =>
-    request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base }) }),
+  dbBackProject: (id: string, amount_cents: number, return_base: string, tier_id: string | null) =>
+    request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base, tier_id }) }),
   dbContributionStatus: (session_id: string) =>
     request<{ paid: boolean; contribution: { id: string; amount_cents: number; status: string } }>(`/dreambacker/contributions/status/${session_id}`),
+  dbBackers: (id: string) => request<{ count: number; backers: DBBacker[] }>(`/dreambacker/projects/${id}/backers`),
+  dbUpdates: (id: string) => request<DBUpdate[]>(`/dreambacker/projects/${id}/updates`),
+  dbCreateUpdate: (id: string, title: string, body: string) =>
+    request<DBUpdate>(`/dreambacker/projects/${id}/updates`, { method: "POST", body: JSON.stringify({ title, body }) }),
 };
