@@ -23,6 +23,13 @@ export default function Conversation() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
+  // Merge helper: append only messages we don't already have (dedupe by id).
+  const mergeMessages = (prev: CBMessage[], incoming: CBMessage[]) => {
+    const seen = new Set(prev.map((m) => m.id));
+    const add = incoming.filter((m) => !seen.has(m.id));
+    return add.length ? [...prev, ...add] : prev;
+  };
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -43,7 +50,7 @@ export default function Conversation() {
       const last = messages.length ? messages[messages.length - 1].created_at : "";
       try {
         const res = await api.cbPoll(id, last);
-        if (res.messages.length) setMessages((m) => [...m, ...res.messages]);
+        if (res.messages.length) setMessages((m) => mergeMessages(m, res.messages));
       } catch {
         /* ignore */
       }
@@ -62,10 +69,14 @@ export default function Conversation() {
     setMessages((m) => [...m, optimistic]);
     try {
       await api.cbSend(id, t);
-      const res = await api.cbPoll(id, optimistic.created_at);
-      if (res.messages.length) setMessages((m) => [...m, ...res.messages]);
+      // Replace the optimistic bubble with the canonical server state (real message + any auto-reply).
+      const res = await api.cbConversation(id);
+      setConv(res);
+      setMessages(res.messages);
     } catch {
-      /* ignore */
+      // Roll back the optimistic bubble and restore the text so nothing is lost.
+      setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+      setText(t);
     } finally {
       setSending(false);
     }
@@ -102,7 +113,7 @@ export default function Conversation() {
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={(m, i) => `${m.id}-${i}`}
+          keyExtractor={(m) => m.id}
           contentContainerStyle={styles.list}
           onContentSizeChange={scrollEnd}
           showsVerticalScrollIndicator={false}
