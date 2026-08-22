@@ -94,6 +94,13 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Bluepaint Saved Blueprints thumbnails — user self-testing)
+- ✅ Saved Blueprints list (/bluepaint) now shows a live mini floor-plan thumbnail per design (react-native-svg BlueprintThumb: fits each design's walls into a 52px box) so projects are recognisable at a glance. Falls back to floor-plan icon when a design has no walls. Naming/save/reopen/delete already existed.
+- ✅ Backend bp_list_designs now returns walls + items in each summary so the list can draw thumbnails without extra fetches. BPDesignSummary type extended with walls/items.
+- Files: frontend/app/bluepaint/index.tsx (BlueprintThumb + thumb render), src/api/client.ts (BPDesignSummary), backend/server.py (bp_list_designs).
+- NOTE: user opted to self-test (skip automated tests). Backend reloaded clean; frontend lint clean.
+
+
 ### 2026-06 (Bluepaint Design Reviews with Iris — user self-testing)
 - ✅ New /bluepaint/review screen: pick a saved design + plan width → "Review with Iris" sends floor-plan data to AI. Iris (gpt-5.4) returns a professional, structured critique (OVERALL / TRAFFIC FLOW / NATURAL LIGHT / ROOM SIZES / SUGGESTIONS) parsed into sections, plus a footprint/area/doors/windows/walls stat strip.
 - ✅ Backend POST /api/bluepaint/designs/{id}/review: computes plan summary in Python (_bp_plan_summary: wall length, bounding-box footprint & floor area from normalized coords × plan_width, door/window/furniture counts) and prompts Iris with those numbers. 400 if no walls drawn yet.

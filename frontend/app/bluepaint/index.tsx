@@ -3,13 +3,40 @@ import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Line } from "react-native-svg";
 
-import { api, BPDesignSummary } from "@/src/api/client";
+import { api, BPDesignSummary, BPWall } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
+
+const THUMB = 52;
+
+function BlueprintThumb({ walls, stroke }: { walls: BPWall[]; stroke: string }) {
+  const pad = 7;
+  let minx = 1, miny = 1, maxx = 0, maxy = 0;
+  for (const w of walls) {
+    minx = Math.min(minx, w.x1, w.x2); miny = Math.min(miny, w.y1, w.y2);
+    maxx = Math.max(maxx, w.x1, w.x2); maxy = Math.max(maxy, w.y1, w.y2);
+  }
+  const bw = Math.max(0.001, maxx - minx);
+  const bh = Math.max(0.001, maxy - miny);
+  const avail = THUMB - pad * 2;
+  const scale = Math.min(avail / bw, avail / bh);
+  const offx = pad + (avail - bw * scale) / 2;
+  const offy = pad + (avail - bh * scale) / 2;
+  const map = (x: number, y: number) => ({ X: offx + (x - minx) * scale, Y: offy + (y - miny) * scale });
+  return (
+    <Svg width={THUMB} height={THUMB}>
+      {walls.map((w, i) => {
+        const a = map(w.x1, w.y1); const b = map(w.x2, w.y2);
+        return <Line key={i} x1={a.X} y1={a.Y} x2={b.X} y2={b.Y} stroke={stroke} strokeWidth={2} strokeLinecap="round" />;
+      })}
+    </Svg>
+  );
+}
 
 export default function BluepaintHome() {
   const { colors } = useTheme();
@@ -82,7 +109,11 @@ export default function BluepaintHome() {
         renderItem={({ item }) => (
           <Pressable testID={`bp-design-${item.id}`} onPress={() => router.push(`/bluepaint/design/${item.id}`)} style={[styles.row, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             <View style={[styles.thumb, { backgroundColor: colors.surfaceTertiary }]}>
-              <MaterialCommunityIcons name="floor-plan" size={26} color={colors.brand} />
+              {item.walls && item.walls.length > 0 ? (
+                <BlueprintThumb walls={item.walls} stroke={colors.brand} />
+              ) : (
+                <MaterialCommunityIcons name="floor-plan" size={26} color={colors.brand} />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={[styles.name, { color: colors.onSurface }]}>{item.name}</Text>

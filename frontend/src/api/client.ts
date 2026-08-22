@@ -394,7 +394,7 @@ export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string }
 // Bluepaint Space Designer
 export type BPWall = { x1: number; y1: number; x2: number; y2: number };
 export type BPItem = { id: string; kind: string; x: number; y: number; rotation: number; scale: number };
-export type BPDesignSummary = { id: string; name: string; wall_count: number; item_count: number; updated_at: string };
+export type BPDesignSummary = { id: string; name: string; wall_count: number; item_count: number; updated_at: string; walls: BPWall[]; items: BPItem[] };
 export type BPDesign = { id: string; name: string; walls: BPWall[]; items: BPItem[]; created_at: string; updated_at: string };
 
 export const api = {

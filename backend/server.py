@@ -3308,7 +3308,8 @@ async def bp_list_designs(user: dict = Depends(require_user)):
     docs.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
     return [
         {"id": d["id"], "name": d["name"], "wall_count": len(d.get("walls", [])),
-         "item_count": len(d.get("items", [])), "updated_at": d.get("updated_at", "")}
+         "item_count": len(d.get("items", [])), "updated_at": d.get("updated_at", ""),
+         "walls": d.get("walls", []), "items": d.get("items", [])}
         for d in docs
     ]
 
