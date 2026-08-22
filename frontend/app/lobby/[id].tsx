@@ -82,6 +82,17 @@ export default function WorkspaceDetail() {
   };
   const delTask = async (tid: string) => { if (!id) return; setTasks((prev) => prev.filter((t) => t.id !== tid)); try { await api.lobbyDeleteTask(id, tid); } catch { load(); } };
 
+  const [messaging, setMessaging] = useState(false);
+  const messageTeam = async () => {
+    if (!id || messaging) return;
+    setMessaging(true);
+    try {
+      const { conversation_id } = await api.lobbyMessageTeam(id);
+      router.push(`/chatterbox/conversation/${conversation_id}`);
+    } catch (e: any) { Alert.alert("Can't message team", e?.message || "Add a teammate first."); }
+    finally { setMessaging(false); }
+  };
+
   if (loading) return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><Loading label="Loading…" /></View>;
   if (!ws) return <View style={[styles.screen, { backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" }]}><Text style={{ color: colors.muted, fontFamily: fonts.body }}>Workspace not found.</Text></View>;
 
@@ -104,6 +115,10 @@ export default function WorkspaceDetail() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]} numberOfLines={1}>{ws.name}</Text>
           <Eyebrow>{ws.member_count} members · {ws.is_owner ? "Owner" : "Member"}</Eyebrow>
         </View>
+        <Pressable onPress={messageTeam} disabled={messaging} style={[styles.msgBtn, { backgroundColor: colors.brand }]} testID="wsd-message-team">
+          <MaterialCommunityIcons name="message-text" size={15} color={colors.onBrandPrimary} />
+          <Text style={[styles.msgText, { color: colors.onBrandPrimary }]}>{messaging ? "…" : "Message Team"}</Text>
+        </Pressable>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
@@ -237,6 +252,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
+  msgBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, height: 36, borderRadius: radius.pill },
+  msgText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
   tabs: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
   tab: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.md, height: 34, borderRadius: radius.pill, borderWidth: 1 },
   tabText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },

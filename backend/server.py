@@ -5375,6 +5375,29 @@ async def lobby_delete_task(ws_id: str, task_id: str, user: dict = Depends(requi
     return {"deleted": True}
 
 
+@api_router.post("/lobby/workspaces/{ws_id}/message-team", status_code=201)
+async def lobby_message_team(ws_id: str, user: dict = Depends(require_user)):
+    """Find or create the Chatterbox group chat for this workspace's members."""
+    ws = await _require_ws_member(ws_id, user)
+    member_ids = [m["user_id"] for m in ws.get("members", [])]
+    if len(member_ids) < 2:
+        raise HTTPException(status_code=400, detail="Add at least one teammate before messaging the team.")
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.cb_conversations.find_one({"workspace_id": ws_id}, {"_id": 0})
+    if existing:
+        # keep the group roster in sync with the current workspace members
+        await db.cb_conversations.update_one(
+            {"id": existing["id"]},
+            {"$set": {"participants": member_ids, "title": ws["name"]}})
+        return {"conversation_id": existing["id"]}
+    conv = {"id": uuid.uuid4().hex[:12], "type": "group", "participants": member_ids,
+            "title": ws["name"], "workspace_id": ws_id, "reads": {}, "last_message": "",
+            "last_at": now, "created_at": now}
+    await db.cb_conversations.insert_one(dict(conv))
+    return {"conversation_id": conv["id"]}
+
+
+
 
 
 

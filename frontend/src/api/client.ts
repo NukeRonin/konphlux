@@ -1031,4 +1031,5 @@ export const api = {
   lobbyAddTask: (id: string, body: { title: string; project_id?: string | null; assignee_id?: string | null }) => request<WsTask>(`/lobby/workspaces/${id}/tasks`, { method: "POST", body: JSON.stringify(body) }),
   lobbyToggleTask: (id: string, taskId: string) => request<{ done: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}/toggle`, { method: "POST" }),
   lobbyDeleteTask: (id: string, taskId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
+  lobbyMessageTeam: (id: string) => request<{ conversation_id: string }>(`/lobby/workspaces/${id}/message-team`, { method: "POST" }),
 };

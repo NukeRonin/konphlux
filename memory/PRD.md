@@ -153,6 +153,10 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Entrepreneur Lobby — Team Messaging via Chatterbox; user self-testing)
+- ✅ **"Message Team"** button in workspace detail header → POST /lobby/workspaces/{id}/message-team finds-or-creates the Chatterbox group chat for the workspace members (reuses existing cb_conversations engine, type "group"), then navigates to /chatterbox/conversation/{id}. Idempotent via workspace_id tag; roster re-synced to current members on each open; title = workspace name. Requires ≥2 members (400 with helpful message otherwise).
+- Curl-verified: solo→400, creates group, idempotent (same conv id), group opens in Chatterbox with workspace title. Lint + bundle clean. Files: backend/server.py, frontend app/lobby/[id].tsx (header button + handler), src/api/client.ts (lobbyMessageTeam).
+
 ### 2026-06 (Entrepreneur Lobby — Clients / Projects / Tasks per workspace; user self-testing)
 - ✅ Workspace detail now has 4 tabs: My Team (existing) + **Clients**, **Projects**, **Tasks**. Add/delete clients (name/company/contact), projects (name/description + optional client link), tasks (title + optional project link + optional assignee from workspace members). Tasks show project + assignee pills, toggle done (strikethrough), delete. Projects show linked client name.
 - Backend collections ws_clients, ws_projects, ws_tasks. Endpoints under /lobby/workspaces/{id}/: GET/POST/DELETE clients, projects (+client_name join), tasks (+project_name join), POST tasks/{tid}/toggle. _require_ws_member guards all (member-only). Task assignee validated against members (422). Deleting a project unlinks its tasks; deleting a workspace cascades clients/projects/tasks. Models ClientBody/ProjectBody/TaskBody.
