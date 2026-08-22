@@ -18,7 +18,8 @@ import stripe
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+import fal_client
 from email_service import send_order_receipt
 from storage_service import put_object, get_object, init_storage, APP_NAME
 
@@ -41,6 +42,7 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+FAL_KEY = os.environ.get("FAL_KEY", "")
 CHAT_MODEL = ("openai", "gpt-5.4")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
@@ -382,6 +384,18 @@ class PSProjectBody(BaseModel):
     voiceover_path: str = Field(default="", max_length=600)
     storyboard: str = Field(default="", max_length=12000)
     poster_path: str = Field(default="", max_length=600)
+
+
+class PSPresetBody(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    style: str = Field(default="", max_length=40)
+    length: str = Field(default="", max_length=20)
+    speed: str = Field(default="", max_length=20)
+    transitions: list[str] = Field(default_factory=list, max_length=20)
+    atmospherics: list[str] = Field(default_factory=list, max_length=20)
+    titles: list[str] = Field(default_factory=list, max_length=20)
+    finishing: list[str] = Field(default_factory=list, max_length=10)
+    audio_effects: list[str] = Field(default_factory=list, max_length=10)
 
 
 
@@ -3210,13 +3224,15 @@ async def streamora_follow(channel_id: str, user: dict = Depends(require_user)):
 
 
 # ----- AI Video Concept Studio (Nano Banana poster + written storyboard) -----
-async def _ps_generate_image(prompt: str, user_id: str) -> str:
+async def _ps_generate_image(prompt: str, user_id: str, ref_images: list[bytes] | None = None) -> str:
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=f"ps-img:{user_id}:{uuid.uuid4().hex[:8]}",
-        system_message="You are a cinematic concept-art illustration engine. Produce a single striking poster image.",
+        system_message="You are a cinematic concept-art illustration engine. Produce a single striking poster image. When reference photos of characters are provided, keep those characters visually consistent with the references (face, hair, outfit).",
     ).with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
-    _, images = await chat.send_message_multimodal_response(UserMessage(text=prompt))
+    file_contents = [ImageContent(base64.b64encode(b).decode("utf-8")) for b in (ref_images or [])]
+    msg = UserMessage(text=prompt, file_contents=file_contents) if file_contents else UserMessage(text=prompt)
+    _, images = await chat.send_message_multimodal_response(msg)
     if not images:
         raise RuntimeError("No image returned")
     img = images[0]
@@ -3280,6 +3296,30 @@ async def _ps_characters_for(user_id: str, ids: list[str]) -> list[dict]:
         return []
     docs = await db.ps_characters.find({"user_id": user_id, "id": {"$in": ids}}, {"_id": 0}).to_list(50)
     return docs
+
+
+def _storage_path_from_url(url: str) -> str:
+    """Extract the object-storage path from a stored file URL."""
+    if not url:
+        return ""
+    marker = "/api/files/"
+    return url.split(marker, 1)[1] if marker in url else url
+
+
+async def _ps_reference_bytes(chars: list[dict], limit: int = 3) -> list[bytes]:
+    out: list[bytes] = []
+    for c in chars:
+        path = _storage_path_from_url(c.get("reference_path", ""))
+        if not path:
+            continue
+        try:
+            content, _ = await run_in_threadpool(get_object, path)
+            out.append(content)
+        except Exception:  # noqa: BLE001
+            logger.warning("Couldn't fetch character reference %s", path)
+        if len(out) >= limit:
+            break
+    return out
 
 
 @api_router.post("/pictureshow/upload-audio", status_code=201)
@@ -3385,11 +3425,13 @@ async def pictureshow_ai_suite(body: PSSuiteBody, user: dict = Depends(require_u
     try:
         char_visual = f" Featuring {_ps_join([c['name'] for c in chars])}." if chars else ""
         atmos = f" {_ps_join(body.atmospherics)}." if body.atmospherics else ""
+        ref_bytes = await _ps_reference_bytes(chars)
+        consistency = " Match the provided reference photos so the characters look identical to them." if ref_bytes else ""
         img_prompt = (
-            f"A {style_note} poster keyframe. Scene: {body.prompt.strip()}.{char_visual}{atmos} "
+            f"A {style_note} poster keyframe. Scene: {body.prompt.strip()}.{char_visual}{atmos}{consistency} "
             f"Ornate brass, aether glow, dramatic lighting, no text."
         )
-        poster_path = await _ps_generate_image(img_prompt, user["id"])
+        poster_path = await _ps_generate_image(img_prompt, user["id"], ref_images=ref_bytes)
     except Exception:  # noqa: BLE001
         logger.exception("PictureShow AI suite poster error")
         poster_path = ""
@@ -3421,6 +3463,8 @@ async def pictureshow_save_project(body: PSProjectBody, user: dict = Depends(req
         "voiceover_path": body.voiceover_path,
         "storyboard": body.storyboard.strip(),
         "poster_path": body.poster_path,
+        "render_status": "",
+        "video_url": "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.ps_projects.insert_one(dict(doc))
@@ -3448,6 +3492,137 @@ async def pictureshow_delete_project(project_id: str, user: dict = Depends(requi
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"deleted": True}
+
+
+# ----- PictureShow: Suite Presets (style + effects bundles) -----
+@api_router.post("/pictureshow/presets", status_code=201)
+async def pictureshow_save_preset(body: PSPresetBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user["id"],
+        "name": body.name.strip(),
+        "style": body.style,
+        "length": body.length,
+        "speed": body.speed,
+        "transitions": body.transitions,
+        "atmospherics": body.atmospherics,
+        "titles": body.titles,
+        "finishing": body.finishing,
+        "audio_effects": body.audio_effects,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.ps_presets.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/pictureshow/presets")
+async def pictureshow_list_presets(user: dict = Depends(require_user)):
+    docs = await db.ps_presets.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.delete("/pictureshow/presets/{preset_id}")
+async def pictureshow_delete_preset(preset_id: str, user: dict = Depends(require_user)):
+    res = await db.ps_presets.delete_one({"id": preset_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return {"deleted": True}
+
+
+# ----- PictureShow: Real video rendering via fal.ai -----
+PS_T2V_MODEL = "fal-ai/kling-video/v1/standard/text-to-video"
+PS_I2V_MODEL = "fal-ai/kling-video/v1/standard/image-to-video"
+
+
+def _ps_video_prompt(doc: dict) -> str:
+    style = doc.get("style", "")
+    style_note = PS_STYLE_NOTES.get(style, style)
+    parts = [doc.get("prompt", "").strip()]
+    if style_note:
+        parts.append(style_note)
+    atmos = _ps_join(doc.get("atmospherics", []))
+    if atmos:
+        parts.append(atmos)
+    if doc.get("kind") == "animation":
+        parts.append("stylised animation")
+    return ". ".join([p for p in parts if p])[:1000]
+
+
+@api_router.post("/pictureshow/projects/{project_id}/render")
+async def pictureshow_render(project_id: str, user: dict = Depends(require_user)):
+    if not FAL_KEY:
+        raise HTTPException(status_code=503, detail="Video rendering isn't configured yet. Add your fal.ai API key to enable it.")
+    doc = await db.ps_projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    prompt = _ps_video_prompt(doc)
+    try:
+        if doc.get("poster_path"):
+            content, ctype = await run_in_threadpool(get_object, doc["poster_path"])
+            image_url = await fal_client.upload_async(content, ctype or "image/png")
+            model = PS_I2V_MODEL
+            args = {"prompt": prompt, "image_url": image_url, "duration": "5", "aspect_ratio": "16:9"}
+        else:
+            model = PS_T2V_MODEL
+            args = {"prompt": prompt, "duration": "5", "aspect_ratio": "16:9"}
+        handler = await fal_client.submit_async(model, arguments=args)
+        request_id = handler.request_id
+    except Exception as e:  # noqa: BLE001
+        logger.exception("PictureShow render submit failed")
+        raise HTTPException(status_code=502, detail="Couldn't start the render. Try again.") from e
+    await db.ps_projects.update_one(
+        {"id": project_id, "user_id": user["id"]},
+        {"$set": {"render_status": "rendering", "render_model": model, "render_request_id": request_id, "video_url": ""}},
+    )
+    return {"status": "rendering"}
+
+
+def _extract_video_url(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    v = result.get("video")
+    if isinstance(v, dict):
+        return v.get("url", "")
+    if isinstance(v, list) and v and isinstance(v[0], dict):
+        return v[0].get("url", "")
+    if isinstance(v, str):
+        return v
+    return ""
+
+
+@api_router.get("/pictureshow/projects/{project_id}/render-status")
+async def pictureshow_render_status(project_id: str, user: dict = Depends(require_user)):
+    doc = await db.ps_projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    status = doc.get("render_status", "")
+    if status != "rendering":
+        return {"status": status or "idle", "video_url": doc.get("video_url", "")}
+    model = doc.get("render_model")
+    rid = doc.get("render_request_id")
+    if not FAL_KEY or not model or not rid:
+        return {"status": "rendering", "video_url": ""}
+    try:
+        st = await fal_client.status_async(model, rid, with_logs=False)
+        if isinstance(st, fal_client.Completed):
+            result = await fal_client.result_async(model, rid)
+            video_url = _extract_video_url(result)
+            new_status = "ready" if video_url else "failed"
+            await db.ps_projects.update_one(
+                {"id": project_id, "user_id": user["id"]},
+                {"$set": {"render_status": new_status, "video_url": video_url}},
+            )
+            return {"status": new_status, "video_url": video_url}
+        return {"status": "rendering", "video_url": ""}
+    except Exception:  # noqa: BLE001
+        logger.exception("PictureShow render status failed")
+        await db.ps_projects.update_one(
+            {"id": project_id, "user_id": user["id"]},
+            {"$set": {"render_status": "failed"}},
+        )
+        return {"status": "failed", "video_url": ""}
+
 
 
 

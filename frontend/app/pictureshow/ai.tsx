@@ -3,14 +3,15 @@ import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioPlayer, useAu
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Linking, Modal, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, fileUrl, PSCharacter, uploadAudio } from "@/src/api/client";
+import { api, fileUrl, PSCharacter, PSPreset, uploadAudio } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
+import { VideoPlayer } from "@/src/components/VideoPlayer";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 import {
@@ -126,6 +127,23 @@ export default function PSAiSuite() {
   const [result, setResult] = useState<{ storyboard: string; poster_path: string } | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [projectId, setProjectId] = useState("");
+  const [renderStatus, setRenderStatus] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [presets, setPresets] = useState<PSPreset[]>([]);
+  const [presetModal, setPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  const loadPresets = useCallback(async () => {
+    try {
+      setPresets(await api.psPresets());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const loadCharacters = useCallback(async () => {
     try {
       setCharacters(await api.psCharacters());
@@ -151,13 +169,16 @@ export default function PSAiSuite() {
       setSoundtrackPath(p.soundtrack_path || "");
       setSoundtrackName(p.soundtrack_path ? "Saved soundtrack" : "");
       setVoiceoverPath(p.voiceover_path || "");
-      if (p.storyboard || p.poster_path) setResult({ storyboard: p.storyboard, poster_path: p.poster_path });
+      setProjectId(p.id);
+      setRenderStatus(p.render_status || "");
+      setVideoUrl(p.video_url || "");
+      if (p.storyboard || p.poster_path) { setResult({ storyboard: p.storyboard, poster_path: p.poster_path }); setSaved(true); }
     } catch {
       /* ignore */
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { loadCharacters(); }, [loadCharacters]));
+  useFocusEffect(useCallback(() => { loadCharacters(); loadPresets(); }, [loadCharacters, loadPresets]));
   const [loadedProject, setLoadedProject] = useState(false);
   if (params.project && !loadedProject) {
     setLoadedProject(true);
@@ -229,6 +250,9 @@ export default function PSAiSuite() {
     setError("");
     setResult(null);
     setSaved(false);
+    setProjectId("");
+    setRenderStatus("");
+    setVideoUrl("");
     try {
       const res = await api.psAiSuite({
         prompt: prompt.trim(), kind, style, length, speed,
@@ -246,17 +270,101 @@ export default function PSAiSuite() {
   const saveProject = async () => {
     if (!result) return;
     try {
-      await api.psSaveProject({
+      const p = await api.psSaveProject({
         title: prompt.trim().slice(0, 60), prompt: prompt.trim(), kind, style, length, speed,
         transitions, atmospherics, titles, finishing, audio_effects: audioFx, character_ids: charIds,
         soundtrack_path: soundtrackPath, voiceover_path: voiceoverPath,
         storyboard: result.storyboard, poster_path: result.poster_path,
       });
       setSaved(true);
+      setProjectId(p.id);
     } catch {
       Alert.alert("Couldn't save", "Saving to your projects failed. Try again.");
     }
   };
+
+  const applyPreset = (p: PSPreset) => {
+    setStyle(p.style || "");
+    setLength(p.length || "");
+    setSpeed(p.speed || "");
+    setTransitions(p.transitions || []);
+    setAtmospherics(p.atmospherics || []);
+    setTitles(p.titles || []);
+    setFinishing(p.finishing || []);
+    setAudioFx(p.audio_effects || []);
+  };
+
+  const savePreset = async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    try {
+      await api.psSavePreset({
+        name, style, length, speed, transitions, atmospherics, titles, finishing, audio_effects: audioFx,
+      });
+      setPresetName("");
+      setPresetModal(false);
+      loadPresets();
+    } catch {
+      Alert.alert("Couldn't save preset", "Try again.");
+    }
+  };
+
+  const deletePreset = (p: PSPreset) => {
+    Alert.alert("Delete preset", `Remove "${p.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => { await api.psDeletePreset(p.id); loadPresets(); } },
+    ]);
+  };
+
+  const exportShotList = async () => {
+    if (!result) return;
+    const meta = [
+      style && `Style: ${style}`,
+      length && `Length: ${length}`,
+      speed && `Speed: ${speed}`,
+      transitions.length && `Transitions: ${transitions.join(", ")}`,
+      atmospherics.length && `Atmosphere: ${atmospherics.join(", ")}`,
+      titles.length && `Titles: ${titles.join(", ")}`,
+      finishing.length && `Finishing: ${finishing.join(", ")}`,
+      audioFx.length && `Audio FX: ${audioFx.join(", ")}`,
+    ].filter(Boolean).join("\n");
+    const text = `🎬 ${prompt.trim().slice(0, 60)} — ${kind === "animation" ? "AI Animation" : "AI Video"}\n\n${meta}\n\n${result.storyboard}\n\n— Made in Konphlux AI Video Suite`;
+    try {
+      await Share.share({ message: text });
+    } catch {
+      /* dismissed */
+    }
+  };
+
+  const startRender = async () => {
+    if (!projectId) return;
+    setRenderStatus("rendering");
+    setVideoUrl("");
+    try {
+      await api.psRender(projectId);
+    } catch (e: any) {
+      setRenderStatus("");
+      Alert.alert("Can't render yet", e?.message || "Video rendering isn't available right now.");
+    }
+  };
+
+  // Poll render status while a job is in flight.
+  useEffect(() => {
+    if (renderStatus !== "rendering" || !projectId) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await api.psRenderStatus(projectId);
+        if (s.status === "ready") { setVideoUrl(s.video_url); setRenderStatus("ready"); }
+        else if (s.status === "failed") { setRenderStatus("failed"); }
+      } catch {
+        /* keep polling */
+      }
+    }, 6000);
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [renderStatus, projectId]);
 
   const posterUrl = result?.poster_path ? fileUrl(result.poster_path) : "";
   const sections = result ? parseSections(result.storyboard) : [];
@@ -289,8 +397,29 @@ export default function PSAiSuite() {
 
         <View style={[styles.note, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="information-outline" size={16} color={colors.muted} />
-          <Text style={[styles.noteText, { color: colors.muted }]}>Builds a poster keyframe + a shot-ready storyboard & script from your settings. Actual {kind} rendering arrives later.</Text>
+          <Text style={[styles.noteText, { color: colors.muted }]}>Builds a poster keyframe + a shot-ready storyboard & script. Save it, then render a real short clip.</Text>
         </View>
+
+        {/* Presets */}
+        <View style={styles.rowBetween}>
+          <Text style={[styles.label, { color: colors.onSurface }]}>Presets</Text>
+          <Pressable testID="psai-save-preset" onPress={() => setPresetModal(true)} style={styles.manageBtn}>
+            <MaterialCommunityIcons name="content-save-plus" size={15} color={colors.brand} />
+            <Text style={[styles.manageText, { color: colors.brand }]}>Save current</Text>
+          </Pressable>
+        </View>
+        {presets.length === 0 ? (
+          <Text style={[styles.emptyHint, { color: colors.muted }]}>Save your favourite style + effects bundle, then apply it in one tap.</Text>
+        ) : (
+          <View style={styles.chipWrap}>
+            {presets.map((p) => (
+              <Pressable key={p.id} testID={`psai-preset-${p.id}`} onPress={() => applyPreset(p)} onLongPress={() => deletePreset(p)} style={[styles.chip, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="star-four-points" size={13} color={colors.brand} />
+                <Text style={[styles.chipText, { color: colors.onSurface }]}>{p.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* Concept */}
         <Text style={[styles.label, { color: colors.onSurface }]}>Your concept</Text>
@@ -414,9 +543,49 @@ export default function PSAiSuite() {
               ))}
             </View>
             <ForgeButton label={saved ? "Saved to Projects ✓" : "Save to Projects"} variant={saved ? "outline" : "forge"} fullWidth onPress={saveProject} testID="psai-save" disabled={saved} />
+
+            <Pressable testID="psai-export" onPress={exportShotList} style={[styles.mediaBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary, justifyContent: "center" }]}>
+              <MaterialCommunityIcons name="share-variant" size={18} color={colors.brand} />
+              <Text style={[styles.mediaBtnText, { color: colors.onSurface }]}>Export / share shot list</Text>
+            </Pressable>
+
+            {/* Real video render */}
+            {saved ? (
+              renderStatus === "ready" && videoUrl ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Text style={[styles.storyKey, { color: colors.brand }]}>RENDERED CLIP</Text>
+                  <VideoPlayer uri={videoUrl} />
+                  <ForgeButton label="Render again" variant="outline" fullWidth onPress={startRender} testID="psai-render-again" />
+                </View>
+              ) : renderStatus === "rendering" ? (
+                <View style={[styles.renderBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                  <MaterialCommunityIcons name="movie-roll" size={22} color={colors.brand} />
+                  <Text style={[styles.renderText, { color: colors.onSurface }]}>Rendering your clip… this can take a couple of minutes. You can leave this open.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.xs }}>
+                  <ForgeButton label="Render real video" fullWidth onPress={startRender} testID="psai-render" />
+                  {renderStatus === "failed" ? <Text style={[styles.error, { color: colors.error }]}>That render didn&apos;t complete. Try again.</Text> : null}
+                </View>
+              )
+            ) : (
+              <Text style={[styles.emptyHint, { color: colors.muted, textAlign: "center" }]}>Save to Projects to unlock real video rendering.</Text>
+            )}
           </View>
         ) : null}
       </KeyboardAwareScrollView>
+
+      {/* Save preset modal */}
+      <Modal visible={presetModal} transparent animationType="fade" onRequestClose={() => setPresetModal(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPresetModal(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.onSurface }]}>Save preset</Text>
+            <Text style={[styles.emptyHint, { color: colors.muted }]}>Saves your current style, length, speed & effects as a reusable bundle.</Text>
+            <TextInput testID="psai-preset-name" value={presetName} onChangeText={setPresetName} placeholder="Preset name (e.g. Moody Noir)" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface, marginTop: spacing.md }]} autoFocus />
+            <ForgeButton label="Save preset" fullWidth onPress={savePreset} testID="psai-preset-confirm" style={{ marginTop: spacing.md }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -461,4 +630,9 @@ const styles = StyleSheet.create({
   storyCard: { borderRadius: radius.md, borderWidth: 1, padding: spacing.lg },
   storyKey: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 0.5, marginBottom: 3 },
   storyText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 22 },
+  renderBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  renderText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, lineHeight: 19 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: spacing.xl },
+  modalCard: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg },
+  modalTitle: { fontFamily: fonts.display, fontSize: 18, marginBottom: 4 },
 });

@@ -115,6 +115,15 @@
 - Files: backend/server.py; frontend app/pictureshow/{ai,characters,projects}.tsx, index.tsx (quick actions), _layout.tsx; src/utils/psSuite.ts; src/api/client.ts (uploadAudio + PSCharacter/PSProject types + ps* methods).
 - NOTE: user opted to self-test (skip automated tests to save credits). Backend loads clean (endpoints 401 without auth); frontend lint clean; suite screen renders end-to-end in preview.
 
+### 2026-06 (PictureShow — AI Video Suite v2: real rendering + character consistency + export + presets)
+- ✅ **Real video rendering (fal.ai)**: after saving a project, "Render real video" submits a fal Kling job (image-to-video when a poster exists for consistency, else text-to-video), shows a "Rendering…" state, polls /render-status every 6s, and plays the finished ~5s clip inline via VideoPlayer (expo-video). Video URL saved on the project; "▶ Clip" badge in My Projects. Backend: /pictureshow/projects/{id}/render + /render-status, fal_client submit/status/result, PS_T2V_MODEL/PS_I2V_MODEL. Requires FAL_KEY in backend/.env (placeholder added; user provides real key).
+- ✅ **Character Consistency**: _ps_generate_image now accepts reference image bytes; the suite fetches selected characters' reference photos (get_object) and passes them to Nano Banana as ImageContent so poster characters match the references.
+- ✅ **Project Export**: "Export / share shot list" on results + share icon per project → RN Share with formatted title/style/effects/storyboard (+ clip URL if rendered).
+- ✅ **Suite Presets**: save current style+length+speed+effects bundle (modal), apply in one tap, long-press to delete. Backend: /pictureshow/presets CRUD, db.ps_presets.
+- Deps: fal-client (backend, pip-frozen). Multi-language Settings deferred by user (English only for now).
+- Files: backend/server.py; frontend app/pictureshow/{ai,projects}.tsx; src/api/client.ts (PSPreset type, ps preset/render methods).
+- NOTE: user self-tests (skip automated tests). fal rendering only works once the user's FAL_KEY is added.
+
 
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.

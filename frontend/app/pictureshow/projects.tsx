@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -46,6 +46,22 @@ export default function PSProjects() {
     ]);
   };
 
+  const share = async (p: PSProject) => {
+    const meta = [
+      p.style && `Style: ${p.style}`,
+      p.length && `Length: ${p.length}`,
+      p.transitions?.length && `Transitions: ${p.transitions.join(", ")}`,
+      p.atmospherics?.length && `Atmosphere: ${p.atmospherics.join(", ")}`,
+      p.titles?.length && `Titles: ${p.titles.join(", ")}`,
+    ].filter(Boolean).join("\n");
+    const text = `🎬 ${p.title} — ${p.kind === "animation" ? "AI Animation" : "AI Video"}\n\n${meta}\n\n${p.storyboard}${p.video_url ? `\n\n▶ Clip: ${p.video_url}` : ""}\n\n— Made in Konphlux AI Video Suite`;
+    try {
+      await Share.share({ message: text });
+    } catch {
+      /* dismissed */
+    }
+  };
+
   const tagCount = (p: PSProject) =>
     (p.transitions?.length || 0) + (p.atmospherics?.length || 0) + (p.titles?.length || 0) + (p.finishing?.length || 0) + (p.audio_effects?.length || 0);
 
@@ -87,6 +103,15 @@ export default function PSProjects() {
                   <View style={[styles.kindBadge, { backgroundColor: colors.surfaceTertiary }]}>
                     <Text style={[styles.kindText, { color: colors.brand }]}>{p.kind === "animation" ? "Animation" : "Video"}</Text>
                   </View>
+                  {p.video_url ? (
+                    <View style={[styles.kindBadge, { backgroundColor: colors.brand }]}>
+                      <Text style={[styles.kindText, { color: colors.onBrandPrimary }]}>▶ Clip</Text>
+                    </View>
+                  ) : null}
+                  <View style={{ flex: 1 }} />
+                  <Pressable onPress={() => share(p)} hitSlop={10} testID={`psp-share-${p.id}`} style={{ marginRight: spacing.md }}>
+                    <MaterialCommunityIcons name="share-variant" size={19} color={colors.muted} />
+                  </Pressable>
                   <Pressable onPress={() => remove(p)} hitSlop={10} testID={`psp-del-${p.id}`}>
                     <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.muted} />
                   </Pressable>
@@ -120,7 +145,7 @@ const styles = StyleSheet.create({
   poster: { width: 108, height: 108 },
   posterFallback: { alignItems: "center", justifyContent: "center" },
   cardBody: { flex: 1, padding: spacing.md, gap: 3 },
-  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  cardTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   kindBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
   kindText: { fontFamily: fonts.bodyBold, fontSize: 11 },
   title: { fontFamily: fonts.displaySemi, fontSize: 15, marginTop: 2 },

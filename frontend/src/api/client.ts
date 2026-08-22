@@ -464,6 +464,8 @@ export type PSSuiteConfig = {
   has_voiceover?: boolean;
 };
 
+export type PSPreset = { id: string; name: string; style: string; length: string; speed: string; transitions: string[]; atmospherics: string[]; titles: string[]; finishing: string[]; audio_effects: string[]; created_at: string };
+
 export type PSProject = {
   id: string;
   title: string;
@@ -482,6 +484,8 @@ export type PSProject = {
   voiceover_path: string;
   storyboard: string;
   poster_path: string;
+  render_status?: string;
+  video_url?: string;
   created_at: string;
 };
 
@@ -727,6 +731,12 @@ export const api = {
   psSaveProject: (body: Partial<PSProject> & { prompt: string; kind: "video" | "animation" }) =>
     request<PSProject>("/pictureshow/projects", { method: "POST", body: JSON.stringify(body) }),
   psDeleteProject: (id: string) => request<{ deleted: boolean }>(`/pictureshow/projects/${id}`, { method: "DELETE" }),
+  psPresets: () => request<PSPreset[]>("/pictureshow/presets"),
+  psSavePreset: (body: Omit<PSPreset, "id" | "created_at">) =>
+    request<PSPreset>("/pictureshow/presets", { method: "POST", body: JSON.stringify(body) }),
+  psDeletePreset: (id: string) => request<{ deleted: boolean }>(`/pictureshow/presets/${id}`, { method: "DELETE" }),
+  psRender: (id: string) => request<{ status: string }>(`/pictureshow/projects/${id}/render`, { method: "POST" }),
+  psRenderStatus: (id: string) => request<{ status: string; video_url: string }>(`/pictureshow/projects/${id}/render-status`),
   frankAudio: (body: { kind: "music" | "sfx"; prompt: string; mood?: string; genre?: string; duration?: string }) =>
     request<{ kind: string; concept: string; image_path: string }>("/frankenstein/audio", { method: "POST", body: JSON.stringify(body) }),
   frankVisual: (body: { kind: "pic" | "logo" | "gif" | "meme"; prompt: string }) =>
