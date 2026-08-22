@@ -120,6 +120,28 @@ export default function Treasury() {
             </Pressable>
           </View>
 
+          {/* District trackers */}
+          <Text style={[styles.sectionLabel, { color: colors.muted }]}>DISTRICT TRACKERS</Text>
+          <View style={styles.trackerGrid}>
+            {[
+              { key: "dreambacker", label: "Dreambacker", sub: "Donations", icon: "hand-heart" as const, color: "#D53F8C" },
+              { key: "bazaar", label: "Bazaar", sub: "Spends", icon: "shopping" as const, color: "#DD6B20" },
+              { key: "waypoint", label: "Waypoint", sub: "Deals", icon: "map-marker-radius" as const, color: "#3182CE" },
+              { key: "retrospections", label: "Retrospections", sub: "Deals", icon: "store-search-outline" as const, color: "#805AD5" },
+            ].map((t) => (
+              <Pressable key={t.key} onPress={() => router.push(`/treasury/trackers?source=${t.key}` as any)} style={[styles.trackerTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} testID={`treasury-tracker-${t.key}`}>
+                <View style={[styles.trackerIcon, { backgroundColor: `${t.color}22` }]}>
+                  <MaterialCommunityIcons name={t.icon} size={20} color={t.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.trackerLabel, { color: colors.onSurface }]} numberOfLines={1}>{t.label}</Text>
+                  <Text style={[styles.trackerSub, { color: colors.muted }]}>{t.sub}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+
           {/* Tabs */}
           <View style={styles.tabs}>
             {TABS.map((t) => {
@@ -211,6 +233,12 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 52, borderRadius: radius.md, borderWidth: 1 },
   actionText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  sectionLabel: { fontFamily: fonts.bodyBold, fontSize: 11.5, letterSpacing: 0.5, marginTop: spacing.xl, marginBottom: spacing.sm },
+  trackerGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  trackerTile: { flexDirection: "row", alignItems: "center", gap: spacing.sm, width: "48%", flexGrow: 1, borderRadius: radius.md, borderWidth: 1, padding: spacing.sm, paddingRight: spacing.xs },
+  trackerIcon: { width: 36, height: 36, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
+  trackerLabel: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  trackerSub: { fontFamily: fonts.body, fontSize: 11.5, marginTop: 1 },
   tabs: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xl, marginBottom: spacing.sm },
   tab: { paddingHorizontal: spacing.lg, height: 36, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   tabText: { fontFamily: fonts.bodyBold, fontSize: 13 },

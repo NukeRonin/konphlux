@@ -587,6 +587,11 @@ export type Transaction = {
 export type WalletSummary = {
   balance_cents: number; total_in_cents: number; total_out_cents: number; payments_count: number; transfers_count: number;
 };
+export type TrackerEntry = { id: string; source: string; title: string; subtitle: string; amount_cents: number; link: string; created_at: string };
+export type Trackers = {
+  sections: { dreambacker: TrackerEntry[]; bazaar: TrackerEntry[]; waypoint: TrackerEntry[]; retrospections: TrackerEntry[] };
+  totals: { dreambacker: number; bazaar: number; waypoint: number; retrospections: number };
+};
 
 export type PSProject = {
   id: string;
@@ -997,4 +1002,6 @@ export const api = {
   treasuryTransactions: (type: string = "all") => request<Transaction[]>(`/treasury/transactions?type=${type}`),
   treasuryTopup: (amount_cents: number) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/topup", { method: "POST", body: JSON.stringify({ amount_cents }) }),
   treasuryTransfer: (recipient: string, amount_cents: number, note: string) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/transfer", { method: "POST", body: JSON.stringify({ recipient, amount_cents, note }) }),
+  treasuryTrackers: () => request<Trackers>("/treasury/trackers"),
+  retroRecordDeal: (listingId: string) => request<TrackerEntry>(`/retrospections/listings/${listingId}/deal`, { method: "POST" }),
 };

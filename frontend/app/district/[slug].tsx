@@ -203,8 +203,10 @@ const TREASURY_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Konphlux Balance": { route: "/treasury", icon: "bank" },
   "Payments": { route: "/treasury?tab=payments", icon: "cash-multiple" },
   "Transfers": { route: "/treasury?tab=transfers", icon: "bank-transfer" },
-  "Donations in Dreambacker": { route: "/dreambacker", icon: "hand-heart" },
-  "Spends in Bazaar": { route: "/(tabs)/bazaar", icon: "shopping" },
+  "Donations in Dreambacker": { route: "/treasury/trackers?source=dreambacker", icon: "hand-heart" },
+  "Spends in Bazaar": { route: "/treasury/trackers?source=bazaar", icon: "shopping" },
+  "Deals in Waypoint": { route: "/treasury/trackers?source=waypoint", icon: "map-marker-radius" },
+  "Deals in Retrospections": { route: "/treasury/trackers?source=retrospections", icon: "store-search-outline" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

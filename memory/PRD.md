@@ -153,6 +153,14 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Treasury — District Trackers pulling cross-district activity; user self-testing)
+- ✅ **District Trackers** (/treasury/trackers, segmented tabs + 4 tiles on Treasury dashboard): sections Donations in Dreambacker, Spends in Bazaar, Deals in Waypoint, Deals in Retrospections (company purchases). Each section shows a total + entries; every entry links back to its origin (Dreambacker→/dreambacker/{pid} or /dreambacker, Bazaar→/(tabs)/bazaar, Waypoint→/district/waypoint, Retrospections→/retrospections/marketplace/{listing}).
+- ✅ Pulls REAL data where it exists: real Dreambacker db_contributions (joined to db_projects) + real paid Bazaar orders (db.orders). Plus per-user seeded demo entries (district_ledger, idempotent) so all four sections have content in preview.
+- ✅ "Deals in Retrospections records company purchases": marketplace listing detail gained "Record purchase in Treasury" → POST /retrospections/listings/{id}/deal writes a retrospections tracker entry linking back to the listing.
+- Backend: GET /treasury/trackers (merges real orders/contributions + district_ledger, grouped + totals). _ensure_district_ledger seeds DISTRICT_LEDGER_SEED once. Added "Deals in Retrospections" to Treasury district features (verified served).
+- Wiring: TREASURY_ACTIONS district buttons for all four trackers → /treasury/trackers?source=…; dashboard tiles; route registered.
+- Curl-verified: 4 sections populated w/ correct links + totals, record-deal adds an entry, seed idempotent. Lint + bundle clean. Files: backend/server.py, frontend app/treasury/{trackers,index}.tsx, app/retrospections/marketplace/[id].tsx, src/api/client.ts, app/_layout.tsx, app/district/[slug].tsx.
+
 ### 2026-06 (Treasury — Konphlux Balance dashboard / core ledger; user self-testing)
 - ✅ **Konphlux Balance dashboard** (/treasury): balance hero card (current funds + In/Out totals), Add funds + Send/Transfer actions, tabbed history All / Payments / Transfers, per-txn rows (icon by type/category, title, date, category/note, colored ±amount, running balance_after). Accepts ?tab=payments|transfers.
 - ✅ Functional ledger: per-user wallet auto-created on first open with £1,000 starter + 6 seeded historical entries (top-up, Bazaar order, transfer in, subscription, donation, transfer out). Add funds (topup credit) + Transfer (debit sender / credit recipient by email or @handle, insufficient→400, self→400) both live-update balance.

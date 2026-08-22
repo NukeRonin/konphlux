@@ -19,6 +19,7 @@ export default function ListingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [l, setL] = useState<RetroListing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dealing, setDealing] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -40,6 +41,19 @@ export default function ListingDetail() {
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: async () => { await api.retroDeleteListing(l.id); router.back(); } },
     ]);
+  };
+
+  const recordDeal = async () => {
+    if (!l || dealing) return;
+    setDealing(true);
+    try {
+      await api.retroRecordDeal(l.id);
+      Alert.alert("Recorded", `"${l.name}" was added to your Treasury → Retrospections deals.`, [
+        { text: "View in Treasury", onPress: () => router.push("/treasury/trackers?source=retrospections" as any) },
+        { text: "OK" },
+      ]);
+    } catch (e: any) { Alert.alert("Couldn't record", e?.message || "Try again."); }
+    finally { setDealing(false); }
   };
 
   if (loading) return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><Loading label="Loading…" /></View>;
@@ -104,10 +118,16 @@ export default function ListingDetail() {
               <Text style={[styles.contactText, { color: "#E53E3E" }]}>Remove my listing</Text>
             </Pressable>
           ) : (
-            <Pressable onPress={contact} style={[styles.contactBtn, { backgroundColor: colors.brand }]} testID="listing-contact">
-              <MaterialCommunityIcons name="email-fast-outline" size={18} color={colors.onBrandPrimary} />
-              <Text style={[styles.contactText, { color: colors.onBrandPrimary }]}>Contact seller</Text>
-            </Pressable>
+            <>
+              <Pressable onPress={contact} style={[styles.contactBtn, { backgroundColor: colors.brand }]} testID="listing-contact">
+                <MaterialCommunityIcons name="email-fast-outline" size={18} color={colors.onBrandPrimary} />
+                <Text style={[styles.contactText, { color: colors.onBrandPrimary }]}>Contact seller</Text>
+              </Pressable>
+              <Pressable onPress={recordDeal} disabled={dealing} style={[styles.contactBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, marginTop: spacing.sm }]} testID="listing-deal">
+                <MaterialCommunityIcons name="handshake-outline" size={18} color={colors.onSurface} />
+                <Text style={[styles.contactText, { color: colors.onSurface }]}>{dealing ? "Recording…" : "Record purchase in Treasury"}</Text>
+              </Pressable>
+            </>
           )}
           <Text style={[styles.contactHint, { color: colors.muted }]}>{l.contact}</Text>
         </View>

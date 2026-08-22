@@ -672,7 +672,7 @@ DISTRICTS = [
      "tagline": "The Konphlux's counting house.",
      "description": "Balance, payments, transfers, donations and every receipt in one ledger.",
      "chatmonger": {"name": "Sapphire Sam", "role": "Teller", "greeting": "Ledgers balanced and books open. What can I settle for you?"},
-     "features": ["Konphlux Balance", "Payments", "Transfers", "Donations in Dreambacker", "Spends in Bazaar", "Deals in Waypoint", "Membership Subscription"]},
+     "features": ["Konphlux Balance", "Payments", "Transfers", "Donations in Dreambacker", "Spends in Bazaar", "Deals in Waypoint", "Deals in Retrospections", "Membership Subscription"]},
     {"slug": "dreambacker", "name": "Dreambacker", "icon": "hand-heart",
      "tagline": "Fund the improbable.",
      "description": "Launch projects, offer rewards and collect recurring support.",
@@ -848,6 +848,19 @@ RETRO_LISTINGS = [
      "reason": "Pursuing a new venture.", "revenue": "£110k / yr", "contact": "aetheroak@konphlux.mail",
      "image": f"{_RIMG}1521590832167-7bcbfaa6381f?w=800&q=80"},
 ]
+
+# Treasury district trackers — demo activity seeded per-user on first open.
+# (source, title, subtitle, amount_cents, link, days_ago)
+DISTRICT_LEDGER_SEED = [
+    ("dreambacker", "Aether Lamp Restoration", "Monthly donation", 2500, "/dreambacker", 7),
+    ("dreambacker", "Copperline Community Forge", "One-time pledge", 5000, "/dreambacker", 21),
+    ("bazaar", "Brass Sextant", "Order · KX-2481", 3400, "/(tabs)/bazaar", 24),
+    ("bazaar", "Hand-Bound Parchment Journal", "Order · KX-2455", 3400, "/(tabs)/bazaar", 33),
+    ("waypoint", "Airship charter — Copperline to Vale", "Deal · WP-118", 12000, "/district/waypoint", 10),
+    ("waypoint", "Waypoint Outfitters expedition bundle", "Deal · WP-104", 6700, "/district/waypoint", 27),
+    ("retrospections", "The Copper Spoon Diner", "Company purchase · deposit", 1850000, "/retrospections/marketplace/rl-1", 14),
+]
+
 
 
 
@@ -4973,6 +4986,87 @@ async def treasury_transfer(body: TransferBody, user: dict = Depends(require_use
                       f"Received from {user['display_name']}", user.get("handle", ""), "Transfer", body.note.strip())
     w2 = await db.wallets.find_one({"user_id": user["id"]}, {"_id": 0})
     return {"transaction": txn, "balance_cents": w2["balance_cents"]}
+
+
+# ----- Treasury: District Trackers (pull activity from other districts, link back) -----
+async def _ensure_district_ledger(user_id: str):
+    """Seed a little cross-district activity the first time trackers are opened."""
+    if await db.district_ledger.find_one({"user_id": user_id, "seeded": True}):
+        return
+    now = datetime.now(timezone.utc)
+    docs = []
+    for source, title, subtitle, amount, link, days_ago in DISTRICT_LEDGER_SEED:
+        docs.append({
+            "id": uuid.uuid4().hex[:12], "user_id": user_id, "source": source, "title": title,
+            "subtitle": subtitle, "amount_cents": amount, "link": link, "seeded": True,
+            "created_at": (now - timedelta(days=days_ago)).isoformat(),
+        })
+    if docs:
+        await db.district_ledger.insert_many([dict(d) for d in docs])
+
+
+def _tracker_entry(source: str, title: str, subtitle: str, amount_cents: int, link: str, created_at: str, tid: str) -> dict:
+    return {"id": tid, "source": source, "title": title, "subtitle": subtitle,
+            "amount_cents": amount_cents, "link": link, "created_at": created_at}
+
+
+@api_router.get("/treasury/trackers")
+async def treasury_trackers(user: dict = Depends(require_user)):
+    await _ensure_district_ledger(user["id"])
+    sections: dict[str, list] = {"dreambacker": [], "bazaar": [], "waypoint": [], "retrospections": []}
+
+    # Real Dreambacker donations (contributions joined to projects).
+    contribs = await db.db_contributions.find({"user_id": user["id"], "status": "paid"}, {"_id": 0}).to_list(2000)
+    if contribs:
+        pids = list({c["project_id"] for c in contribs})
+        projects = {p["id"]: p for p in await db.db_projects.find({"id": {"$in": pids}}, {"_id": 0}).to_list(500)}
+        for c in contribs:
+            p = projects.get(c["project_id"])
+            sections["dreambacker"].append(_tracker_entry(
+                "dreambacker", p["title"] if p else "A fundraiser",
+                "Monthly donation" if c.get("recurring") else "One-time pledge",
+                c.get("amount_cents", 0), f"/dreambacker/{c['project_id']}", c.get("created_at", ""), c.get("id", uuid.uuid4().hex[:8])))
+
+    # Real Bazaar spends (paid orders).
+    orders = await db.orders.find({"user_id": user["id"], "payment_status": "paid"}, {"_id": 0}).to_list(500)
+    for o in orders:
+        lines = o.get("lines", [])
+        title = lines[0]["title"] if lines else "Bazaar order"
+        if len(lines) > 1:
+            title += f" +{len(lines) - 1} more"
+        sections["bazaar"].append(_tracker_entry(
+            "bazaar", title, f"Order · {o['id'][:8].upper()}", o.get("amount_cents", 0),
+            "/(tabs)/bazaar", o.get("paid_at") or o.get("created_at", ""), o["id"]))
+
+    # Seeded + recorded cross-district ledger entries.
+    led = await db.district_ledger.find({"user_id": user["id"]}, {"_id": 0}).to_list(2000)
+    for e in led:
+        src = e.get("source")
+        if src in sections:
+            sections[src].append(_tracker_entry(src, e["title"], e.get("subtitle", ""), e.get("amount_cents", 0), e.get("link", ""), e.get("created_at", ""), e["id"]))
+
+    for k in sections:
+        sections[k].sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    totals = {k: sum(x["amount_cents"] for x in v) for k, v in sections.items()}
+    return {"sections": sections, "totals": totals}
+
+
+@api_router.post("/retrospections/listings/{listing_id}/deal", status_code=201)
+async def retro_record_deal(listing_id: str, user: dict = Depends(require_user)):
+    """Record a company purchase from the Commercial Marketplace into the Treasury tracker."""
+    lst = await db.retro_listings.find_one({"id": listing_id, "status": "active"}, {"_id": 0})
+    if not lst:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": "retrospections",
+        "title": lst["name"], "subtitle": f"Company purchase · {lst.get('asking_price', '')}".strip(" ·"),
+        "amount_cents": 0, "link": f"/retrospections/marketplace/{listing_id}", "seeded": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.district_ledger.insert_one(dict(doc))
+    return _tracker_entry("retrospections", doc["title"], doc["subtitle"], 0, doc["link"], doc["created_at"], doc["id"])
+
+
 
 
 
