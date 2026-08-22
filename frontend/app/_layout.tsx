@@ -11,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth/AuthContext";
 import { ThemeProvider, useTheme } from "@/src/theme/ThemeContext";
+import SmartReminders from "@/src/components/SmartReminders";
 
 LogBox.ignoreAllLogs(true);
 
@@ -135,6 +136,7 @@ function RootNavigator() {
         <Stack.Screen name="frankenstein-lab/vault" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
+      {user ? <SmartReminders /> : null}
     </>
   );
 }

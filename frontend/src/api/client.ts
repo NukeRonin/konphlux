@@ -562,6 +562,7 @@ export type FreelancerReview = { id: string; reviewer_name: string; rating: numb
 export type Interview = { id: string; job_id: string; conversation_id: string; poster_id: string; poster_name: string; applicant_id: string; applicant_name: string; title: string; scheduled_at: string; location: string; status: string; role?: string; created_at: string };
 
 export type CalendarItem = { id: string; type: string; title: string; when: string; location: string; note: string; status: string; color: string; deletable: boolean };
+export type EventionReminder = { id: string; type: string; title: string; when: string; location: string; minutes: number; color: string; message: string };
 export type EventionListItem = { id: string; text: string; done: boolean };
 export type EventionList = { id: string; title: string; items: EventionListItem[]; created_at: string };
 
@@ -939,4 +940,5 @@ export const api = {
   eventionAddListItem: (listId: string, text: string) => request<EventionListItem>(`/evention/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ text }) }),
   eventionToggleListItem: (listId: string, itemId: string) => request<{ done: boolean }>(`/evention/lists/${listId}/items/${itemId}/toggle`, { method: "POST" }),
   eventionDeleteListItem: (listId: string, itemId: string) => request<{ deleted: boolean }>(`/evention/lists/${listId}/items/${itemId}`, { method: "DELETE" }),
+  eventionRemindersDue: () => request<{ reminders: EventionReminder[] }>("/evention/reminders/due"),
 };

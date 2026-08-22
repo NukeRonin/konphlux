@@ -153,6 +153,12 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Evention Center — Smart Reminders from Clarity; user self-testing)
+- ✅ **Smart Reminders**: an app-wide in-app pop-up from Clarity (Evention's Timekeeper) that slides in from the top on ANY screen when a meeting/interview/event/appointment/trip/birthday starts within the next 30 min. Helpful, clear tone (e.g. "Heads up — your meeting \u201cX\u201d starts in about 14 minutes at HQ. Best get ready!"). Tap → opens /evention calendar; auto-dismisses after 9s or tap ✕. Color-coded by event type, shows Clarity name/role + type icon.
+- Backend: GET /evention/reminders/due returns items in a now-2min..now+30min window not yet nudged, marks them once (interviews soon_reminded, events reminder_sent) so each fires a single time. _clarity_reminder_message builds the tone/wording.
+- Frontend: global src/components/SmartReminders.tsx mounted in app/_layout.tsx (only when authenticated). Polls every 60s + on app foreground + 6s after mount; client-side dedupe via ref; RN Animated slide-in (style-level pointerEvents, no prop). New client type EventionReminder + api.eventionRemindersDue.
+- Curl-smoked: event 15min out fires (correct message+minutes+location), event 2h out does not, second poll returns 0 (fires once). Lint clean. Files: backend/server.py, frontend src/components/SmartReminders.tsx, app/_layout.tsx, src/api/client.ts.
+
 ### 2026-06 (Evention Center — Agendas + Lists; user self-testing)
 - ✅ **Agendas** (/evention/agenda, view-agenda icon in Calendar header + district "Agendas" button): pulls all calendar items (interviews + user events) into 4 tab views — Today / Tomorrow / This Week (through end of Sunday) / This Month (through month end). Client-side date filtering on eventionCalendar data (local timezone), color-coded rows, item counts. No backend change (reuses /evention/calendar).
 - ✅ **Lists** (/evention/lists, list-checks icon in Calendar header + district "Lists"/"Create a List" buttons): create/delete custom checklists NOT tied to a date (packing list, to-do, etc.). Inline create bar; cards show done/total; long-press or trash to delete. Detail /evention/list/[id]: add items, tap to check/uncheck (strikethrough), delete items; optimistic updates.

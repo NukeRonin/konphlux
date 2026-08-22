@@ -4343,6 +4343,73 @@ async def evention_calendar(user: dict = Depends(require_user)):
     return {"upcoming": [i for i in items if i["when"] >= now_iso], "past": [i for i in items if i["when"] < now_iso][::-1]}
 
 
+# ----- Evention Center: Smart Reminders (Clarity nudges when something starts soon) -----
+_CAL_TYPE_LABEL = {"interview": "interview", "meeting": "meeting", "flight": "trip",
+                   "appointment": "appointment", "event": "event", "birthday": "special day"}
+
+
+def _clarity_reminder_message(type_key: str, title: str, minutes: int, location: str) -> str:
+    label = _CAL_TYPE_LABEL.get(type_key, "event")
+    if minutes <= 0:
+        when_phrase = "is starting right now"
+    elif minutes == 1:
+        when_phrase = "starts in about a minute"
+    else:
+        when_phrase = f"starts in about {minutes} minutes"
+    where = f" at {location}" if location else ""
+    return f"Heads up — your {label} \u201c{title}\u201d {when_phrase}{where}. Best get ready!"
+
+
+@api_router.get("/evention/reminders/due")
+async def evention_reminders_due(user: dict = Depends(require_user)):
+    """Return calendar items starting within the next 30 minutes that the user
+    hasn't been nudged about yet. Each returned item is marked so it fires once."""
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(minutes=30)
+    grace = now - timedelta(minutes=2)  # still remind if it just started
+    out: list[dict] = []
+
+    def _parse(iso: str):
+        try:
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:  # noqa: BLE001
+            return None
+
+    # Confirmed interviews
+    ivs = await db.interviews.find(
+        {"$or": [{"poster_id": user["id"]}, {"applicant_id": user["id"]}],
+         "status": "confirmed", "soon_reminded": {"$ne": True}}, {"_id": 0}).to_list(200)
+    for iv in ivs:
+        dt = _parse(iv.get("scheduled_at", ""))
+        if not dt or not (grace <= dt <= horizon):
+            continue
+        await db.interviews.update_one({"id": iv["id"]}, {"$set": {"soon_reminded": True}})
+        mins = max(0, int((dt - now).total_seconds() // 60))
+        out.append({"id": iv["id"], "type": "interview", "title": iv["title"], "when": iv.get("scheduled_at", ""),
+                    "location": iv.get("location", ""), "minutes": mins, "color": CAL_TYPE_COLORS["interview"],
+                    "message": _clarity_reminder_message("interview", iv["title"], mins, iv.get("location", ""))})
+
+    # User-created events
+    evs = await db.calendar_events.find(
+        {"user_id": user["id"], "reminder_sent": {"$ne": True}}, {"_id": 0}).to_list(1000)
+    for e in evs:
+        dt = _parse(e.get("when", ""))
+        if not dt or not (grace <= dt <= horizon):
+            continue
+        await db.calendar_events.update_one({"id": e["id"], "user_id": user["id"]}, {"$set": {"reminder_sent": True}})
+        mins = max(0, int((dt - now).total_seconds() // 60))
+        loc = e.get("location", "")
+        out.append({"id": e["id"], "type": e["type"], "title": e["title"], "when": e.get("when", ""),
+                    "location": loc, "minutes": mins, "color": CAL_TYPE_COLORS.get(e["type"], "#718096"),
+                    "message": _clarity_reminder_message(e["type"], e["title"], mins, loc)})
+
+    out.sort(key=lambda x: x.get("when", ""))
+    return {"reminders": out}
+
+
 # ----- Evention Center: Lists (custom checklists, not date-bound) -----
 @api_router.post("/evention/lists", status_code=201)
 async def evention_create_list(body: EventionListBody, user: dict = Depends(require_user)):
