@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -42,13 +42,14 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const submit = async () => {
     if (!email.trim() || !password) return;
     setBusy(true);
     setError("");
     try {
-      await signIn(email.trim(), password);
+      await signIn(email.trim(), password, remember);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn't sign in. Try again.");
       setBusy(false);
@@ -101,6 +102,19 @@ export default function LoginScreen() {
               {error}
             </Text>
           ) : null}
+          <View style={styles.rememberRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rememberLabel, { color: colors.onSurface }]}>Stay Signed In</Text>
+              <Text style={[styles.rememberHint, { color: colors.muted }]}>Keep me logged in on this device</Text>
+            </View>
+            <Switch
+              testID="login-remember"
+              value={remember}
+              onValueChange={setRemember}
+              trackColor={{ true: colors.brand, false: colors.borderStrong }}
+              thumbColor={colors.surface}
+            />
+          </View>
           <ForgeButton
             label="Enter"
             fullWidth
@@ -145,6 +159,9 @@ export const styles = StyleSheet.create({
   },
   input: { flex: 1, fontFamily: fonts.body, fontSize: 16 },
   error: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  rememberRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs },
+  rememberLabel: { fontFamily: fonts.bodyBold, fontSize: 15 },
+  rememberHint: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
   footer: { flexDirection: "row", alignItems: "center", alignSelf: "center", marginTop: spacing.xxl },
   footerText: { fontFamily: fonts.body, fontSize: 14 },
   footerLink: { fontFamily: fonts.bodyBold, fontSize: 14 },
