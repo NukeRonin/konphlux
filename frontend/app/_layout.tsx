@@ -124,6 +124,7 @@ function RootNavigator() {
         <Stack.Screen name="treasury/security" />
         <Stack.Screen name="lobby/index" />
         <Stack.Screen name="lobby/[id]" />
+        <Stack.Screen name="contact" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
         <Stack.Screen name="pictureshow/streamora/watch" />

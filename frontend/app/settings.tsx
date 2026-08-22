@@ -115,6 +115,8 @@ export default function Settings() {
           <Row icon="lifebuoy" label="Help Center" sub="FAQs & guides" onPress={() => Alert.alert("Help Center", "Browse districts from the home screen. Tap any district to see what it offers. For fundraisers, open Dreambacker; for the marketplace, open Bazaar.")} testID="settings-help" />
           <Divider />
           <Row icon="face-agent" label="Contact support" sub="support@konphlux.app" onPress={() => Linking.openURL("mailto:support@konphlux.app?subject=Konphlux%20Support")} testID="settings-support" />
+          <Divider />
+          <Row icon="email-edit-outline" label="Contact Us" sub="Send us a message" onPress={() => router.push("/contact")} testID="settings-contact" />
         </Panel>
 
         <Eyebrow style={styles.groupLabel}>About</Eyebrow>

@@ -21,7 +21,7 @@ from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 import fal_client
-from email_service import send_order_receipt
+from email_service import send_order_receipt, send_contact_message
 from storage_service import put_object, get_object, init_storage, APP_NAME
 
 
@@ -119,6 +119,13 @@ class SaveBody(BaseModel):
 
 class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+
+
+class ContactBody(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+    subject: str = Field(min_length=1, max_length=140)
+    message: str = Field(min_length=1, max_length=4000)
 
 
 class CommunityCreate(BaseModel):
@@ -5395,6 +5402,17 @@ async def lobby_message_team(ws_id: str, user: dict = Depends(require_user)):
             "last_at": now, "created_at": now}
     await db.cb_conversations.insert_one(dict(conv))
     return {"conversation_id": conv["id"]}
+
+
+@api_router.post("/contact", status_code=201)
+async def contact_us(body: ContactBody):
+    """Public Contact Us submission — emails the fixed Konphlux inbox."""
+    try:
+        await send_contact_message(username=body.username, email=body.email,
+                                   subject=body.subject, message=body.message)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="We couldn't send that message. Please try again.")
+    return {"sent": True}
 
 
 

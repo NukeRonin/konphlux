@@ -157,3 +157,29 @@ async def send_order_receipt(*, to: str, name: str, order: dict) -> str | None:
         '</table></td></tr></table>'
     )
     return await _send_email(to=to, subject=subject, html=html)
+
+
+
+# Fixed server-side recipient for Contact Us — never taken from caller input.
+CONTACT_INBOX = "konphluxoverlord@gmail.com"
+
+
+async def send_contact_message(*, username: str, email: str, subject: str, message: str) -> str | None:
+    """Deliver a Contact Us submission to the Konphlux inbox. All user-supplied
+    fields are escaped and placed into a fixed server-side template."""
+    safe_subject = f"[Konphlux Contact] {subject.strip()[:120]}"
+    body_html = escape(message.strip()).replace("\n", "<br>")
+    html = (
+        '<table role="presentation" width="100%" style="background:#F6F1E7;padding:24px">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="520" style="background:#FCF9F2;border:1px solid #DDD2BE;'
+        'border-radius:14px;padding:28px;font-family:Arial,sans-serif">'
+        f'<tr><td style="font-family:Georgia,serif;font-size:22px;color:#B06C3A;padding-bottom:10px">New Contact Message</td></tr>'
+        f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:4px"><strong>From:</strong> {escape(username.strip())}</td></tr>'
+        f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:4px"><strong>Email:</strong> {escape(email.strip())}</td></tr>'
+        f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:12px"><strong>Subject:</strong> {escape(subject.strip())}</td></tr>'
+        '<tr><td style="border-top:1px solid #E4DBCD;padding-top:14px;font-size:15px;color:#3B3229;line-height:1.6">'
+        f'{body_html}</td></tr>'
+        '</table></td></tr></table>'
+    )
+    return await _send_email(to=CONTACT_INBOX, subject=safe_subject, html=html)

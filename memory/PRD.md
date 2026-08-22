@@ -153,6 +153,12 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Contact Us page — Settings → Assistance; user self-testing)
+- ✅ **Contact Us** (/contact, reachable via Settings → Assistance/Help "Contact support"): form with Username, Email Address, Subject, Message. Signed-in user's display_name + email auto-prefill (from AuthContext). Send validates required fields + email format client-side; disabled until valid. On success shows a "Message Sent" confirmation card (check icon + Done → back).
+- ✅ Backend POST /api/contact (ContactBody: username/email/subject/message with Pydantic validation) → email_service.send_contact_message delivers an HTML message to fixed server-side inbox CONTACT_INBOX="konphluxoverlord@gmail.com" (recipient is NOT client-controlled). Reply-to set to the submitter's email. Returns {"sent": true} (201).
+- Agent-tested via direct API: valid → 201 {"sent":true}, invalid email → 422, missing fields → 422. Managed email key present. Frontend lint clean. NOTE: actual inbox receipt at the Gmail address NOT yet observed — user to verify in Preview. Automated tests/screenshots skipped per user request.
+- Files: backend/email_service.py (send_contact_message, CONTACT_INBOX), backend/server.py (ContactBody + /contact endpoint, import send_contact_message), frontend app/contact.tsx (new), app/settings.tsx (Contact support → router), app/_layout.tsx (contact route), src/api/client.ts (contactUs).
+
 ### 2026-06 (Entrepreneur Lobby — Team Messaging via Chatterbox; user self-testing)
 - ✅ **"Message Team"** button in workspace detail header → POST /lobby/workspaces/{id}/message-team finds-or-creates the Chatterbox group chat for the workspace members (reuses existing cb_conversations engine, type "group"), then navigates to /chatterbox/conversation/{id}. Idempotent via workspace_id tag; roster re-synced to current members on each open; title = workspace name. Requires ≥2 members (400 with helpful message otherwise).
 - Curl-verified: solo→400, creates group, idempotent (same conv id), group opens in Chatterbox with workspace title. Lint + bundle clean. Files: backend/server.py, frontend app/lobby/[id].tsx (header button + handler), src/api/client.ts (lobbyMessageTeam).

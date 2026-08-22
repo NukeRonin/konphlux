@@ -1032,4 +1032,5 @@ export const api = {
   lobbyToggleTask: (id: string, taskId: string) => request<{ done: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}/toggle`, { method: "POST" }),
   lobbyDeleteTask: (id: string, taskId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
   lobbyMessageTeam: (id: string) => request<{ conversation_id: string }>(`/lobby/workspaces/${id}/message-team`, { method: "POST" }),
+  contactUs: (body: { username: string; email: string; subject: string; message: string }) => request<{ sent: boolean }>("/contact", { method: "POST", body: JSON.stringify(body) }),
 };
