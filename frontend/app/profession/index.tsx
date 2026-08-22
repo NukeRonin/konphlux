@@ -12,7 +12,7 @@ import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 import { salaryText, statusColor, statusLabel, timeAgo } from "@/src/utils/jobs";
 
-type Tab = "find" | "applications" | "posted";
+type Tab = "find" | "saved" | "applications" | "posted";
 
 export default function ProfessionPlaza() {
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -20,11 +20,12 @@ export default function ProfessionPlaza() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [tab, setTab] = useState<Tab>(params.tab === "applications" ? "applications" : params.tab === "posted" ? "posted" : "find");
+  const [tab, setTab] = useState<Tab>(params.tab === "applications" ? "applications" : params.tab === "posted" ? "posted" : params.tab === "saved" ? "saved" : "find");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("All");
   const [categories, setCategories] = useState<string[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [savedJobs, setSavedJobs] = useState<Job[]>([]);
   const [myApps, setMyApps] = useState<JobApplication[]>([]);
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,7 @@ export default function ProfessionPlaza() {
     setLoading(true);
     try {
       if (t === "applications") setMyApps(await api.jobApplicationsMine());
+      else if (t === "saved") setSavedJobs(await api.jobsSaved());
       else setMyJobs(await api.jobsMine());
     } catch {
       /* ignore */
@@ -66,6 +68,16 @@ export default function ProfessionPlaza() {
 
   const switchTab = (t: Tab) => { setTab(t); };
 
+  const toggleSave = async (job: Job) => {
+    try {
+      const res = await api.jobToggleSave(job.id);
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, saved: res.saved } : j)));
+      if (!res.saved) setSavedJobs((prev) => prev.filter((j) => j.id !== job.id));
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
@@ -76,6 +88,9 @@ export default function ProfessionPlaza() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Job Board</Text>
           <Eyebrow>Profession Plaza</Eyebrow>
         </View>
+        <Pressable testID="job-alerts" onPress={() => router.push("/profession/alerts")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="bell-ring-outline" size={19} color={colors.brand} />
+        </Pressable>
         <Pressable testID="job-post-cta" onPress={() => router.push("/profession/post")} style={[styles.postBtn, { backgroundColor: colors.brand }]}>
           <MaterialCommunityIcons name="plus" size={16} color={colors.onBrandPrimary} />
           <Text style={[styles.postBtnText, { color: colors.onBrandPrimary }]}>Post</Text>
@@ -84,7 +99,7 @@ export default function ProfessionPlaza() {
 
       {/* Tabs */}
       <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-        {([["find", "Find Jobs"], ["applications", "Applications"], ["posted", "Jobs I Posted"]] as [Tab, string][]).map(([key, label]) => (
+        {([["find", "Find"], ["saved", "Saved"], ["applications", "Applied"], ["posted", "Posted"]] as [Tab, string][]).map(([key, label]) => (
           <Pressable key={key} testID={`job-tab-${key}`} onPress={() => switchTab(key)} style={styles.tab}>
             <Text style={[styles.tabText, { color: tab === key ? colors.brand : colors.muted }]}>{label}</Text>
             {tab === key ? <View style={[styles.tabBar, { backgroundColor: colors.brand }]} /> : null}
@@ -126,16 +141,38 @@ export default function ProfessionPlaza() {
           </ScrollView>
           {loading ? (
             <Loading label="Finding jobs…" />
-          ) : jobs.length === 0 ? (
-            <Empty icon="briefcase-search" text="No jobs match yet. Try another search — or post the first one!" />
           ) : (
             <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-              {jobs.map((j) => (
-                <JobCard key={j.id} job={j} onPress={() => router.push(`/profession/${j.id}`)} />
-              ))}
+              <Pressable testID="job-marketplace" onPress={() => router.push("/profession/marketplace")} style={[styles.banner, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="account-hard-hat" size={22} color={colors.brand} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bannerTitle, { color: colors.onSurface }]}>Freelance Marketplace</Text>
+                  <Text style={[styles.bannerSub, { color: colors.muted }]}>Find gigs, build a résumé, hire freelancers</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.muted} />
+              </Pressable>
+              {jobs.length === 0 ? (
+                <Empty icon="briefcase-search" text="No jobs match yet. Try another search — or post the first one!" />
+              ) : (
+                jobs.map((j) => (
+                  <JobCard key={j.id} job={j} onPress={() => router.push(`/profession/${j.id}`)} onSave={toggleSave} />
+                ))
+              )}
             </ScrollView>
           )}
         </View>
+      ) : tab === "saved" ? (
+        loading ? (
+          <Loading label="Loading saved jobs…" />
+        ) : savedJobs.length === 0 ? (
+          <Empty icon="bookmark-outline" text="No saved jobs yet. Tap the bookmark on any listing to keep it here." />
+        ) : (
+          <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+            {savedJobs.map((j) => (
+              <JobCard key={j.id} job={j} onPress={() => router.push(`/profession/${j.id}`)} onSave={toggleSave} />
+            ))}
+          </ScrollView>
+        )
       ) : tab === "applications" ? (
         loading ? (
           <Loading label="Loading your applications…" />
@@ -189,7 +226,7 @@ export default function ProfessionPlaza() {
   );
 }
 
-function JobCard({ job, onPress }: { job: Job; onPress: () => void }) {
+function JobCard({ job, onPress, onSave }: { job: Job; onPress: () => void; onSave?: (j: Job) => void }) {
   const { colors } = useTheme();
   const sal = salaryText(job.salary_min, job.salary_max);
   return (
@@ -213,6 +250,11 @@ function JobCard({ job, onPress }: { job: Job; onPress: () => void }) {
           {job.has_applied ? <Text style={[styles.cardMeta, { color: colors.brand }]}>✓ Applied</Text> : null}
         </View>
       </View>
+      {onSave ? (
+        <Pressable onPress={() => onSave(job)} hitSlop={10} testID={`job-save-${job.id}`}>
+          <MaterialCommunityIcons name={job.saved ? "bookmark" : "bookmark-outline"} size={22} color={job.saved ? colors.brand : colors.muted} />
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -242,6 +284,10 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
   postBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, height: 38, borderRadius: radius.pill },
   postBtnText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  iconBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  banner: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginBottom: spacing.sm },
+  bannerTitle: { fontFamily: fonts.displaySemi, fontSize: 15 },
+  bannerSub: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
   tabs: { flexDirection: "row", borderBottomWidth: 1 },
   tab: { flex: 1, alignItems: "center", paddingVertical: spacing.md },
   tabText: { fontFamily: fonts.bodyBold, fontSize: 13 },

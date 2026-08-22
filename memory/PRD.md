@@ -134,6 +134,16 @@
 - Wiring: DISTRICT_HUBS + PROFESSION_ACTIONS in district/[slug].tsx ("Open the Job Board"); non-job features route to the plaza Chatmonger assistant. Routes registered in _layout.tsx. Shared util src/utils/jobs.ts.
 - Multi-language Settings still deferred (English only). User self-tests; automated tests skipped.
 
+### 2026-06 (Profession Plaza — Job Board v2 + Freelance Marketplace)
+- ✅ **Save Jobs**: bookmark toggle on job cards + detail; new "Saved" tab. Backend job_saves collection; /profession/jobs/{id}/save + /profession/saved; `saved` flag on list/detail.
+- ✅ **Job Alerts** (/profession/alerts, bell icon in header): follow categories + keywords; on any matching new job the follower gets an in-app notification (job_alert). Backend job_alert_prefs + _notify_job_alerts on job create. Verified: matching post triggered alert.
+- ✅ **Resume Attach**: apply sheet now supports attaching a PDF/Word doc (expo-document-picker → /profession/upload-resume, Object Storage) or pasting a resume/portfolio link. Poster sees a "Resume" button in Manage.
+- ✅ **Applicant Chat**: "Message" button on each applicant (Manage) and on freelancer profiles → opens a Chatterbox DM (cbStartDm → conversation).
+- ✅ **Freelance Marketplace** (/profession/marketplace) with 3 tabs: **Find Gigs** (freelance/contract/internship/temp jobs via /profession/gigs), **Freelancers** (browse profiles, Upwork-style), **My Résumé**. Freelancer profile: name, headline, bio, category, skills, hourly rate, location, avatar (Object Storage), links, experience, availability. Backend freelancers collection + CRUD (/profession/freelancers, /freelancer/me GET/PUT, /freelancers/{id}).
+- ✅ **Résumé PDF**: freelancer profiles downloadable/shareable as PDF via expo-print + expo-sharing (src/utils/resumePdf.ts).
+- Wiring: district actions Find Freelance Gigs/Freelancer marketplace/Resumés → marketplace routes; new routes in _layout.tsx. Entry banner on Find Jobs tab.
+- Backend verified end-to-end via curl (save, saved list, alerts→notification, gigs, freelancer save/list/get). Marketplace UI smoke-tested. Deps already present (expo-print/sharing/document-picker/image-picker). User self-tests; automated tests skipped.
+
 
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.

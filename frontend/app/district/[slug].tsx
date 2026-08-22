@@ -159,9 +159,9 @@ const PROFESSION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Post jobs": { route: "/profession/post", icon: "briefcase-plus" },
   "Job Categories": { route: "/profession", icon: "shape-outline" },
   "Apply & track applications": { route: "/profession?tab=applications", icon: "clipboard-check-outline" },
-  "Find Freelance Gigs": { route: "/chatmonger/profession-plaza", icon: "account-hard-hat" },
-  "Freelancer marketplace": { route: "/chatmonger/profession-plaza", icon: "storefront-outline" },
-  "Resumés": { route: "/chatmonger/profession-plaza", icon: "file-account-outline" },
+  "Find Freelance Gigs": { route: "/profession/marketplace?tab=gigs", icon: "account-hard-hat" },
+  "Freelancer marketplace": { route: "/profession/marketplace?tab=freelancers", icon: "storefront-outline" },
+  "Resumés": { route: "/profession/marketplace/edit", icon: "file-account-outline" },
   "Interview scheduling": { route: "/chatmonger/profession-plaza", icon: "calendar-clock" },
 };
 

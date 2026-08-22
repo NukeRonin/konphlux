@@ -56,6 +56,26 @@ export async function uploadImage(uri: string, isWeb: boolean): Promise<string> 
   return `${BASE}/api/files/${(data as { path: string }).path}`;
 }
 
+/** Upload a resume document (pdf/doc/txt). Returns the stored object path. */
+export async function uploadResume(uri: string, isWeb: boolean, mimeType: string, name: string): Promise<string> {
+  const form = new FormData();
+  if (isWeb) {
+    const blob = await (await fetch(uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri, name, type: mimeType } as any);
+  }
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/api/profession/upload-resume`, { method: "POST", headers, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = (data as any)?.detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${res.status})`, res.status);
+  }
+  return (data as { path: string }).path;
+}
+
 /** Upload an audio file (soundtrack or recorded voice-over). Returns the stored object path. */
 export async function uploadAudio(uri: string, isWeb: boolean, mimeType = "audio/m4a", name = `audio_${Date.now()}.m4a`): Promise<string> {
   const form = new FormData();
@@ -478,6 +498,7 @@ export type Job = JobInput & {
   is_owner?: boolean;
   my_application_status?: string;
   applicant_count?: number;
+  saved?: boolean;
 };
 
 export type JobApplication = {
@@ -500,8 +521,35 @@ export type Applicant = {
   applicant_name: string;
   applicant_handle: string;
   cover_note: string;
+  resume_link?: string;
+  resume_path?: string;
   status: string;
   created_at: string;
+};
+
+export type ExperienceItem = { role: string; org: string; detail: string };
+
+export type FreelancerInput = {
+  name: string;
+  headline: string;
+  bio: string;
+  category: string;
+  skills: string[];
+  hourly_rate: number;
+  location: string;
+  avatar_url: string;
+  links: string[];
+  experience: ExperienceItem[];
+  available: boolean;
+};
+
+export type Freelancer = FreelancerInput & {
+  id: string;
+  user_id: string;
+  handle: string;
+  created_at: string;
+  updated_at: string;
+  is_me?: boolean;
 };
 
 export type PSProject = {
@@ -842,7 +890,16 @@ export const api = {
   jobUpdate: (id: string, body: JobInput) => request<Job>(`/profession/jobs/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   jobToggleClose: (id: string) => request<{ status: string }>(`/profession/jobs/${id}/close`, { method: "POST" }),
   jobDelete: (id: string) => request<{ deleted: boolean }>(`/profession/jobs/${id}`, { method: "DELETE" }),
-  jobApply: (id: string, cover_note: string) => request<{ id: string }>(`/profession/jobs/${id}/apply`, { method: "POST", body: JSON.stringify({ cover_note }) }),
+  jobApply: (id: string, body: { cover_note: string; resume_link?: string; resume_path?: string }) => request<{ id: string }>(`/profession/jobs/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
   jobApplicants: (id: string) => request<{ job: Job; applicants: Applicant[] }>(`/profession/jobs/${id}/applicants`),
   jobSetStatus: (appId: string, status: string) => request<{ status: string }>(`/profession/applications/${appId}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
+  jobToggleSave: (id: string) => request<{ saved: boolean }>(`/profession/jobs/${id}/save`, { method: "POST" }),
+  jobsSaved: () => request<Job[]>("/profession/saved"),
+  jobGigs: (q?: string, category?: string) => request<Job[]>(`/profession/gigs?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}`),
+  jobAlertPrefs: () => request<{ categories: string[]; keywords: string[] }>("/profession/alerts/prefs"),
+  jobSetAlertPrefs: (categories: string[], keywords: string[]) => request<{ categories: string[]; keywords: string[] }>("/profession/alerts/prefs", { method: "PUT", body: JSON.stringify({ categories, keywords }) }),
+  freelancers: (q?: string, category?: string) => request<Freelancer[]>(`/profession/freelancers?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}`),
+  freelancerMe: () => request<Freelancer | Record<string, never>>("/profession/freelancer/me"),
+  freelancerSave: (body: FreelancerInput) => request<Freelancer>("/profession/freelancer/me", { method: "PUT", body: JSON.stringify(body) }),
+  freelancerGet: (id: string) => request<Freelancer>(`/profession/freelancers/${id}`),
 };

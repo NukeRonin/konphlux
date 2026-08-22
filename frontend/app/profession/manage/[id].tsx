@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, Applicant, Job } from "@/src/api/client";
+import { api, Applicant, fileUrl, Job } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -50,6 +50,20 @@ export default function ManageJob() {
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: async () => { await api.jobDelete(id!); router.replace("/profession?tab=posted"); } },
     ]);
+  };
+
+  const message = async (a: Applicant) => {
+    try {
+      const conv = await api.cbStartDm(a.applicant_id);
+      router.push(`/chatterbox/conversation/${conv.id}`);
+    } catch {
+      Alert.alert("Couldn't open chat", "Try again.");
+    }
+  };
+
+  const openResume = (a: Applicant) => {
+    const url = a.resume_link || (a.resume_path ? fileUrl(a.resume_path) : "");
+    if (url) Linking.openURL(url).catch(() => Alert.alert("Couldn't open", "The resume link isn't available."));
   };
 
   const setStatus = (a: Applicant) => {
@@ -109,7 +123,20 @@ export default function ManageJob() {
                   </Pressable>
                 </View>
                 {a.cover_note ? <Text style={[styles.note, { color: colors.onSurface }]}>{a.cover_note}</Text> : null}
-                <Text style={[styles.time, { color: colors.muted }]}>Applied {timeAgo(a.created_at)}</Text>
+                <View style={styles.applicantActions}>
+                  {(a.resume_link || a.resume_path) ? (
+                    <Pressable onPress={() => openResume(a)} style={[styles.smallBtn, { borderColor: colors.border }]} testID={`mj-resume-${a.id}`}>
+                      <MaterialCommunityIcons name="file-account-outline" size={15} color={colors.brand} />
+                      <Text style={[styles.smallBtnText, { color: colors.brand }]}>Resume</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable onPress={() => message(a)} style={[styles.smallBtn, { borderColor: colors.border }]} testID={`mj-msg-${a.id}`}>
+                    <MaterialCommunityIcons name="message-text-outline" size={15} color={colors.brand} />
+                    <Text style={[styles.smallBtnText, { color: colors.brand }]}>Message</Text>
+                  </Pressable>
+                  <View style={{ flex: 1 }} />
+                  <Text style={[styles.time, { color: colors.muted }]}>Applied {timeAgo(a.created_at)}</Text>
+                </View>
               </View>
             ))}
           </View>
@@ -146,5 +173,8 @@ const styles = StyleSheet.create({
   pill: { flexDirection: "row", alignItems: "center", gap: 2, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1 },
   pillText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   note: { fontFamily: fonts.body, fontSize: 13.5, lineHeight: 20, marginTop: spacing.sm },
-  time: { fontFamily: fonts.bodyMedium, fontSize: 11.5, marginTop: spacing.sm },
+  applicantActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  smallBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, height: 32, borderRadius: radius.pill, borderWidth: 1 },
+  smallBtnText: { fontFamily: fonts.bodyBold, fontSize: 12 },
+  time: { fontFamily: fonts.bodyMedium, fontSize: 11.5 },
 });

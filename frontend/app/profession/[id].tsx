@@ -1,11 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, Job } from "@/src/api/client";
+import { api, Job, uploadResume } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { Loading } from "@/src/components/States";
@@ -23,6 +24,10 @@ export default function JobDetail() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [note, setNote] = useState("");
+  const [resumeLink, setResumeLink] = useState("");
+  const [resumePath, setResumePath] = useState("");
+  const [resumeName, setResumeName] = useState("");
+  const [uploadingResume, setUploadingResume] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -38,14 +43,40 @@ export default function JobDetail() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const toggleSave = async () => {
+    if (!job) return;
+    try {
+      const res = await api.jobToggleSave(job.id);
+      setJob({ ...job, saved: res.saved });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const pickResume = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"], copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.length) return;
+      const asset = res.assets[0];
+      setUploadingResume(true);
+      const path = await uploadResume(asset.uri, Platform.OS === "web", asset.mimeType || "application/pdf", asset.name || `resume_${Date.now()}.pdf`);
+      setResumePath(path);
+      setResumeName(asset.name || "Resume");
+    } catch {
+      Alert.alert("Upload failed", "Couldn't attach that file. Try a PDF or Word doc.");
+    } finally {
+      setUploadingResume(false);
+    }
+  };
+
   const apply = async () => {
     setBusy(true);
     try {
-      await api.jobApply(id!, note.trim());
+      await api.jobApply(id!, { cover_note: note.trim(), resume_link: resumeLink.trim(), resume_path: resumePath });
       setApplying(false);
       setNote("");
       await load();
-      Alert.alert("Application sent", "The poster has been notified. Track its status under Applications.");
+      Alert.alert("Application sent", "The poster has been notified. Track its status under Applied.");
     } catch (e: any) {
       Alert.alert("Couldn't apply", e?.message || "Try again.");
     } finally {
@@ -65,6 +96,10 @@ export default function JobDetail() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.onSurface }]} numberOfLines={1}>Job details</Text>
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={toggleSave} hitSlop={12} testID="jd-save">
+          <MaterialCommunityIcons name={job.saved ? "bookmark" : "bookmark-outline"} size={24} color={job.saved ? colors.brand : colors.onSurface} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
@@ -135,6 +170,29 @@ export default function JobDetail() {
                 multiline
                 style={[styles.noteInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]}
               />
+              {resumePath ? (
+                <View style={[styles.resumeRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                  <MaterialCommunityIcons name="file-check" size={18} color={colors.brand} />
+                  <Text numberOfLines={1} style={[styles.resumeName, { color: colors.onSurface }]}>{resumeName}</Text>
+                  <Pressable onPress={() => { setResumePath(""); setResumeName(""); }} hitSlop={10}>
+                    <MaterialCommunityIcons name="close-circle" size={20} color={colors.muted} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable testID="jd-resume" onPress={pickResume} disabled={uploadingResume} style={[styles.resumeBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+                  <MaterialCommunityIcons name="paperclip" size={18} color={colors.brand} />
+                  <Text style={[styles.resumeBtnText, { color: colors.onSurface }]}>{uploadingResume ? "Uploading…" : "Attach a resume (PDF / doc)"}</Text>
+                </Pressable>
+              )}
+              <TextInput
+                testID="jd-resume-link"
+                value={resumeLink}
+                onChangeText={setResumeLink}
+                placeholder="…or paste a resume/portfolio link"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                style={[styles.linkInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]}
+              />
               <ForgeButton label="Send application" fullWidth loading={busy} onPress={apply} testID="jd-send" style={{ marginTop: spacing.md }} />
             </View>
           </KeyboardAwareScrollView>
@@ -177,4 +235,9 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: fonts.display, fontSize: 18 },
   sheetSub: { fontFamily: fonts.body, fontSize: 13, marginTop: 4 },
   noteInput: { minHeight: 100, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.md, fontFamily: fonts.body, fontSize: 15, textAlignVertical: "top" },
+  resumeBtn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, marginTop: spacing.sm },
+  resumeBtnText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  resumeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, marginTop: spacing.sm },
+  resumeName: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14 },
+  linkInput: { height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, marginTop: spacing.sm, fontFamily: fonts.body, fontSize: 14 },
 });

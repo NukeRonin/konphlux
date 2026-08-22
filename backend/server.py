@@ -412,10 +412,37 @@ class JobBody(BaseModel):
 
 class JobApplyBody(BaseModel):
     cover_note: str = Field(default="", max_length=3000)
+    resume_link: str = Field(default="", max_length=600)
+    resume_path: str = Field(default="", max_length=600)
 
 
 class AppStatusBody(BaseModel):
     status: str = Field(pattern="^(submitted|reviewed|accepted|rejected)$")
+
+
+class JobAlertBody(BaseModel):
+    categories: list[str] = Field(default_factory=list, max_length=20)
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ExperienceItem(BaseModel):
+    role: str = Field(default="", max_length=100)
+    org: str = Field(default="", max_length=100)
+    detail: str = Field(default="", max_length=400)
+
+
+class FreelancerBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    headline: str = Field(default="", max_length=120)
+    bio: str = Field(default="", max_length=2000)
+    category: str = Field(default="Other", max_length=40)
+    skills: list[str] = Field(default_factory=list, max_length=30)
+    hourly_rate: int = Field(default=0, ge=0, le=100000)
+    location: str = Field(default="", max_length=100)
+    avatar_url: str = Field(default="", max_length=600)
+    links: list[str] = Field(default_factory=list, max_length=10)
+    experience: list[ExperienceItem] = Field(default_factory=list, max_length=15)
+    available: bool = True
 
 
 
@@ -3652,10 +3679,27 @@ JOB_CATEGORIES = [
     "Finance", "Customer Support", "Writing", "Data", "Healthcare", "Education", "Other",
 ]
 JOB_TYPES = ["Full-time", "Part-time", "Contract", "Freelance", "Internship", "Temporary"]
+GIG_TYPES = ["Contract", "Freelance", "Internship", "Temporary"]
 
 
 def _job_public(doc: dict) -> dict:
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+async def _notify_job_alerts(job: dict) -> None:
+    """Notify users whose alert prefs match this new job (by category or keyword)."""
+    try:
+        haystack = f"{job.get('title', '')} {job.get('description', '')} {job.get('company', '')}".lower()
+        subs = await db.job_alert_prefs.find({}, {"_id": 0}).to_list(2000)
+        for s in subs:
+            if s.get("user_id") == job.get("poster_id"):
+                continue
+            cat_match = job.get("category", "") in (s.get("categories") or [])
+            kw_match = any(k.lower().strip() in haystack for k in (s.get("keywords") or []) if k.strip())
+            if cat_match or kw_match:
+                await _notify(s["user_id"], "job_alert", job["id"], "New job for you", f"\"{job['title']}\" matches your job alerts.")
+    except Exception:  # noqa: BLE001
+        logger.exception("job alert notify failed")
 
 
 @api_router.get("/profession/meta")
@@ -3682,12 +3726,15 @@ async def profession_create_job(body: JobBody, user: dict = Depends(require_user
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.jobs.insert_one(dict(doc))
+    await _notify_job_alerts(doc)
     return _job_public(doc)
 
 
 @api_router.get("/profession/jobs")
-async def profession_list_jobs(user: dict = Depends(require_user), q: str = "", category: str = ""):
+async def profession_list_jobs(user: dict = Depends(require_user), q: str = "", category: str = "", gigs: bool = False):
     query: dict = {"status": "open"}
+    if gigs:
+        query["job_type"] = {"$in": GIG_TYPES}
     if category and category != "All":
         query["category"] = category
     if q.strip():
@@ -3697,12 +3744,16 @@ async def profession_list_jobs(user: dict = Depends(require_user), q: str = "", 
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
     ids = [d["id"] for d in docs]
     applied = set()
+    saved = set()
     if ids:
         apps = await db.job_applications.find({"applicant_id": user["id"], "job_id": {"$in": ids}}, {"_id": 0, "job_id": 1}).to_list(1000)
         applied = {a["job_id"] for a in apps}
+        sv = await db.job_saves.find({"user_id": user["id"], "job_id": {"$in": ids}}, {"_id": 0, "job_id": 1}).to_list(1000)
+        saved = {s["job_id"] for s in sv}
     for d in docs:
         d["has_applied"] = d["id"] in applied
         d["is_owner"] = d["poster_id"] == user["id"]
+        d["saved"] = d["id"] in saved
     return docs
 
 
@@ -3743,6 +3794,7 @@ async def profession_get_job(job_id: str, user: dict = Depends(require_user)):
     doc["is_owner"] = doc["poster_id"] == user["id"]
     doc["has_applied"] = bool(app)
     doc["my_application_status"] = app["status"] if app else ""
+    doc["saved"] = bool(await db.job_saves.find_one({"user_id": user["id"], "job_id": job_id}))
     return doc
 
 
@@ -3801,6 +3853,8 @@ async def profession_apply(job_id: str, body: JobApplyBody, user: dict = Depends
         "applicant_name": user.get("display_name", "Someone"),
         "applicant_handle": user.get("handle", ""),
         "cover_note": body.cover_note.strip(),
+        "resume_link": body.resume_link.strip(),
+        "resume_path": body.resume_path,
         "status": "submitted",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -3837,6 +3891,148 @@ async def profession_set_status(app_id: str, body: AppStatusBody, user: dict = D
     except Exception:  # noqa: BLE001
         pass
     return {"status": body.status}
+
+
+# ----- Profession Plaza: Save jobs -----
+@api_router.post("/profession/jobs/{job_id}/save")
+async def profession_toggle_save(job_id: str, user: dict = Depends(require_user)):
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0, "id": 1})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    existing = await db.job_saves.find_one({"user_id": user["id"], "job_id": job_id})
+    if existing:
+        await db.job_saves.delete_one({"user_id": user["id"], "job_id": job_id})
+        return {"saved": False}
+    await db.job_saves.insert_one({"user_id": user["id"], "job_id": job_id, "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"saved": True}
+
+
+@api_router.get("/profession/saved")
+async def profession_saved_jobs(user: dict = Depends(require_user)):
+    saves = await db.job_saves.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    saves.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    ids = [s["job_id"] for s in saves]
+    jobs = await db.jobs.find({"id": {"$in": ids}, "status": "open"}, {"_id": 0}).to_list(500)
+    by_id = {j["id"]: j for j in jobs}
+    applied = {a["job_id"] for a in await db.job_applications.find({"applicant_id": user["id"], "job_id": {"$in": ids}}, {"_id": 0, "job_id": 1}).to_list(1000)}
+    out = []
+    for s in saves:
+        j = by_id.get(s["job_id"])
+        if not j:
+            continue
+        j["saved"] = True
+        j["has_applied"] = j["id"] in applied
+        j["is_owner"] = j["poster_id"] == user["id"]
+        out.append(j)
+    return out
+
+
+# ----- Profession Plaza: Job alerts -----
+@api_router.get("/profession/alerts/prefs")
+async def profession_get_alert_prefs(user: dict = Depends(require_user)):
+    doc = await db.job_alert_prefs.find_one({"user_id": user["id"]}, {"_id": 0})
+    return {"categories": doc.get("categories", []) if doc else [], "keywords": doc.get("keywords", []) if doc else []}
+
+
+@api_router.put("/profession/alerts/prefs")
+async def profession_set_alert_prefs(body: JobAlertBody, user: dict = Depends(require_user)):
+    cats = [c for c in body.categories if c in JOB_CATEGORIES]
+    kws = [k.strip() for k in body.keywords if k.strip()][:20]
+    await db.job_alert_prefs.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"user_id": user["id"], "categories": cats, "keywords": kws}},
+        upsert=True,
+    )
+    return {"categories": cats, "keywords": kws}
+
+
+# ----- Profession Plaza: Gigs (freelance-type jobs) -----
+@api_router.get("/profession/gigs")
+async def profession_gigs(user: dict = Depends(require_user), q: str = "", category: str = ""):
+    return await profession_list_jobs(user=user, q=q, category=category, gigs=True)
+
+
+# ----- Profession Plaza: Resume file upload -----
+@api_router.post("/profession/upload-resume", status_code=201)
+async def profession_upload_resume(user: dict = Depends(require_user), file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Resume too large (max 10MB).")
+    content_type = file.content_type or "application/pdf"
+    allowed = {
+        "application/pdf": "pdf",
+        "application/msword": "doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "text/plain": "txt",
+    }
+    if content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Please choose a PDF, Word doc, or text file.")
+    path = f"{APP_NAME}/resumes/{user['id']}/{uuid.uuid4().hex}.{allowed[content_type]}"
+    try:
+        await run_in_threadpool(put_object, path, data, content_type)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Resume upload failed")
+        raise HTTPException(status_code=502, detail="Couldn't store the resume. Try again.") from e
+    return {"path": path}
+
+
+# ----- Profession Plaza: Freelancer marketplace -----
+def _freelancer_public(doc: dict) -> dict:
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/profession/freelancers")
+async def profession_list_freelancers(user: dict = Depends(require_user), q: str = "", category: str = ""):
+    query: dict = {}
+    if category and category != "All":
+        query["category"] = category
+    if q.strip():
+        rx = {"$regex": q.strip(), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"headline": rx}, {"bio": rx}, {"skills": rx}]
+    docs = await db.freelancers.find(query, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
+    return docs
+
+
+@api_router.get("/profession/freelancer/me")
+async def profession_my_freelancer(user: dict = Depends(require_user)):
+    doc = await db.freelancers.find_one({"user_id": user["id"]}, {"_id": 0})
+    return doc or {}
+
+
+@api_router.put("/profession/freelancer/me")
+async def profession_save_freelancer(body: FreelancerBody, user: dict = Depends(require_user)):
+    existing = await db.freelancers.find_one({"user_id": user["id"]}, {"_id": 0})
+    doc = {
+        "id": existing["id"] if existing else uuid.uuid4().hex[:12],
+        "user_id": user["id"],
+        "handle": user.get("handle", ""),
+        "name": body.name.strip(),
+        "headline": body.headline.strip(),
+        "bio": body.bio.strip(),
+        "category": body.category,
+        "skills": [s.strip() for s in body.skills if s.strip()][:30],
+        "hourly_rate": body.hourly_rate,
+        "location": body.location.strip(),
+        "avatar_url": body.avatar_url,
+        "links": [l.strip() for l in body.links if l.strip()][:10],
+        "experience": [e.model_dump() for e in body.experience],
+        "available": body.available,
+        "created_at": existing.get("created_at") if existing else datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.freelancers.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
+    return _freelancer_public(doc)
+
+
+@api_router.get("/profession/freelancers/{freelancer_id}")
+async def profession_get_freelancer(freelancer_id: str, user: dict = Depends(require_user)):
+    doc = await db.freelancers.find_one({"id": freelancer_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    doc["is_me"] = doc.get("user_id") == user["id"]
+    return doc
+
 
 
 
