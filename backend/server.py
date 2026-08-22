@@ -524,6 +524,22 @@ class RetroListingBody(BaseModel):
     contact: str = Field(min_length=1, max_length=120)
 
 
+class TransferBody(BaseModel):
+    recipient: str = Field(min_length=1, max_length=120)  # email or @handle
+    amount_cents: int = Field(gt=0, le=100_000_000)
+    note: str = Field(default="", max_length=200)
+
+
+class TopupBody(BaseModel):
+    amount_cents: int = Field(gt=0, le=100_000_000)
+
+
+class PaymentBody(BaseModel):
+    amount_cents: int = Field(gt=0, le=100_000_000)
+    title: str = Field(min_length=1, max_length=120)
+    category: str = Field(default="General", max_length=40)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -4837,6 +4853,128 @@ async def retro_delete_listing(listing_id: str, user: dict = Depends(require_use
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Listing not found or not yours")
     return {"deleted": True}
+
+
+# ----- Treasury: Konphlux Balance (the core wallet & ledger) -----
+def _money(cents: int) -> str:
+    return f"£{cents / 100:,.2f}"
+
+
+async def _ensure_wallet(user: dict) -> dict:
+    """Return the user's wallet, creating it with a starter balance and a little
+    seeded history the first time they open the Treasury."""
+    w = await db.wallets.find_one({"user_id": user["id"]}, {"_id": 0})
+    if w:
+        return w
+    now = datetime.now(timezone.utc)
+    opening = 100_000
+    # (days_ago, type, direction, amount_cents, title, counterparty, category)
+    seed = [
+        (30, "payment", "credit", 10_000, "Added funds", "Bank card", "Top-up"),
+        (24, "payment", "debit", 3_400, "Bazaar order — Brass Sextant", "Bazaar", "Shopping"),
+        (18, "transfer", "credit", 5_000, "Received from Cogsworth", "@cogsworth", "Transfer"),
+        (12, "payment", "debit", 999, "Membership Subscription", "Konphlux", "Subscription"),
+        (7, "payment", "debit", 2_500, "Donation — Aether Lamp Restoration", "Dreambacker", "Donation"),
+        (3, "transfer", "debit", 1_500, "Sent to Isolde Vayne", "@isolde", "Transfer"),
+    ]
+    bal = opening
+    docs = []
+    for days_ago, ttype, direction, amt, title, counterparty, category in seed:
+        bal = bal + amt if direction == "credit" else bal - amt
+        docs.append({
+            "id": uuid.uuid4().hex[:12], "user_id": user["id"], "type": ttype, "direction": direction,
+            "amount_cents": amt, "title": title, "counterparty": counterparty, "category": category,
+            "note": "", "balance_after_cents": bal,
+            "created_at": (now - timedelta(days=days_ago)).isoformat(),
+        })
+    if docs:
+        await db.transactions.insert_many([dict(d) for d in docs])
+    wallet = {"user_id": user["id"], "balance_cents": bal, "created_at": now.isoformat()}
+    await db.wallets.insert_one(dict(wallet))
+    return {"user_id": user["id"], "balance_cents": bal, "created_at": wallet["created_at"]}
+
+
+async def _record_txn(user_id: str, ttype: str, direction: str, amount_cents: int,
+                      title: str, counterparty: str, category: str, note: str = "") -> dict:
+    """Apply a ledger entry to a wallet atomically-ish and return the transaction."""
+    w = await db.wallets.find_one({"user_id": user_id}, {"_id": 0})
+    bal = (w["balance_cents"] if w else 0)
+    bal = bal + amount_cents if direction == "credit" else bal - amount_cents
+    doc = {
+        "id": uuid.uuid4().hex[:12], "user_id": user_id, "type": ttype, "direction": direction,
+        "amount_cents": amount_cents, "title": title, "counterparty": counterparty, "category": category,
+        "note": note, "balance_after_cents": bal, "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.transactions.insert_one(dict(doc))
+    await db.wallets.update_one({"user_id": user_id}, {"$set": {"balance_cents": bal}}, upsert=True)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/treasury/balance")
+async def treasury_balance(user: dict = Depends(require_user)):
+    w = await _ensure_wallet(user)
+    txns = await db.transactions.find({"user_id": user["id"]}, {"_id": 0}).to_list(5000)
+    total_in = sum(t["amount_cents"] for t in txns if t["direction"] == "credit")
+    total_out = sum(t["amount_cents"] for t in txns if t["direction"] == "debit")
+    return {
+        "balance_cents": w["balance_cents"],
+        "total_in_cents": total_in,
+        "total_out_cents": total_out,
+        "payments_count": sum(1 for t in txns if t["type"] == "payment"),
+        "transfers_count": sum(1 for t in txns if t["type"] == "transfer"),
+    }
+
+
+@api_router.get("/treasury/transactions")
+async def treasury_transactions(type: str = "all", user: dict = Depends(require_user)):
+    await _ensure_wallet(user)
+    query: dict = {"user_id": user["id"]}
+    if type in ("payment", "transfer"):
+        query["type"] = type
+    docs = await db.transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return docs
+
+
+@api_router.post("/treasury/topup", status_code=201)
+async def treasury_topup(body: TopupBody, user: dict = Depends(require_user)):
+    await _ensure_wallet(user)
+    txn = await _record_txn(user["id"], "payment", "credit", body.amount_cents, "Added funds", "Bank card", "Top-up")
+    w = await db.wallets.find_one({"user_id": user["id"]}, {"_id": 0})
+    return {"transaction": txn, "balance_cents": w["balance_cents"]}
+
+
+@api_router.post("/treasury/pay", status_code=201)
+async def treasury_pay(body: PaymentBody, user: dict = Depends(require_user)):
+    w = await _ensure_wallet(user)
+    if w["balance_cents"] < body.amount_cents:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+    txn = await _record_txn(user["id"], "payment", "debit", body.amount_cents, body.title.strip(), "Konphlux", body.category.strip() or "General")
+    w2 = await db.wallets.find_one({"user_id": user["id"]}, {"_id": 0})
+    return {"transaction": txn, "balance_cents": w2["balance_cents"]}
+
+
+@api_router.post("/treasury/transfer", status_code=201)
+async def treasury_transfer(body: TransferBody, user: dict = Depends(require_user)):
+    w = await _ensure_wallet(user)
+    if w["balance_cents"] < body.amount_cents:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+    key = body.recipient.strip()
+    handle = key if key.startswith("@") else f"@{key}"
+    recipient = await db.users.find_one({"$or": [{"email": key.lower()}, {"handle": handle}, {"handle": key}]})
+    if not recipient:
+        raise HTTPException(status_code=404, detail="No Konphlux member found for that email or handle")
+    if recipient["id"] == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't transfer to yourself")
+    # debit sender, credit recipient
+    txn = await _record_txn(user["id"], "transfer", "debit", body.amount_cents,
+                            f"Sent to {recipient['display_name']}", recipient.get("handle", ""), "Transfer", body.note.strip())
+    await _ensure_wallet(recipient)
+    await _record_txn(recipient["id"], "transfer", "credit", body.amount_cents,
+                      f"Received from {user['display_name']}", user.get("handle", ""), "Transfer", body.note.strip())
+    w2 = await db.wallets.find_one({"user_id": user["id"]}, {"_id": 0})
+    return {"transaction": txn, "balance_cents": w2["balance_cents"]}
+
+
 
 
 

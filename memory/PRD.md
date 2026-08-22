@@ -153,6 +153,14 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Treasury — Konphlux Balance dashboard / core ledger; user self-testing)
+- ✅ **Konphlux Balance dashboard** (/treasury): balance hero card (current funds + In/Out totals), Add funds + Send/Transfer actions, tabbed history All / Payments / Transfers, per-txn rows (icon by type/category, title, date, category/note, colored ±amount, running balance_after). Accepts ?tab=payments|transfers.
+- ✅ Functional ledger: per-user wallet auto-created on first open with £1,000 starter + 6 seeded historical entries (top-up, Bazaar order, transfer in, subscription, donation, transfer out). Add funds (topup credit) + Transfer (debit sender / credit recipient by email or @handle, insufficient→400, self→400) both live-update balance.
+- Backend collections wallets + transactions. Endpoints GET /treasury/{balance, transactions?type=}, POST /treasury/{topup, pay, transfer}. Helpers _ensure_wallet (idempotent seed), _record_txn (updates running balance). Models TransferBody/TopupBody/PaymentBody.
+- Wiring: DISTRICT_HUBS treasury→/treasury; TREASURY_ACTIONS ("Konphlux Balance", "Payments"→?tab=payments, "Transfers"→?tab=transfers, Donations→/dreambacker, Spends→/(tabs)/bazaar). Route registered.
+- Note: seeded/manual ledger for now; live Bazaar/Dreambacker/subscription events are NOT yet auto-posted to this ledger (future wiring).
+- Curl-verified: balance/summary, filtered history, topup, transfer (both sides), insufficient-400. Lint + bundle clean. Files: backend/server.py, frontend app/treasury/index.tsx, src/api/client.ts, app/_layout.tsx, app/district/[slug].tsx.
+
 ### 2026-06 (Retrospections — Commercial Marketplace + Save Favorite Places; user self-testing)
 - ✅ **Commercial Marketplace**: browse "Businesses for Sale" (/retrospections/marketplace) with For Sale / My Listings tabs; "Sell" → /retrospections/marketplace/sell form (name, category, asking price, location, revenue, description, reason, contact — name/category/price/contact required); listing detail /retrospections/marketplace/[id] with Contact seller (mailto/tel via Linking) or Remove (owner-only). 3 seeded listings by "Konphlux Brokerage".
 - ✅ **Save Favorite Places** (exact button spelling): heart toggle on business detail hero + quick-save heart on hub cards; /retrospections/favorites personal list with unfavorite. is_favorite returned on businesses list + detail.

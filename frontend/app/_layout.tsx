@@ -119,6 +119,7 @@ function RootNavigator() {
         <Stack.Screen name="retrospections/marketplace/sell" />
         <Stack.Screen name="retrospections/marketplace/[id]" />
         <Stack.Screen name="retrospections/business/[id]" />
+        <Stack.Screen name="treasury/index" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
         <Stack.Screen name="pictureshow/streamora/watch" />

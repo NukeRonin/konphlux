@@ -32,6 +32,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "profession-plaza": { route: "/profession", label: "Open the Job Board" },
   "evention-center": { route: "/evention", label: "Open the Calendar" },
   retrospections: { route: "/retrospections", label: "Enter Retrospections" },
+  treasury: { route: "/treasury", label: "Open Konphlux Balance" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -197,8 +198,18 @@ const RETRO_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Save Favorite Places": { route: "/retrospections/favorites", icon: "heart-outline" },
 };
 
+// Treasury — the core wallet/ledger district.
+const TREASURY_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Konphlux Balance": { route: "/treasury", icon: "bank" },
+  "Payments": { route: "/treasury?tab=payments", icon: "cash-multiple" },
+  "Transfers": { route: "/treasury?tab=transfers", icon: "bank-transfer" },
+  "Donations in Dreambacker": { route: "/dreambacker", icon: "hand-heart" },
+  "Spends in Bazaar": { route: "/(tabs)/bazaar", icon: "shopping" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   retrospections: RETRO_ACTIONS,
+  treasury: TREASURY_ACTIONS,
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
   bazaar: BAZAAR_ACTIONS,

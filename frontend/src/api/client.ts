@@ -580,6 +580,13 @@ export type RetroListing = {
   id: string; name: string; category: string; asking_price: string; location: string; description: string;
   reason: string; revenue: string; contact: string; image: string; seller_name: string; created_at: string; is_owner: boolean;
 };
+export type Transaction = {
+  id: string; type: string; direction: string; amount_cents: number; title: string;
+  counterparty: string; category: string; note: string; balance_after_cents: number; created_at: string;
+};
+export type WalletSummary = {
+  balance_cents: number; total_in_cents: number; total_out_cents: number; payments_count: number; transfers_count: number;
+};
 
 export type PSProject = {
   id: string;
@@ -986,4 +993,8 @@ export const api = {
     request<RetroListing>("/retrospections/listings", { method: "POST", body: JSON.stringify(body) }),
   retroListing: (id: string) => request<RetroListing>(`/retrospections/listings/${id}`),
   retroDeleteListing: (id: string) => request<{ deleted: boolean }>(`/retrospections/listings/${id}`, { method: "DELETE" }),
+  treasuryBalance: () => request<WalletSummary>("/treasury/balance"),
+  treasuryTransactions: (type: string = "all") => request<Transaction[]>(`/treasury/transactions?type=${type}`),
+  treasuryTopup: (amount_cents: number) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/topup", { method: "POST", body: JSON.stringify({ amount_cents }) }),
+  treasuryTransfer: (recipient: string, amount_cents: number, note: string) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/transfer", { method: "POST", body: JSON.stringify({ recipient, amount_cents, note }) }),
 };
