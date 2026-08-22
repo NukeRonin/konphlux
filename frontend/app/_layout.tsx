@@ -144,6 +144,9 @@ function RootNavigator() {
         <Stack.Screen name="dreambacker/[id]" />
         <Stack.Screen name="dreambacker/edit/[id]" />
         <Stack.Screen name="dreambacker/backings" />
+        <Stack.Screen name="telegraph/index" />
+        <Stack.Screen name="telegraph/new" />
+        <Stack.Screen name="telegraph/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />

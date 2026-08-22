@@ -625,6 +625,25 @@ export type PSProject = {
 };
 
 
+export type TGArticle = {
+  id: string;
+  title: string;
+  excerpt: string;
+  body: string;
+  category: string;
+  cover_url: string;
+  author_id: string;
+  author_name: string;
+  author_handle: string;
+  created_at: string;
+  likes: number;
+  recent_likes: number;
+  liked: boolean;
+  following: boolean;
+  read_minutes: number;
+};
+
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -1032,5 +1051,14 @@ export const api = {
   lobbyToggleTask: (id: string, taskId: string) => request<{ done: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}/toggle`, { method: "POST" }),
   lobbyDeleteTask: (id: string, taskId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
   lobbyMessageTeam: (id: string) => request<{ conversation_id: string }>(`/lobby/workspaces/${id}/message-team`, { method: "POST" }),
-  contactUs: (body: { username: string; email: string; subject: string; message: string }) => request<{ sent: boolean }>("/contact", { method: "POST", body: JSON.stringify(body) }),
+  contactUs: (body: { username: string; email: string; subject: string; message: string; topic: string }) => request<{ sent: boolean }>("/contact", { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- Telegraph (articles) ----
+  tgArticles: (filter: string) => request<TGArticle[]>(`/telegraph/articles?filter=${encodeURIComponent(filter)}`),
+  tgArticle: (id: string) => request<TGArticle>(`/telegraph/articles/${id}`),
+  tgCreateArticle: (body: { title: string; body: string; excerpt?: string; category?: string; cover_url?: string }) =>
+    request<TGArticle>("/telegraph/articles", { method: "POST", body: JSON.stringify(body) }),
+  tgDeleteArticle: (id: string) => request<{ deleted: boolean }>(`/telegraph/articles/${id}`, { method: "DELETE" }),
+  tgLikeArticle: (id: string) => request<{ liked: boolean }>(`/telegraph/articles/${id}/like`, { method: "POST" }),
+  tgFollowAuthor: (authorId: string) => request<{ following: boolean }>(`/telegraph/authors/${authorId}/follow`, { method: "POST" }),
 };

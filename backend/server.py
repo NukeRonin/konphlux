@@ -21,7 +21,7 @@ from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 import fal_client
-from email_service import send_order_receipt, send_contact_message
+from email_service import send_order_receipt, send_contact_message, send_contact_confirmation
 from storage_service import put_object, get_object, init_storage, APP_NAME
 
 
@@ -126,6 +126,7 @@ class ContactBody(BaseModel):
     email: EmailStr
     subject: str = Field(min_length=1, max_length=140)
     message: str = Field(min_length=1, max_length=4000)
+    topic: str = Field(default="Other", pattern="^(Bug|Idea|Billing|Other)$")
 
 
 class CommunityCreate(BaseModel):
@@ -631,6 +632,18 @@ class BPReviewBody(BaseModel):
     plan_width: float = Field(default=8, gt=0, le=100)
 
 
+# ---- Telegraph (articles) ----
+TG_CATEGORIES = ["Essays", "Opinion", "Technology", "Culture", "Craft", "Fiction", "Guides", "News"]
+
+
+class TGArticleBody(BaseModel):
+    title: str = Field(min_length=3, max_length=160)
+    body: str = Field(min_length=20, max_length=40000)
+    excerpt: str = Field(default="", max_length=280)
+    category: str = Field(default="Essays", max_length=40)
+    cover_url: str = Field(default="", max_length=600)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -904,6 +917,50 @@ DISTRICT_LEDGER_SEED = [
     ("waypoint", "Airship charter — Copperline to Vale", "Deal · WP-118", 12000, "/district/waypoint", 10),
     ("waypoint", "Waypoint Outfitters expedition bundle", "Deal · WP-104", 6700, "/district/waypoint", 27),
     ("retrospections", "The Copper Spoon Diner", "Company purchase · deposit", 1850000, "/retrospections/marketplace/rl-1", 14),
+]
+
+
+# Telegraph — seeded long-form articles. Distinct author_ids so a reader can
+# "follow" seeded writers and populate the Following tab. days_ago = when posted;
+# base_likes = popularity; recent_likes = likes in the last 7 days (Trending).
+_TG_IMG = "https://images.unsplash.com/photo-"
+TG_ARTICLES = [
+    {"id": "tg-1", "author_id": "tg-auth-1", "author_name": "Iolanthe Vex", "author_handle": "@iolanthe",
+     "title": "The Quiet Craft of the Wire Operator", "category": "Essays",
+     "cover_url": f"{_TG_IMG}1457369804613-52c61a468e7d?w=1000&q=80",
+     "excerpt": "Before the great feeds and the endless scroll, a message travelled one careful click at a time. What the old operators knew still matters.",
+     "days_ago": 2, "base_likes": 486, "recent_likes": 140,
+     "body": "There is a particular kind of patience that the wire operators possessed, and which we have almost entirely lost. To send a message down the line was to commit to it — every dot and dash was a small decision, unhurried and deliberate, and there was no deleting it once the key had spoken.\n\nI spent a winter with the last operator in the Copperline district, a woman named Valeri who could still read the wire by ear the way you or I read a face. She told me that the trick was never speed. \"Anyone can go fast and be wrong,\" she said, tapping the brass key with one finger. \"The art is in the pause. Knowing when not to send.\"\n\nWe have built machines that do the opposite. They reward the instant, the unconsidered, the reflex. And yet the more I sat in that little room, the more I came to believe that the operator's discipline is not a relic. It is a skill we will have to relearn — the courage to hold a thought a moment longer before we let it fly.\n\nWhen Valeri finally sent my message, she did it slowly, and I understood, for the first time, that slowness could be a form of respect."},
+    {"id": "tg-2", "author_id": "tg-auth-2", "author_name": "Percival Oakes", "author_handle": "@percival",
+     "title": "Why My Reading Lamp Hums in B-Flat", "category": "Technology",
+     "cover_url": f"{_TG_IMG}1524634126442-357e0eac3c14?w=1000&q=80",
+     "excerpt": "A retrofit gone gloriously right, and what the resonance of an aether coil can teach us about the systems we build.",
+     "days_ago": 5, "base_likes": 312, "recent_likes": 22,
+     "body": "It began, as these things do, with a coil I had no business installing. My reading lamp, a perfectly ordinary brass affair inherited from an aunt, now hums a low and contented B-flat whenever it is lit.\n\nThe engineers I consulted were divided. Half insisted it was a fault — a loose winding, a sympathetic vibration in the shade. The other half, the more interesting half, asked me whether the hum bothered me. It did not. It comforts me, in fact, the way a cat's purr does.\n\nWhat I have come to believe is that the hum is not a bug but a signature. Every system, if you listen closely enough, has a resonant frequency — a note it wants to sing when energy runs through it. The mistake we make, again and again, is to silence that note in the name of tidiness.\n\nSo I have named the lamp Reginald, and I have stopped trying to fix him. Some evenings, when the district is quiet, I light him just to hear the room agree with itself."},
+    {"id": "tg-3", "author_id": "tg-auth-3", "author_name": "Wilhelmina Grast", "author_handle": "@artificer",
+     "title": "Against the Cult of the New", "category": "Opinion",
+     "cover_url": f"{_TG_IMG}1519681393784-d120267933ba?w=1000&q=80",
+     "excerpt": "We have been taught to worship the latest thing. But most of what is worth keeping was made by people who are no longer here to be thanked.",
+     "days_ago": 1, "base_likes": 201, "recent_likes": 190,
+     "body": "The workshop door reads the weather now. I am proud of it, and I will tell anyone who stands still long enough. But the gauge that makes it work is ninety years old, salvaged from a boiler that outlived the man who built it.\n\nThere is a cult of the new that runs through everything we make. Newer is faster, newer is better, newer is — above all — for sale. And in the rush to the next thing we throw away an astonishing amount of hard-won knowledge, encoded not in manuals but in objects, in the way a well-made tool sits in the hand.\n\nI am not arguing against progress. I am arguing against amnesia. The best inventors I know are also, quietly, the best keepers of old things. They understand that innovation is not the opposite of memory — it is memory, put to work.\n\nSo before you replace the thing that still works, sit with it a while. Ask it what it knows. You may find the future has been hiding inside it all along."},
+    {"id": "tg-4", "author_id": "tg-auth-1", "author_name": "Iolanthe Vex", "author_handle": "@iolanthe",
+     "title": "A Serial in Nine Parts: Chapter One", "category": "Fiction",
+     "cover_url": f"{_TG_IMG}1476081718509-d5d0b661a376?w=1000&q=80",
+     "excerpt": "The pocket-watch had stopped at exactly 3:47, and so, it seemed, had everyone who touched it.",
+     "days_ago": 9, "base_likes": 640, "recent_likes": 8,
+     "body": "The pocket-watch arrived on a Tuesday, wrapped in oilcloth and addressed to a man who had been dead for six years.\n\nInspector Halloran turned it over in his hands. It had stopped at 3:47 — not this morning's 3:47, he suspected, but some other, older one. The engraving on the back read only: FOR WHEN YOU ARE READY.\n\nHe was not ready. He was rarely ready for anything, which was, his superiors agreed, his chief qualification for the work he did. He wound the watch once, gently, and felt the small resistance of a mechanism that did not wish to be disturbed.\n\nThat night he dreamed of a room he had never seen, lit by a single humming lamp, and a woman at a brass key tapping out a message he could almost, but not quite, understand.\n\nWhen he woke, the watch had started again. It read 3:48."},
+    {"id": "tg-5", "author_id": "tg-auth-4", "author_name": "Tomas Krieg", "author_handle": "@tomas",
+     "title": "A Beginner's Guide to Soldering Without Tears", "category": "Guides",
+     "cover_url": f"{_TG_IMG}1581092160607-ee22621dd758?w=1000&q=80",
+     "excerpt": "You have an iron, more enthusiasm than sense, and a growing collection of burns. Here is how to fix all three.",
+     "days_ago": 4, "base_likes": 158, "recent_likes": 46,
+     "body": "Everyone's first solder joint looks like a frightened blob, and that is entirely as it should be. The good news is that soldering is one of those rare skills where the gap between hopeless and competent can be crossed in an afternoon.\n\nThe first rule is heat the work, not the solder. Touch the iron to the joint — the pad and the wire together — and let them get hot enough that the solder flows toward them when you feed it in. If you melt the solder on the iron and dab it on, you will get a cold joint that looks fine and works never.\n\nThe second rule is that flux is your friend. It cleans the metal as you heat it and lets the solder wet the surface properly. A little goes a long way, and a lot goes everywhere, so be sparing.\n\nThe third rule is simply this: make more joints. Nobody solders well because they read about it. Buy a strip of cheap perfboard, sit down with a podcast, and make fifty joints in a row. By the fortieth, your hands will have learned what no guide can teach them."},
+    {"id": "tg-6", "author_id": "tg-auth-3", "author_name": "Wilhelmina Grast", "author_handle": "@artificer",
+     "title": "Notes on Keeping Brass", "category": "Craft",
+     "cover_url": f"{_TG_IMG}1513506003901-1e6a229e2d15?w=1000&q=80",
+     "excerpt": "Brass tarnishes because it is alive to the air. The question is not how to stop it, but how to live alongside it.",
+     "days_ago": 12, "base_likes": 97, "recent_likes": 5,
+     "body": "People ask me constantly how to keep their brass from tarnishing, and I have come to dread the question, because the honest answer disappoints them: you cannot, not really, and you should not want to.\n\nBrass tarnishes because it reacts with the world — with the oils of your hands, the moisture in the air, the sulphur of the city. That patina is a record of use, and a well-loved instrument wears it like a good coat wears its creases.\n\nIf you must polish, use a soft cloth and the mildest paste you can find, and stop the moment the shine returns. Lacquer if you truly cannot bear the change, but know that lacquer, too, will one day yellow and peel, and then you will be scraping it off with far more effort than a little tarnish ever cost you.\n\nMy own workshop fittings are the colour of old honey now. I would not trade them for anything that gleams."},
 ]
 
 
@@ -1609,6 +1666,16 @@ async def seed():
             await db.ps_playlists.insert_one({**pl, "user_id": "seed", "created_at": "2026-06-01T09:00:00+00:00"})
     await db.af_questions.create_index("qotd_date", unique=True, sparse=True)
     await db.users.create_index("email", unique=True)
+    # Telegraph seeded articles (idempotent; keep fields synced).
+    for a in TG_ARTICLES:
+        created = (datetime.now(timezone.utc) - timedelta(days=a["days_ago"])).isoformat()
+        await db.tg_articles.update_one(
+            {"id": a["id"]},
+            {"$set": {**{k: v for k, v in a.items() if k != "days_ago"},
+                      "user_id": a["author_id"], "seeded": True},
+             "$setOnInsert": {"created_at": created}},
+            upsert=True,
+        )
 
 
 async def _user_like_ids(user_id: str) -> set:
@@ -5406,13 +5473,169 @@ async def lobby_message_team(ws_id: str, user: dict = Depends(require_user)):
 
 @api_router.post("/contact", status_code=201)
 async def contact_us(body: ContactBody):
-    """Public Contact Us submission — emails the fixed Konphlux inbox."""
+    """Public Contact Us submission — emails the fixed Konphlux inbox and sends
+    the submitter a friendly confirmation."""
     try:
         await send_contact_message(username=body.username, email=body.email,
-                                   subject=body.subject, message=body.message)
+                                   subject=body.subject, message=body.message, topic=body.topic)
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="We couldn't send that message. Please try again.")
+    # Best-effort auto-reply to the sender — never fail the request if it can't send.
+    try:
+        await send_contact_confirmation(to=body.email, name=body.username, subject=body.subject)
+    except Exception:  # noqa: BLE001
+        logger.warning("Contact confirmation email failed to send")
     return {"sent": True}
+
+
+# ----------------------------- Telegraph (articles) -----------------------------
+def _tg_read_minutes(text: str) -> int:
+    words = len((text or "").split())
+    return max(1, round(words / 200))
+
+
+def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: set, follow_set: set) -> dict:
+    aid = a["id"]
+    likes = int(a.get("base_likes", 0)) + int(like_counts.get(aid, 0))
+    recent = int(a.get("recent_likes", 0)) + int(recent_counts.get(aid, 0))
+    return {
+        "id": aid,
+        "title": a.get("title", ""),
+        "excerpt": a.get("excerpt", ""),
+        "body": a.get("body", ""),
+        "category": a.get("category", "Essays"),
+        "cover_url": a.get("cover_url", ""),
+        "author_id": a.get("author_id", a.get("user_id", "")),
+        "author_name": a.get("author_name", "Anonymous"),
+        "author_handle": a.get("author_handle", ""),
+        "created_at": a.get("created_at", ""),
+        "likes": likes,
+        "recent_likes": recent,
+        "liked": aid in liked_ids,
+        "following": a.get("author_id", a.get("user_id", "")) in follow_set,
+        "read_minutes": _tg_read_minutes(a.get("body", "")),
+    }
+
+
+async def _tg_engagement(article_ids: list, user_id: str) -> tuple[dict, dict, set]:
+    """Returns (total like counts, last-7-day like counts, this user's liked ids)."""
+    if not article_ids:
+        return {}, {}, set()
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    like_counts: dict = {}
+    recent_counts: dict = {}
+    liked_ids: set = set()
+    rows = await db.tg_likes.find({"article_id": {"$in": article_ids}}, {"_id": 0}).to_list(20000)
+    for r in rows:
+        aid = r["article_id"]
+        like_counts[aid] = like_counts.get(aid, 0) + 1
+        if r.get("created_at", "") >= week_ago:
+            recent_counts[aid] = recent_counts.get(aid, 0) + 1
+        if r.get("user_id") == user_id:
+            liked_ids.add(aid)
+    return like_counts, recent_counts, liked_ids
+
+
+@api_router.get("/telegraph/articles")
+async def tg_list_articles(filter: str = "all", user: dict = Depends(require_user)):
+    articles = await db.tg_articles.find({}, {"_id": 0}).to_list(2000)
+    ids = [a["id"] for a in articles]
+    like_counts, recent_counts, liked_ids = await _tg_engagement(ids, user["id"])
+    follow_rows = await db.tg_follows.find({"user_id": user["id"]}, {"_id": 0, "author_id": 1}).to_list(2000)
+    follow_set = {r["author_id"] for r in follow_rows}
+    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set) for a in articles]
+
+    if filter == "following":
+        pub = [p for p in pub if p["following"]]
+        pub.sort(key=lambda p: p["created_at"], reverse=True)
+    elif filter == "popular":
+        pub.sort(key=lambda p: (p["likes"], p["created_at"]), reverse=True)
+    elif filter == "trending":
+        pub.sort(key=lambda p: (p["recent_likes"], p["likes"], p["created_at"]), reverse=True)
+    else:  # all | new
+        pub.sort(key=lambda p: p["created_at"], reverse=True)
+    return pub
+
+
+@api_router.get("/telegraph/articles/{article_id}")
+async def tg_get_article(article_id: str, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    like_counts, recent_counts, liked_ids = await _tg_engagement([article_id], user["id"])
+    follow_rows = await db.tg_follows.find({"user_id": user["id"]}, {"_id": 0, "author_id": 1}).to_list(2000)
+    follow_set = {r["author_id"] for r in follow_rows}
+    return _tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set)
+
+
+@api_router.post("/telegraph/articles", status_code=201)
+async def tg_create_article(body: TGArticleBody, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    excerpt = body.excerpt.strip() or (body.body.strip()[:200].rsplit(" ", 1)[0] + "…")
+    handle = user.get("handle", "")
+    if handle and not handle.startswith("@"):
+        handle = "@" + handle
+    article = {
+        "id": uuid.uuid4().hex[:12],
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "excerpt": excerpt,
+        "category": body.category.strip() or "Essays",
+        "cover_url": body.cover_url.strip(),
+        "author_id": user["id"],
+        "user_id": user["id"],
+        "author_name": user["display_name"],
+        "author_handle": handle,
+        "base_likes": 0,
+        "recent_likes": 0,
+        "seeded": False,
+        "created_at": now,
+    }
+    await db.tg_articles.insert_one(dict(article))
+    return _tg_public(article, like_counts={}, recent_counts={}, liked_ids=set(), follow_set=set())
+
+
+@api_router.delete("/telegraph/articles/{article_id}")
+async def tg_delete_article(article_id: str, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if a.get("author_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own articles")
+    await db.tg_articles.delete_one({"id": article_id})
+    await db.tg_likes.delete_many({"article_id": article_id})
+    return {"deleted": True}
+
+
+@api_router.post("/telegraph/articles/{article_id}/like")
+async def tg_like_article(article_id: str, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id}, {"_id": 0, "id": 1})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    existing = await db.tg_likes.find_one({"article_id": article_id, "user_id": user["id"]})
+    if existing:
+        await db.tg_likes.delete_one({"article_id": article_id, "user_id": user["id"]})
+        liked = False
+    else:
+        await db.tg_likes.insert_one({"article_id": article_id, "user_id": user["id"],
+                                      "created_at": datetime.now(timezone.utc).isoformat()})
+        liked = True
+    return {"liked": liked}
+
+
+@api_router.post("/telegraph/authors/{author_id}/follow")
+async def tg_follow_author(author_id: str, user: dict = Depends(require_user)):
+    if author_id == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't follow yourself")
+    existing = await db.tg_follows.find_one({"user_id": user["id"], "author_id": author_id})
+    if existing:
+        await db.tg_follows.delete_one({"user_id": user["id"], "author_id": author_id})
+        following = False
+    else:
+        await db.tg_follows.insert_one({"user_id": user["id"], "author_id": author_id,
+                                        "created_at": datetime.now(timezone.utc).isoformat()})
+        following = True
+    return {"following": following}
 
 
 

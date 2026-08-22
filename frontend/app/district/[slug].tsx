@@ -34,6 +34,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   retrospections: { route: "/retrospections", label: "Enter Retrospections" },
   treasury: { route: "/treasury", label: "Open Konphlux Balance" },
   "entrepreneur-lobby": { route: "/lobby", label: "Open Workspaces" },
+  telegraph: { route: "/telegraph", label: "Enter the Telegraph" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -210,6 +211,17 @@ const TREASURY_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Deals in Retrospections": { route: "/treasury/trackers?source=retrospections", icon: "store-search-outline" },
 };
 
+// Telegraph — the articles district. Feature chips open the Article Gallery tabs.
+const TELEGRAPH_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "All Articles": { route: "/telegraph?filter=all", icon: "newspaper-variant-outline" },
+  "Post Something": { route: "/telegraph/new", icon: "feather" },
+  "Popular": { route: "/telegraph?filter=popular", icon: "fire" },
+  "Trending": { route: "/telegraph?filter=trending", icon: "trending-up" },
+  "New": { route: "/telegraph?filter=new", icon: "clock-outline" },
+  "Following": { route: "/telegraph?filter=following", icon: "account-heart-outline" },
+  "Reading lists": { route: "/telegraph?filter=all", icon: "bookmark-multiple-outline" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   retrospections: RETRO_ACTIONS,
   treasury: TREASURY_ACTIONS,
@@ -232,6 +244,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   "frankenstein-lab": FRANKENSTEIN_ACTIONS,
   "profession-plaza": PROFESSION_ACTIONS,
   "evention-center": EVENTION_ACTIONS,
+  telegraph: TELEGRAPH_ACTIONS,
 };
 
 export default function DistrictDetail() {

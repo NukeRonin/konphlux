@@ -164,10 +164,11 @@ async def send_order_receipt(*, to: str, name: str, order: dict) -> str | None:
 CONTACT_INBOX = "konphluxoverlord@gmail.com"
 
 
-async def send_contact_message(*, username: str, email: str, subject: str, message: str) -> str | None:
+async def send_contact_message(*, username: str, email: str, subject: str, message: str, topic: str = "Other") -> str | None:
     """Deliver a Contact Us submission to the Konphlux inbox. All user-supplied
     fields are escaped and placed into a fixed server-side template."""
-    safe_subject = f"[Konphlux Contact] {subject.strip()[:120]}"
+    safe_topic = topic.strip() if topic.strip() in ("Bug", "Idea", "Billing", "Other") else "Other"
+    safe_subject = f"[Konphlux Contact · {safe_topic}] {subject.strip()[:120]}"
     body_html = escape(message.strip()).replace("\n", "<br>")
     html = (
         '<table role="presentation" width="100%" style="background:#F6F1E7;padding:24px">'
@@ -175,6 +176,7 @@ async def send_contact_message(*, username: str, email: str, subject: str, messa
         '<table role="presentation" width="520" style="background:#FCF9F2;border:1px solid #DDD2BE;'
         'border-radius:14px;padding:28px;font-family:Arial,sans-serif">'
         f'<tr><td style="font-family:Georgia,serif;font-size:22px;color:#B06C3A;padding-bottom:10px">New Contact Message</td></tr>'
+        f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:4px"><strong>Topic:</strong> {escape(safe_topic)}</td></tr>'
         f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:4px"><strong>From:</strong> {escape(username.strip())}</td></tr>'
         f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:4px"><strong>Email:</strong> {escape(email.strip())}</td></tr>'
         f'<tr><td style="font-size:14px;color:#3B3229;padding-bottom:12px"><strong>Subject:</strong> {escape(subject.strip())}</td></tr>'
@@ -183,3 +185,25 @@ async def send_contact_message(*, username: str, email: str, subject: str, messa
         '</table></td></tr></table>'
     )
     return await _send_email(to=CONTACT_INBOX, subject=safe_subject, html=html)
+
+
+async def send_contact_confirmation(*, to: str, name: str, subject: str) -> str | None:
+    """Friendly auto-reply confirming a Contact Us submission was received.
+    Fixed server-side template — no caller-controlled HTML."""
+    safe_subject = f"We received your message — {EMAIL_FROM_NAME}"
+    html = (
+        '<table role="presentation" width="100%" style="background:#F6F1E7;padding:24px">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="480" style="background:#FCF9F2;border:1px solid #DDD2BE;'
+        'border-radius:14px;padding:28px;font-family:Arial,sans-serif">'
+        f'<tr><td style="font-family:Georgia,serif;font-size:24px;color:#B06C3A;padding-bottom:8px">{escape(EMAIL_FROM_NAME)}</td></tr>'
+        f'<tr><td style="font-size:16px;color:#3B3229;padding-bottom:12px">Thank you, {escape(name.strip())} — we\u2019ve received your message.</td></tr>'
+        '<tr><td style="font-size:14px;color:#3B3229;line-height:1.6;padding-bottom:12px">'
+        f'Your note about \u201c<strong>{escape(subject.strip())}</strong>\u201d has landed safely with our team. '
+        'We read every message and will get back to you by email as soon as we can.</td></tr>'
+        '<tr><td style="font-size:13px;color:#8A7A63;line-height:1.5;padding-top:6px;border-top:1px solid #E4DBCD">'
+        f'This is an automated confirmation from {escape(EMAIL_FROM_NAME)}. There\u2019s no need to reply. '
+        f'{escape(EMAIL_FROM_NAME)} will never ask for your password or card details by email.</td></tr>'
+        '</table></td></tr></table>'
+    )
+    return await _send_email(to=to, subject=safe_subject, html=html)

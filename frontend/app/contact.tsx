@@ -11,6 +11,14 @@ import { Eyebrow } from "@/src/components/BrassText";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+const TOPICS: { key: string; icon: IconName }[] = [
+  { key: "Bug", icon: "bug-outline" },
+  { key: "Idea", icon: "lightbulb-on-outline" },
+  { key: "Billing", icon: "credit-card-outline" },
+  { key: "Other", icon: "dots-horizontal-circle-outline" },
+];
+
 export default function ContactUs() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -18,6 +26,7 @@ export default function ContactUs() {
   const { user } = useAuth();
   const [username, setUsername] = useState(user?.display_name || "");
   const [email, setEmail] = useState(user?.email || "");
+  const [topic, setTopic] = useState("Bug");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -31,7 +40,7 @@ export default function ContactUs() {
     if (!canSend || sending) return;
     setSending(true); setError("");
     try {
-      await api.contactUs({ username: username.trim(), email: email.trim(), subject: subject.trim(), message: message.trim() });
+      await api.contactUs({ username: username.trim(), email: email.trim(), subject: subject.trim(), message: message.trim(), topic });
       setSent(true);
     } catch (e: any) { setError(e?.message || "Couldn't send. Please try again."); }
     finally { setSending(false); }
@@ -72,6 +81,24 @@ export default function ContactUs() {
           <Text style={[styles.label, { color: colors.onSurface }]}>Email Address</Text>
           <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={inputStyle} testID="contact-email" />
 
+          <Text style={[styles.label, { color: colors.onSurface }]}>Topic</Text>
+          <View style={styles.topicRow}>
+            {TOPICS.map((t) => {
+              const active = topic === t.key;
+              return (
+                <Pressable
+                  key={t.key}
+                  testID={`contact-topic-${t.key}`}
+                  onPress={() => setTopic(t.key)}
+                  style={[styles.topicChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}
+                >
+                  <MaterialCommunityIcons name={t.icon} size={15} color={active ? colors.onBrandPrimary : colors.muted} />
+                  <Text style={[styles.topicText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{t.key}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <Text style={[styles.label, { color: colors.onSurface }]}>Subject</Text>
           <TextInput value={subject} onChangeText={setSubject} placeholder="What&apos;s this about?" placeholderTextColor={colors.muted} style={inputStyle} testID="contact-subject" />
 
@@ -96,6 +123,9 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
   intro: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, marginBottom: spacing.md },
   label: { fontFamily: fonts.bodyBold, fontSize: 13.5, marginTop: spacing.md, marginBottom: spacing.sm },
+  topicRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  topicChip: { flexDirection: "row", alignItems: "center", gap: 6, height: 40, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  topicText: { fontFamily: fonts.bodyMedium, fontSize: 13.5 },
   input: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, fontFamily: fonts.body, fontSize: 15 },
   error: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: spacing.md },
   sendBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 52, borderRadius: radius.md, marginTop: spacing.xl },
