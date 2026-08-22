@@ -592,6 +592,9 @@ export type Workspace = {
   id: string; name: string; description: string; owner_id: string; owner_name: string;
   is_owner: boolean; member_count: number; members: WorkspaceMember[]; created_at: string;
 };
+export type WsClient = { id: string; workspace_id: string; name: string; company: string; contact: string; note: string; created_at: string };
+export type WsProject = { id: string; workspace_id: string; name: string; description: string; client_id: string | null; client_name?: string; created_at: string };
+export type WsTask = { id: string; workspace_id: string; title: string; project_id: string | null; project_name?: string; assignee_id: string | null; assignee_name: string; done: boolean; created_at: string };
 export type TrackerEntry = { id: string; source: string; title: string; subtitle: string; amount_cents: number; link: string; created_at: string };
 export type Trackers = {
   sections: { dreambacker: TrackerEntry[]; bazaar: TrackerEntry[]; waypoint: TrackerEntry[]; retrospections: TrackerEntry[] };
@@ -1018,4 +1021,14 @@ export const api = {
   lobbyDeleteWorkspace: (id: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}`, { method: "DELETE" }),
   lobbyAddMember: (id: string, recipient: string) => request<WorkspaceMember>(`/lobby/workspaces/${id}/members`, { method: "POST", body: JSON.stringify({ recipient }) }),
   lobbyRemoveMember: (id: string, memberId: string) => request<{ removed: boolean }>(`/lobby/workspaces/${id}/members/${memberId}`, { method: "DELETE" }),
+  lobbyClients: (id: string) => request<WsClient[]>(`/lobby/workspaces/${id}/clients`),
+  lobbyAddClient: (id: string, body: { name: string; company?: string; contact?: string; note?: string }) => request<WsClient>(`/lobby/workspaces/${id}/clients`, { method: "POST", body: JSON.stringify(body) }),
+  lobbyDeleteClient: (id: string, clientId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/clients/${clientId}`, { method: "DELETE" }),
+  lobbyProjects: (id: string) => request<WsProject[]>(`/lobby/workspaces/${id}/projects`),
+  lobbyAddProject: (id: string, body: { name: string; description?: string; client_id?: string | null }) => request<WsProject>(`/lobby/workspaces/${id}/projects`, { method: "POST", body: JSON.stringify(body) }),
+  lobbyDeleteProject: (id: string, projectId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/projects/${projectId}`, { method: "DELETE" }),
+  lobbyTasks: (id: string) => request<WsTask[]>(`/lobby/workspaces/${id}/tasks`),
+  lobbyAddTask: (id: string, body: { title: string; project_id?: string | null; assignee_id?: string | null }) => request<WsTask>(`/lobby/workspaces/${id}/tasks`, { method: "POST", body: JSON.stringify(body) }),
+  lobbyToggleTask: (id: string, taskId: string) => request<{ done: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}/toggle`, { method: "POST" }),
+  lobbyDeleteTask: (id: string, taskId: string) => request<{ deleted: boolean }>(`/lobby/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
 };

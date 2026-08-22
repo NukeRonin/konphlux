@@ -559,6 +559,25 @@ class MemberBody(BaseModel):
     recipient: str = Field(min_length=1, max_length=120)  # email or @handle
 
 
+class ClientBody(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    company: str = Field(default="", max_length=100)
+    contact: str = Field(default="", max_length=120)
+    note: str = Field(default="", max_length=300)
+
+
+class ProjectBody(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=400)
+    client_id: str | None = Field(default=None)
+
+
+class TaskBody(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    project_id: str | None = Field(default=None)
+    assignee_id: str | None = Field(default=None)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -5204,6 +5223,10 @@ async def lobby_delete_workspace(ws_id: str, user: dict = Depends(require_user))
     res = await db.workspaces.delete_one({"id": ws_id, "owner_id": user["id"]})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Workspace not found or you're not the owner")
+    # cascade: remove the workspace's clients, projects and tasks
+    await db.ws_clients.delete_many({"workspace_id": ws_id})
+    await db.ws_projects.delete_many({"workspace_id": ws_id})
+    await db.ws_tasks.delete_many({"workspace_id": ws_id})
     return {"deleted": True}
 
 
@@ -5236,6 +5259,121 @@ async def lobby_remove_member(ws_id: str, member_id: str, user: dict = Depends(r
         raise HTTPException(status_code=400, detail="The owner can't be removed")
     await db.workspaces.update_one({"id": ws_id}, {"$pull": {"members": {"user_id": member_id}}})
     return {"removed": True}
+
+
+# ----- Entrepreneur Lobby: Clients, Projects, Tasks (per workspace) -----
+async def _require_ws_member(ws_id: str, user: dict) -> dict:
+    ws = await db.workspaces.find_one({"id": ws_id, "members.user_id": user["id"]}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return ws
+
+
+# --- Clients ---
+@api_router.get("/lobby/workspaces/{ws_id}/clients")
+async def lobby_clients(ws_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    return await db.ws_clients.find({"workspace_id": ws_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api_router.post("/lobby/workspaces/{ws_id}/clients", status_code=201)
+async def lobby_add_client(ws_id: str, body: ClientBody, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    doc = {"id": uuid.uuid4().hex[:12], "workspace_id": ws_id, "name": body.name.strip(),
+           "company": body.company.strip(), "contact": body.contact.strip(), "note": body.note.strip(),
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.ws_clients.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.delete("/lobby/workspaces/{ws_id}/clients/{client_id}")
+async def lobby_delete_client(ws_id: str, client_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    res = await db.ws_clients.delete_one({"id": client_id, "workspace_id": ws_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"deleted": True}
+
+
+# --- Projects ---
+@api_router.get("/lobby/workspaces/{ws_id}/projects")
+async def lobby_projects(ws_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    projects = await db.ws_projects.find({"workspace_id": ws_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    clients = {c["id"]: c["name"] for c in await db.ws_clients.find({"workspace_id": ws_id}, {"_id": 0}).to_list(500)}
+    for p in projects:
+        p["client_name"] = clients.get(p.get("client_id"), "")
+    return projects
+
+
+@api_router.post("/lobby/workspaces/{ws_id}/projects", status_code=201)
+async def lobby_add_project(ws_id: str, body: ProjectBody, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    doc = {"id": uuid.uuid4().hex[:12], "workspace_id": ws_id, "name": body.name.strip(),
+           "description": body.description.strip(), "client_id": body.client_id or None,
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.ws_projects.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.delete("/lobby/workspaces/{ws_id}/projects/{project_id}")
+async def lobby_delete_project(ws_id: str, project_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    res = await db.ws_projects.delete_one({"id": project_id, "workspace_id": ws_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # unlink tasks from the deleted project
+    await db.ws_tasks.update_many({"workspace_id": ws_id, "project_id": project_id}, {"$set": {"project_id": None}})
+    return {"deleted": True}
+
+
+# --- Tasks ---
+@api_router.get("/lobby/workspaces/{ws_id}/tasks")
+async def lobby_tasks(ws_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    tasks = await db.ws_tasks.find({"workspace_id": ws_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    projects = {p["id"]: p["name"] for p in await db.ws_projects.find({"workspace_id": ws_id}, {"_id": 0}).to_list(500)}
+    for t in tasks:
+        t["project_name"] = projects.get(t.get("project_id"), "")
+    return tasks
+
+
+@api_router.post("/lobby/workspaces/{ws_id}/tasks", status_code=201)
+async def lobby_add_task(ws_id: str, body: TaskBody, user: dict = Depends(require_user)):
+    ws = await _require_ws_member(ws_id, user)
+    assignee_name = ""
+    if body.assignee_id:
+        member = next((m for m in ws.get("members", []) if m["user_id"] == body.assignee_id), None)
+        if not member:
+            raise HTTPException(status_code=422, detail="Assignee must be a workspace member")
+        assignee_name = member["name"]
+    doc = {"id": uuid.uuid4().hex[:12], "workspace_id": ws_id, "title": body.title.strip(),
+           "project_id": body.project_id or None, "assignee_id": body.assignee_id or None,
+           "assignee_name": assignee_name, "done": False,
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.ws_tasks.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.post("/lobby/workspaces/{ws_id}/tasks/{task_id}/toggle")
+async def lobby_toggle_task(ws_id: str, task_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    t = await db.ws_tasks.find_one({"id": task_id, "workspace_id": ws_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    done = not t.get("done", False)
+    await db.ws_tasks.update_one({"id": task_id, "workspace_id": ws_id}, {"$set": {"done": done}})
+    return {"done": done}
+
+
+@api_router.delete("/lobby/workspaces/{ws_id}/tasks/{task_id}")
+async def lobby_delete_task(ws_id: str, task_id: str, user: dict = Depends(require_user)):
+    await _require_ws_member(ws_id, user)
+    res = await db.ws_tasks.delete_one({"id": task_id, "workspace_id": ws_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"deleted": True}
+
 
 
 

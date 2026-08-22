@@ -153,6 +153,11 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Entrepreneur Lobby — Clients / Projects / Tasks per workspace; user self-testing)
+- ✅ Workspace detail now has 4 tabs: My Team (existing) + **Clients**, **Projects**, **Tasks**. Add/delete clients (name/company/contact), projects (name/description + optional client link), tasks (title + optional project link + optional assignee from workspace members). Tasks show project + assignee pills, toggle done (strikethrough), delete. Projects show linked client name.
+- Backend collections ws_clients, ws_projects, ws_tasks. Endpoints under /lobby/workspaces/{id}/: GET/POST/DELETE clients, projects (+client_name join), tasks (+project_name join), POST tasks/{tid}/toggle. _require_ws_member guards all (member-only). Task assignee validated against members (422). Deleting a project unlinks its tasks; deleting a workspace cascades clients/projects/tasks. Models ClientBody/ProjectBody/TaskBody.
+- Curl-verified: client/project/task CRUD, project↔client link, task↔project+assignee link, bad-assignee 422, toggle, project-delete unlink, cascade. Lint + bundle clean. Files: backend/server.py, frontend app/lobby/[id].tsx (tabbed rewrite), src/api/client.ts.
+
 ### 2026-06 (Entrepreneur Lobby — Business Workspaces & Teams; user self-testing)
 - ✅ **Workspaces** (/lobby): create business workspaces (name + description), delete (owner only, with confirm), list of workspaces you own or belong to (shows member count + your role).
 - ✅ **Workspace detail / My Team** (/lobby/[id]): owner can add teammates by email or @handle and remove them; "My Team" lists everyone with Owner/Member role tags + avatars. Owner can't be removed; duplicate add → 409; non-owner can't add/remove/delete.
