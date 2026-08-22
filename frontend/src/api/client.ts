@@ -1003,5 +1003,8 @@ export const api = {
   treasuryTopup: (amount_cents: number) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/topup", { method: "POST", body: JSON.stringify({ amount_cents }) }),
   treasuryTransfer: (recipient: string, amount_cents: number, note: string) => request<{ transaction: Transaction; balance_cents: number }>("/treasury/transfer", { method: "POST", body: JSON.stringify({ recipient, amount_cents, note }) }),
   treasuryTrackers: () => request<Trackers>("/treasury/trackers"),
+  treasurySecurity: () => request<{ method: string; has_pin: boolean }>("/treasury/security"),
+  treasurySetSecurity: (method: string, pin?: string) => request<{ method: string; has_pin: boolean }>("/treasury/security", { method: "PUT", body: JSON.stringify({ method, pin: pin ?? null }) }),
+  treasuryVerifyPin: (pin: string) => request<{ verified: boolean }>("/treasury/security/verify-pin", { method: "POST", body: JSON.stringify({ pin }) }),
   retroRecordDeal: (listingId: string) => request<TrackerEntry>(`/retrospections/listings/${listingId}/deal`, { method: "POST" }),
 };

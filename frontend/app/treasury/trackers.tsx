@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, TrackerEntry, Trackers } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { Loading } from "@/src/components/States";
+import TreasuryGate from "@/src/components/TreasuryGate";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -42,6 +43,7 @@ export default function Trackers() {
   const total = data ? data.totals[meta.key] : 0;
 
   return (
+    <TreasuryGate>
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} testID="trackers-back">
@@ -107,6 +109,7 @@ export default function Trackers() {
         </ScrollView>
       )}
     </View>
+    </TreasuryGate>
   );
 }
 

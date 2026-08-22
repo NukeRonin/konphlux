@@ -15,7 +15,8 @@
         "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
         "NSCameraUsageDescription": "Take a photo for your Bazaar listing",
         "NSMicrophoneUsageDescription": "Record voice-overs for your AI videos",
-        "NSLocationWhenInUseUsageDescription": "Find great businesses reviewed near you"
+        "NSLocationWhenInUseUsageDescription": "Find great businesses reviewed near you",
+        "NSFaceIDUsageDescription": "Unlock Treasury with Face ID"
       }
     },
     "android": {
@@ -61,6 +62,12 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Find great businesses reviewed near you"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock Treasury with Face ID"
         }
       ]
     ],

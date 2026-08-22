@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import math
+import re
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
 import uuid
@@ -538,6 +539,15 @@ class PaymentBody(BaseModel):
     amount_cents: int = Field(gt=0, le=100_000_000)
     title: str = Field(min_length=1, max_length=120)
     category: str = Field(default="General", max_length=40)
+
+
+class TreasurySecurityBody(BaseModel):
+    method: str = Field(pattern="^(none|pin|biometric|both)$")
+    pin: str | None = Field(default=None)
+
+
+class PinVerifyBody(BaseModel):
+    pin: str = Field(min_length=4, max_length=6)
 
 
 
@@ -5065,6 +5075,74 @@ async def retro_record_deal(listing_id: str, user: dict = Depends(require_user))
     }
     await db.district_ledger.insert_one(dict(doc))
     return _tracker_entry("retrospections", doc["title"], doc["subtitle"], 0, doc["link"], doc["created_at"], doc["id"])
+
+
+# ----- Treasury: Security Settings (PIN + biometric lock gate) -----
+_PIN_RE = re.compile(r"^\d{4,6}$")
+_COMMON_PINS = {"0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999",
+                "1234", "4321", "1212", "1122", "2580", "0852", "123456", "654321", "111111", "000000"}
+MAX_PIN_FAILURES = 5
+
+
+def _validate_pin(pin: str) -> str:
+    if not isinstance(pin, str) or not _PIN_RE.fullmatch(pin):
+        raise HTTPException(status_code=422, detail="PIN must be 4 to 6 digits")
+    if pin in _COMMON_PINS:
+        raise HTTPException(status_code=422, detail="Choose a less common PIN")
+    return pin
+
+
+@api_router.get("/treasury/security")
+async def treasury_get_security(user: dict = Depends(require_user)):
+    doc = await db.treasury_security.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        return {"method": "none", "has_pin": False}
+    return {"method": doc.get("method", "none"), "has_pin": bool(doc.get("pin_hash"))}
+
+
+@api_router.put("/treasury/security")
+async def treasury_set_security(body: TreasurySecurityBody, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc)
+    needs_pin = body.method in ("pin", "both")
+    existing = await db.treasury_security.find_one({"user_id": user["id"]}, {"_id": 0})
+    if needs_pin:
+        if body.pin:
+            pin_hash = password_hash.hash(_validate_pin(body.pin))
+        elif existing and existing.get("pin_hash"):
+            pin_hash = existing["pin_hash"]  # keep existing PIN if not re-entered
+        else:
+            raise HTTPException(status_code=422, detail="A PIN is required for this method")
+    else:
+        pin_hash = None
+    await db.treasury_security.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"method": body.method, "pin_hash": pin_hash, "failed_pin_attempts": 0,
+                  "pin_locked_until": None, "updated_at": now.isoformat()},
+         "$setOnInsert": {"user_id": user["id"]}},
+        upsert=True)
+    return {"method": body.method, "has_pin": bool(pin_hash)}
+
+
+@api_router.post("/treasury/security/verify-pin")
+async def treasury_verify_pin(body: PinVerifyBody, user: dict = Depends(require_user)):
+    _validate_pin(body.pin)
+    doc = await db.treasury_security.find_one({"user_id": user["id"]})
+    now = datetime.now(timezone.utc)
+    if not doc or doc.get("method") not in ("pin", "both") or not doc.get("pin_hash"):
+        raise HTTPException(status_code=401, detail="Unable to verify PIN")
+    locked = doc.get("pin_locked_until")
+    if locked and datetime.fromisoformat(locked) > now:
+        raise HTTPException(status_code=429, detail="Too many attempts. Try again in a few minutes.")
+    if not password_hash.verify(body.pin, doc["pin_hash"]):
+        failures = doc.get("failed_pin_attempts", 0) + 1
+        lock_until = (now + timedelta(minutes=5)).isoformat() if failures >= MAX_PIN_FAILURES else None
+        await db.treasury_security.update_one({"user_id": user["id"]},
+            {"$set": {"failed_pin_attempts": failures, "pin_locked_until": lock_until}})
+        raise HTTPException(status_code=401, detail="Incorrect PIN")
+    await db.treasury_security.update_one({"user_id": user["id"]},
+        {"$set": {"failed_pin_attempts": 0, "pin_locked_until": None}})
+    return {"verified": True}
+
 
 
 

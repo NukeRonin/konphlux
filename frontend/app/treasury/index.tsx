@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, Transaction, WalletSummary } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { Loading } from "@/src/components/States";
+import TreasuryGate from "@/src/components/TreasuryGate";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -74,6 +75,7 @@ export default function Treasury() {
   };
 
   return (
+    <TreasuryGate>
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} testID="treasury-back">
@@ -83,6 +85,9 @@ export default function Treasury() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Konphlux Balance</Text>
           <Eyebrow>Treasury ledger</Eyebrow>
         </View>
+        <Pressable onPress={() => router.push("/treasury/security")} hitSlop={10} style={styles.iconBtn} testID="treasury-security">
+          <MaterialCommunityIcons name="shield-lock-outline" size={22} color={colors.onSurface} />
+        </Pressable>
       </View>
 
       {loading || !summary ? (
@@ -216,6 +221,7 @@ export default function Treasury() {
         </KeyboardAwareScrollView>
       </Modal>
     </View>
+    </TreasuryGate>
   );
 }
 
@@ -223,6 +229,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
+  iconBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   balanceCard: { borderRadius: radius.lg, padding: spacing.lg },
   balanceTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   balanceLabel: { fontFamily: fonts.bodyBold, fontSize: 13, opacity: 0.9, textTransform: "uppercase", letterSpacing: 0.5 },
