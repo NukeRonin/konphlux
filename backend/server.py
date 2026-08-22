@@ -496,6 +496,23 @@ class ListItemBody(BaseModel):
     text: str = Field(min_length=1, max_length=300)
 
 
+RETRO_CATEGORIES = ["Restaurants", "Cafés", "Retail", "Services", "Entertainment", "Health"]
+
+
+class RetroBusinessBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str = Field(min_length=1, max_length=40)
+    address: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=600)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+
+
+class RetroReviewBody(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    text: str = Field(default="", max_length=1500)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -736,6 +753,33 @@ BOOK_LISTINGS = [
     {"id": "a-b2", "title": "The Wayfinder's Log (Audio Book)", "price_cents": 1600, "seller": "Waypoint Audio", "rating": 4.5, "reviews": 143, "category": "Audio Books", "image": IMG_AUDIO,
      "description": "A gentle travelogue across every district, narrated with a cartographer's calm. Perfect for a long airship crossing."},
 ]
+
+# Retrospections — seeded businesses (default map centre: midtown-style coords).
+RETRO_CENTER = {"lat": 40.7580, "lng": -73.9855}
+_RIMG = "https://images.unsplash.com/photo-"
+RETRO_BUSINESSES = [
+    {"id": "rb-1", "name": "The Brass Kettle", "category": "Restaurants", "address": "12 Cog Lane", "lat": 40.7595, "lng": -73.9840,
+     "description": "Steampunk-styled bistro serving slow-braised fare and copper-pot stews.", "image": f"{_RIMG}1517248135467-4c7edcad34c4?w=800&q=80", "base_rating": 4.6, "base_reviews": 128},
+    {"id": "rb-2", "name": "Gearwork Coffee House", "category": "Cafés", "address": "3 Piston Alley", "lat": 40.7568, "lng": -73.9870,
+     "description": "Single-origin pour-overs and pastries beneath humming gaslamps.", "image": f"{_RIMG}1501339847302-ac426a4a7cbb?w=800&q=80", "base_rating": 4.8, "base_reviews": 214},
+    {"id": "rb-3", "name": "Copperline Outfitters", "category": "Retail", "address": "88 Rivet Street", "lat": 40.7602, "lng": -73.9862,
+     "description": "Fine coats, goggles and brass-buckled boots for every wayfarer.", "image": f"{_RIMG}1441984904996-e0b6ba687e04?w=800&q=80", "base_rating": 4.3, "base_reviews": 76},
+    {"id": "rb-4", "name": "Ashgrove Repairs", "category": "Services", "address": "5 Ratchet Court", "lat": 40.7551, "lng": -73.9848,
+     "description": "Trusted clockwork and appliance repair with same-day turnaround.", "image": f"{_RIMG}1581092160562-40aa08e78837?w=800&q=80", "base_rating": 4.5, "base_reviews": 54},
+    {"id": "rb-5", "name": "The Lamplight Theatre", "category": "Entertainment", "address": "20 Marquee Way", "lat": 40.7588, "lng": -73.9820,
+     "description": "Nightly variety shows, magic-lantern screenings and live brass bands.", "image": f"{_RIMG}1503095396549-807759245b35?w=800&q=80", "base_rating": 4.7, "base_reviews": 163},
+    {"id": "rb-6", "name": "Vex Apothecary & Wellness", "category": "Health", "address": "9 Tincture Row", "lat": 40.7573, "lng": -73.9895,
+     "description": "Herbal remedies, tonics and a calm consulting room.", "image": f"{_RIMG}1584308666744-24d5c474f2ae?w=800&q=80", "base_rating": 4.4, "base_reviews": 41},
+    {"id": "rb-7", "name": "Marlowe's Chop House", "category": "Restaurants", "address": "44 Ember Street", "lat": 40.7612, "lng": -73.9878,
+     "description": "Char-grilled steaks and root vegetables over an open flame.", "image": f"{_RIMG}1424847651672-bf20a4b0982b?w=800&q=80", "base_rating": 4.2, "base_reviews": 89},
+    {"id": "rb-8", "name": "Tinker's Toy Emporium", "category": "Retail", "address": "17 Spindle Lane", "lat": 40.7559, "lng": -73.9832,
+     "description": "Wind-up automata, marble runs and clockwork curiosities for all ages.", "image": f"{_RIMG}1558060370-d644479cb6f7?w=800&q=80", "base_rating": 4.9, "base_reviews": 202},
+    {"id": "rb-9", "name": "Waypoint Barber & Bath", "category": "Services", "address": "6 Steamway", "lat": 40.7541, "lng": -73.9861,
+     "description": "Hot-towel shaves, steam baths and an honest cup of coffee.", "image": f"{_RIMG}1521590832167-7bcbfaa6381f?w=800&q=80", "base_rating": 4.6, "base_reviews": 118},
+    {"id": "rb-10", "name": "The Aether Lounge", "category": "Cafés", "address": "31 Vapor Court", "lat": 40.7620, "lng": -73.9845,
+     "description": "Late-night teas, cordials and quiet corners for reading.", "image": f"{_RIMG}1495474472287-4d71bcdd2085?w=800&q=80", "base_rating": 4.5, "base_reviews": 97},
+]
+
 
 
 def _portrait(pid: str) -> str:
@@ -1383,6 +1427,9 @@ async def seed():
     for b in MATERIAL_LISTINGS:
         if not await db.bazaar.find_one({"id": b["id"]}):
             await db.bazaar.insert_one(dict(b))
+    # Retrospections seeded businesses (idempotent; keep fields synced).
+    for b in RETRO_BUSINESSES:
+        await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)
     # Sparking Dawn seeded profiles (idempotent).
     for p in DATING_PROFILES:
         if not await db.dating_profiles.find_one({"user_id": p["user_id"]}):
@@ -4468,6 +4515,123 @@ async def evention_delete_list_item(list_id: str, item_id: str, user: dict = Dep
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="List not found")
     return {"deleted": True}
+
+
+# ----- Retrospections: business Review System (reviews, categories, nearby map) -----
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+async def _retro_public(b: dict) -> dict:
+    """Attach live rating/review counts (seeded base + user reviews)."""
+    base_rating = float(b.get("base_rating", 0) or 0)
+    base_reviews = int(b.get("base_reviews", 0) or 0)
+    agg = await db.retro_reviews.aggregate([
+        {"$match": {"business_id": b["id"]}},
+        {"$group": {"_id": None, "sum": {"$sum": "$rating"}, "n": {"$sum": 1}}},
+    ]).to_list(1)
+    user_sum = agg[0]["sum"] if agg else 0
+    user_n = agg[0]["n"] if agg else 0
+    total_n = base_reviews + user_n
+    avg = ((base_rating * base_reviews) + user_sum) / total_n if total_n else 0.0
+    return {
+        "id": b["id"], "name": b["name"], "category": b["category"], "address": b.get("address", ""),
+        "description": b.get("description", ""), "image": b.get("image", ""),
+        "lat": b.get("lat"), "lng": b.get("lng"),
+        "avg_rating": round(avg, 1), "review_count": total_n,
+        "owner_id": b.get("owner_id", ""),
+    }
+
+
+@api_router.get("/retrospections/meta")
+async def retro_meta(user: dict = Depends(require_user)):
+    return {"categories": RETRO_CATEGORIES, "center": RETRO_CENTER}
+
+
+@api_router.get("/retrospections/businesses")
+async def retro_businesses(category: str = "", q: str = "",
+                           lat: float | None = None, lng: float | None = None,
+                           user: dict = Depends(require_user)):
+    query: dict = {}
+    if category and category != "All":
+        query["category"] = category
+    if q.strip():
+        query["name"] = {"$regex": q.strip(), "$options": "i"}
+    docs = await db.retro_businesses.find(query, {"_id": 0}).to_list(500)
+    out = [await _retro_public(b) for b in docs]
+    if lat is not None and lng is not None:
+        for o in out:
+            if o.get("lat") is not None and o.get("lng") is not None:
+                o["distance_km"] = round(_haversine_km(lat, lng, o["lat"], o["lng"]), 2)
+            else:
+                o["distance_km"] = None
+        out.sort(key=lambda x: (x.get("distance_km") is None, x.get("distance_km") or 0))
+    else:
+        out.sort(key=lambda x: (-x["avg_rating"], -x["review_count"]))
+    return out
+
+
+@api_router.post("/retrospections/businesses", status_code=201)
+async def retro_create_business(body: RetroBusinessBody, user: dict = Depends(require_user)):
+    if body.category not in RETRO_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Unknown category")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "name": body.name.strip(), "category": body.category,
+        "address": body.address.strip(), "description": body.description.strip(),
+        "lat": body.lat, "lng": body.lng, "image": "",
+        "base_rating": 0.0, "base_reviews": 0, "owner_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.retro_businesses.insert_one(dict(doc))
+    return await _retro_public(doc)
+
+
+@api_router.get("/retrospections/businesses/{business_id}")
+async def retro_business_detail(business_id: str, user: dict = Depends(require_user)):
+    b = await db.retro_businesses.find_one({"id": business_id}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Business not found")
+    pub = await _retro_public(b)
+    reviews = await db.retro_reviews.find({"business_id": business_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    pub["reviews"] = reviews
+    pub["can_review"] = not any(r["user_id"] == user["id"] for r in reviews)
+    return pub
+
+
+@api_router.post("/retrospections/businesses/{business_id}/reviews", status_code=201)
+async def retro_add_review(business_id: str, body: RetroReviewBody, user: dict = Depends(require_user)):
+    b = await db.retro_businesses.find_one({"id": business_id}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Business not found")
+    if await db.retro_reviews.find_one({"business_id": business_id, "user_id": user["id"]}):
+        raise HTTPException(status_code=409, detail="You've already reviewed this place")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "business_id": business_id, "user_id": user["id"],
+        "author_name": user.get("display_name", "Someone"), "rating": body.rating,
+        "text": body.text.strip(), "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.retro_reviews.insert_one(dict(doc))
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/retrospections/nearby")
+async def retro_nearby(lat: float, lng: float, user: dict = Depends(require_user)):
+    docs = await db.retro_businesses.find({}, {"_id": 0}).to_list(500)
+    out = []
+    for b in docs:
+        o = await _retro_public(b)
+        if o.get("lat") is None or o.get("lng") is None:
+            continue
+        o["distance_km"] = round(_haversine_km(lat, lng, o["lat"], o["lng"]), 2)
+        out.append(o)
+    out.sort(key=lambda x: x["distance_km"])
+    return {"center": {"lat": lat, "lng": lng}, "businesses": out}
+
 
 
 

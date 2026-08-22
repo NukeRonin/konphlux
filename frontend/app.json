@@ -14,7 +14,8 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
         "NSCameraUsageDescription": "Take a photo for your Bazaar listing",
-        "NSMicrophoneUsageDescription": "Record voice-overs for your AI videos"
+        "NSMicrophoneUsageDescription": "Record voice-overs for your AI videos",
+        "NSLocationWhenInUseUsageDescription": "Find great businesses reviewed near you"
       }
     },
     "android": {
@@ -27,7 +28,9 @@
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -52,6 +55,12 @@
         "expo-audio",
         {
           "microphonePermission": "Record voice-overs for your AI videos"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Find great businesses reviewed near you"
         }
       ]
     ],

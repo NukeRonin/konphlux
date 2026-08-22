@@ -568,6 +568,13 @@ export type EventionList = { id: string; title: string; items: EventionListItem[
 
 export type Contract = { id: string; offer_id: string; conversation_id: string; client_id: string; client_name: string; freelancer_id: string; freelancer_name: string; title: string; rate_text: string; note: string; status: string; accepted_at: string; role?: string };
 
+export type RetroReview = { id: string; business_id: string; user_id: string; author_name: string; rating: number; text: string; created_at: string };
+export type RetroBusiness = {
+  id: string; name: string; category: string; address: string; description: string; image: string;
+  lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
+  distance_km?: number | null; reviews?: RetroReview[]; can_review?: boolean;
+};
+
 export type PSProject = {
   id: string;
   title: string;
@@ -941,4 +948,20 @@ export const api = {
   eventionToggleListItem: (listId: string, itemId: string) => request<{ done: boolean }>(`/evention/lists/${listId}/items/${itemId}/toggle`, { method: "POST" }),
   eventionDeleteListItem: (listId: string, itemId: string) => request<{ deleted: boolean }>(`/evention/lists/${listId}/items/${itemId}`, { method: "DELETE" }),
   eventionRemindersDue: () => request<{ reminders: EventionReminder[] }>("/evention/reminders/due"),
+  retroMeta: () => request<{ categories: string[]; center: { lat: number; lng: number } }>("/retrospections/meta"),
+  retroBusinesses: (params: { category?: string; q?: string; lat?: number; lng?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.category) qs.set("category", params.category);
+    if (params.q) qs.set("q", params.q);
+    if (params.lat != null) qs.set("lat", String(params.lat));
+    if (params.lng != null) qs.set("lng", String(params.lng));
+    const s = qs.toString();
+    return request<RetroBusiness[]>(`/retrospections/businesses${s ? `?${s}` : ""}`);
+  },
+  retroBusiness: (id: string) => request<RetroBusiness>(`/retrospections/businesses/${id}`),
+  retroCreateBusiness: (body: { name: string; category: string; address?: string; description?: string; lat?: number | null; lng?: number | null }) =>
+    request<RetroBusiness>("/retrospections/businesses", { method: "POST", body: JSON.stringify(body) }),
+  retroAddReview: (businessId: string, body: { rating: number; text?: string }) =>
+    request<RetroReview>(`/retrospections/businesses/${businessId}/reviews`, { method: "POST", body: JSON.stringify(body) }),
+  retroNearby: (lat: number, lng: number) => request<{ center: { lat: number; lng: number }; businesses: RetroBusiness[] }>(`/retrospections/nearby?lat=${lat}&lng=${lng}`),
 };

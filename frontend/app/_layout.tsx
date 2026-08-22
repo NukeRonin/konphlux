@@ -110,6 +110,10 @@ function RootNavigator() {
         <Stack.Screen name="evention/lists" />
         <Stack.Screen name="evention/list/[id]" />
         <Stack.Screen name="profession/contract/[id]" />
+        <Stack.Screen name="retrospections/index" />
+        <Stack.Screen name="retrospections/submit" />
+        <Stack.Screen name="retrospections/map" />
+        <Stack.Screen name="retrospections/business/[id]" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
         <Stack.Screen name="pictureshow/streamora/watch" />

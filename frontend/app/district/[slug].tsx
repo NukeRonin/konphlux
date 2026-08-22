@@ -31,6 +31,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "frankenstein-lab": { route: "/frankenstein-lab/audio", label: "Open Audio Studio" },
   "profession-plaza": { route: "/profession", label: "Open the Job Board" },
   "evention-center": { route: "/evention", label: "Open the Calendar" },
+  retrospections: { route: "/retrospections", label: "Enter Retrospections" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -181,7 +182,17 @@ const EVENTION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Create a List": { route: "/evention/lists", icon: "playlist-plus" },
 };
 
+// Retrospections — the reviews district. Features open the review system.
+const RETRO_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Reviews": { route: "/retrospections", icon: "star-box" },
+  "Submit Review": { route: "/retrospections/submit", icon: "star-plus" },
+  "Review Categories": { route: "/retrospections", icon: "shape" },
+  "Browse nearby": { route: "/retrospections/map", icon: "map-search-outline" },
+  "Save favourite places": { route: "/saved", icon: "heart-outline" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
+  retrospections: RETRO_ACTIONS,
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
   bazaar: BAZAAR_ACTIONS,
