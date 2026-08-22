@@ -27,6 +27,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   brainboost: { route: "/brainboost", label: "Enter BrainBoost" },
   "pictureshow-theatre": { route: "/pictureshow", label: "Enter PictureShow" },
   chatterbox: { route: "/chatterbox", label: "Enter Chatterbox" },
+  dreambacker: { route: "/dreambacker", label: "Enter Dreambacker" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -129,6 +130,17 @@ const BLUEPAINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Saved Blueprints": { route: "/bluepaint", icon: "folder-multiple-image" },
 };
 
+// Dreambacker — crowdfunding. Fundraiser-related features open the funding hub / creator flow.
+const DREAMBACKER_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Start a Fundraiser": { route: "/dreambacker/new", icon: "rocket-launch" },
+  "All Fundraisers": { route: "/dreambacker?filter=all", icon: "hand-heart" },
+  "New Fundraisers": { route: "/dreambacker?filter=new", icon: "new-box" },
+  "Trending Fundraisers": { route: "/dreambacker?filter=trending", icon: "trending-up" },
+  "Popular Fundraisers": { route: "/dreambacker?filter=popular", icon: "fire" },
+  "Near Deadline Fundraisers": { route: "/dreambacker?filter=deadline", icon: "clock-alert-outline" },
+  "Fundraisers I Created": { route: "/dreambacker?filter=mine", icon: "account-star" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -139,6 +151,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   "pictureshow-theatre": PICTURESHOW_ACTIONS,
   chatterbox: CHATTERBOX_ACTIONS,
   bluepaint: BLUEPAINT_ACTIONS,
+  dreambacker: DREAMBACKER_ACTIONS,
 };
 
 export default function DistrictDetail() {

@@ -147,6 +147,19 @@ class CheckoutBody(BaseModel):
     return_base: str
 
 
+class DBProjectCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=4000)
+    goal_cents: int = Field(ge=100)
+    funding_model: str = Field(pattern="^(all_or_nothing|keep_what_you_raise)$")
+    deadline: str | None = None
+
+
+class DBBackBody(BaseModel):
+    amount_cents: int = Field(ge=100)
+    return_base: str
+
+
 class QuestionCreate(BaseModel):
     title: str = Field(min_length=5, max_length=200)
     body: str = Field(default="", max_length=4000)
@@ -2623,7 +2636,11 @@ async def stripe_webhook(request: Request):
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         if session.get("payment_status") == "paid":
-            await _fulfill_paid_order(session["id"])
+            meta = session.get("metadata") or {}
+            if meta.get("type") == "contribution":
+                await _fulfill_contribution(session["id"])
+            else:
+                await _fulfill_paid_order(session["id"])
     return {"received": True}
 
 
@@ -3423,6 +3440,141 @@ async def bp_review_design(design_id: str, body: BPReviewBody, user: dict = Depe
         logger.exception("Bluepaint review error")
         raise HTTPException(status_code=502, detail="Iris set down her drafting pen for a moment. Try again.") from e
     return {"summary": s, "review": text.strip()}
+
+
+# ---------- Dreambacker (crowdfunding) ----------
+def _db_project_public(doc: dict, user_id: str) -> dict:
+    d = {k: v for k, v in doc.items() if k != "_id"}
+    d.setdefault("raised_cents", 0)
+    d.setdefault("backer_count", 0)
+    d["progress"] = min(1.0, d["raised_cents"] / d["goal_cents"]) if d.get("goal_cents") else 0.0
+    d["is_creator"] = d.get("creator_id") == user_id
+    return d
+
+
+@api_router.post("/dreambacker/projects", status_code=201)
+async def db_create_project(body: DBProjectCreate, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "creator_id": user["id"],
+        "creator_name": user.get("display_name", "A dreamer"),
+        "title": body.title.strip(),
+        "description": body.description.strip(),
+        "goal_cents": body.goal_cents,
+        "funding_model": body.funding_model,
+        "deadline": (body.deadline or None),
+        "raised_cents": 0,
+        "backer_count": 0,
+        "created_at": now,
+    }
+    await db.db_projects.insert_one(dict(doc))
+    return _db_project_public(doc, user["id"])
+
+
+@api_router.get("/dreambacker/projects")
+async def db_list_projects(filter: str = "all", user: dict = Depends(require_user)):
+    query: dict = {}
+    if filter == "mine":
+        query = {"creator_id": user["id"]}
+    elif filter == "deadline":
+        query = {"deadline": {"$gt": datetime.now(timezone.utc).isoformat()}}
+    docs = await db.db_projects.find(query, {"_id": 0}).to_list(500)
+    if filter == "new":
+        docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    elif filter == "trending":
+        docs.sort(key=lambda p: (p.get("backer_count", 0), p.get("created_at", "")), reverse=True)
+    elif filter == "popular":
+        docs.sort(key=lambda p: p.get("raised_cents", 0), reverse=True)
+    elif filter == "deadline":
+        docs.sort(key=lambda p: p.get("deadline") or "")
+    else:
+        docs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    return [_db_project_public(d, user["id"]) for d in docs]
+
+
+@api_router.get("/dreambacker/projects/{project_id}")
+async def db_get_project(project_id: str, user: dict = Depends(require_user)):
+    doc = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    return _db_project_public(doc, user["id"])
+
+
+@api_router.post("/dreambacker/projects/{project_id}/back")
+async def db_back_project(project_id: str, body: DBBackBody, user: dict = Depends(require_user)):
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payments are not configured.")
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    base = body.return_base.rstrip("/")
+    if not base.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid return URL")
+    contribution_id = uuid.uuid4().hex
+    success_url = f"{base}/api/checkout/return?result=success&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{base}/api/checkout/return?result=cancel"
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": CURRENCY,
+                    "product_data": {"name": f"Backing: {proj['title']}"},
+                    "unit_amount": body.amount_cents,
+                },
+                "quantity": 1,
+            }],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            managed_payments={"enabled": False},
+            metadata={"type": "contribution", "contribution_id": contribution_id, "project_id": project_id, "user_id": user["id"]},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Stripe contribution session error")
+        raise HTTPException(status_code=502, detail="Could not start the contribution.") from e
+    await db.db_contributions.insert_one({
+        "id": contribution_id,
+        "user_id": user["id"],
+        "backer_name": user.get("display_name", "A backer"),
+        "project_id": project_id,
+        "session_id": session.id,
+        "amount_cents": body.amount_cents,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"session_id": session.id, "checkout_url": session.url}
+
+
+async def _fulfill_contribution(session_id: str):
+    """Mark a contribution paid (idempotent) and credit the project's raised total."""
+    c = await db.db_contributions.find_one({"session_id": session_id})
+    if not c or c.get("status") == "paid":
+        return
+    await db.db_contributions.update_one(
+        {"session_id": session_id},
+        {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await db.db_projects.update_one(
+        {"id": c["project_id"]},
+        {"$inc": {"raised_cents": c["amount_cents"], "backer_count": 1}},
+    )
+
+
+@api_router.get("/dreambacker/contributions/status/{session_id}")
+async def db_contribution_status(session_id: str, user: dict = Depends(require_user)):
+    c = await db.db_contributions.find_one({"session_id": session_id, "user_id": user["id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    if c["status"] != "paid" and stripe.api_key:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            if session.payment_status == "paid":
+                await _fulfill_contribution(session_id)
+                c["status"] = "paid"
+        except Exception:  # noqa: BLE001
+            logger.exception("Stripe contribution status error")
+    return {"paid": c["status"] == "paid", "contribution": c}
 
 
 app.include_router(api_router)

@@ -397,6 +397,23 @@ export type BPItem = { id: string; kind: string; x: number; y: number; rotation:
 export type BPDesignSummary = { id: string; name: string; wall_count: number; item_count: number; updated_at: string; walls: BPWall[]; items: BPItem[] };
 export type BPDesign = { id: string; name: string; walls: BPWall[]; items: BPItem[]; created_at: string; updated_at: string };
 
+export type DBFundingModel = "all_or_nothing" | "keep_what_you_raise";
+export type DBProject = {
+  id: string;
+  creator_id: string;
+  creator_name: string;
+  title: string;
+  description: string;
+  goal_cents: number;
+  funding_model: DBFundingModel;
+  deadline: string | null;
+  raised_cents: number;
+  backer_count: number;
+  progress: number;
+  is_creator: boolean;
+  created_at: string;
+};
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -650,4 +667,13 @@ export const api = {
       summary: { wall_count: number; total_wall_len: number; bbox_w: number; bbox_d: number; floor_area: number; doors: number; windows: number; furniture: Record<string, number> };
       review: string;
     }>(`/bluepaint/designs/${id}/review`, { method: "POST", body: JSON.stringify({ plan_width: planWidth }) }),
+
+  dbProjects: (filter: string) => request<DBProject[]>(`/dreambacker/projects?filter=${encodeURIComponent(filter)}`),
+  dbProject: (id: string) => request<DBProject>(`/dreambacker/projects/${id}`),
+  dbCreateProject: (data: { title: string; description: string; goal_cents: number; funding_model: DBFundingModel; deadline: string | null }) =>
+    request<DBProject>("/dreambacker/projects", { method: "POST", body: JSON.stringify(data) }),
+  dbBackProject: (id: string, amount_cents: number, return_base: string) =>
+    request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base }) }),
+  dbContributionStatus: (session_id: string) =>
+    request<{ paid: boolean; contribution: { id: string; amount_cents: number; status: string } }>(`/dreambacker/contributions/status/${session_id}`),
 };

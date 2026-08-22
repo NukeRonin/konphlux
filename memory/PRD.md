@@ -94,6 +94,16 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Dreambacker crowdfunding — Start a Fundraiser + backing; user self-testing)
+- ✅ Dreambacker is now a functional district (hub at /dreambacker). Feature buttons wired: Start a Fundraiser → /dreambacker/new; All/New/Trending/Popular/Near Deadline/Fundraisers I Created → /dreambacker?filter=… . "Recurring support" & "Backer updates" left unmapped (hidden) — not built.
+- ✅ Create fundraiser (/dreambacker/new): title, funding goal ($), description, optional deadline via duration chips (none/7/14/30/60/90 days → ISO date), and funding-model selector (All-or-Nothing vs Keep-What-You-Raise) with clear blurbs. All-or-Nothing = funds only if goal met by deadline; Keep-What-You-Raise = keep every contribution.
+- ✅ Fundraiser detail (/dreambacker/[id]): progress bar (raised/goal/%/backers), live 1-second countdown timer when a deadline is set (days/hrs/min/sec), funding-model card that changes its payout note based on model + whether goal is met, description, and a "Back this project" flow with preset amounts + custom amount → Stripe Checkout (reuses existing setup) with WebBrowser + status polling.
+- ✅ Backend: db.db_projects + db.db_contributions. Routes: POST/GET/GET /dreambacker/projects[/{id}] with filter sorting (all/new/trending/popular/deadline/mine); POST /{id}/back creates a Stripe checkout session (metadata type=contribution) and stores a pending contribution; GET /dreambacker/contributions/status/{session_id} + _fulfill_contribution (idempotent) credit raised_cents & backer_count. stripe_webhook now routes contribution vs order by session metadata.
+- Smoke-tested via curl: register → create → list/all/mine/deadline → get → 422 on bad model → /back returns 200 (Stripe test session created). Web bundle compiles clean.
+- New util: src/utils/dreambacker.ts (FUNDING_MODELS, useCountdown/timeLeft, fmtDeadline). Files: frontend/app/dreambacker/{index,new,[id]}.tsx, src/api/client.ts (DBProject + db* methods), district/[slug].tsx (DREAMBACKER_ACTIONS + hub), _layout.tsx, backend/server.py.
+- NOTE: user opted to self-test (skip automated tests to save credits). Funds-hold for All-or-Nothing is represented conceptually (charges are immediate via Checkout); no auto-refund logic.
+
+
 ### 2026-06 (Bluepaint Saved Blueprints thumbnails — user self-testing)
 - ✅ Saved Blueprints list (/bluepaint) now shows a live mini floor-plan thumbnail per design (react-native-svg BlueprintThumb: fits each design's walls into a 52px box) so projects are recognisable at a glance. Falls back to floor-plan icon when a design has no walls. Naming/save/reopen/delete already existed.
 - ✅ Backend bp_list_designs now returns walls + items in each summary so the list can draw thumbnails without extra fetches. BPDesignSummary type extended with walls/items.
