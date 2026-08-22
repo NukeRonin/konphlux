@@ -87,6 +87,9 @@ export default function DreambackerHome() {
           <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.headerTitle, { color: colors.onSurface }]}>Dreambacker</Text>
           <Eyebrow>Fund the improbable</Eyebrow>
         </View>
+        <Pressable testID="db-backings" onPress={() => router.push("/dreambacker/backings")} hitSlop={8} style={styles.bellWrap}>
+          <MaterialCommunityIcons name="hand-heart-outline" size={22} color={colors.brand} />
+        </Pressable>
         {alertIds.size > 0 ? (
           <View testID="db-alert-bell" style={styles.bellWrap}>
             <MaterialCommunityIcons name="bell-ring" size={22} color={colors.brand} />
@@ -173,6 +176,12 @@ export default function DreambackerHome() {
                       <MaterialCommunityIcons name={cat.icon as IconName} size={12} color={colors.muted} />
                       <Text style={[styles.fmBadgeText, { color: colors.muted }]}>{cat.label}</Text>
                     </View>
+                    {item.funded ? (
+                      <View style={[styles.fmBadge, { backgroundColor: colors.brand }]}>
+                        <MaterialCommunityIcons name="party-popper" size={12} color={colors.onBrandPrimary} />
+                        <Text style={[styles.fmBadgeText, { color: colors.onBrandPrimary }]}>Funded!</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Countdown deadline={item.deadline} color={colors.brand} muted={colors.muted} />
                 </View>

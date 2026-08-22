@@ -401,6 +401,8 @@ export type DBFundingModel = "all_or_nothing" | "keep_what_you_raise";
 export type DBRewardTier = { id: string; title: string; description: string; amount_cents: number; backer_count: number };
 export type DBUpdate = { id: string; project_id: string; title: string; body: string; author_name: string; created_at: string };
 export type DBBacker = { backer_name: string; amount_cents: number; tier_title: string | null; paid_at: string };
+export type DBComment = { id: string; project_id: string; user_id: string; author_name: string; is_creator: boolean; body: string; parent_id: string | null; created_at: string };
+export type DBRecurringSupporter = { backer_name: string; amount_cents: number; since: string };
 export type DBProject = {
   id: string;
   creator_id: string;
@@ -418,6 +420,7 @@ export type DBProject = {
   is_creator: boolean;
   created_at: string;
   category: string;
+  funded: boolean;
 };
 
 export const api = {
@@ -681,14 +684,19 @@ export const api = {
   dbEditProject: (id: string, data: { title?: string; description?: string; goal_cents?: number; cover_url?: string | null; category?: string }) =>
     request<DBProject>(`/dreambacker/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   dbDeleteProject: (id: string) => request<{ deleted: boolean }>(`/dreambacker/projects/${id}`, { method: "DELETE" }),
-  dbBackProject: (id: string, amount_cents: number, return_base: string, tier_id: string | null) =>
-    request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base, tier_id }) }),
+  dbBackProject: (id: string, amount_cents: number, return_base: string, tier_id: string | null, recurring: boolean) =>
+    request<{ session_id: string; checkout_url: string }>(`/dreambacker/projects/${id}/back`, { method: "POST", body: JSON.stringify({ amount_cents, return_base, tier_id, recurring }) }),
   dbContributionStatus: (session_id: string) =>
     request<{ paid: boolean; contribution: { id: string; amount_cents: number; status: string } }>(`/dreambacker/contributions/status/${session_id}`),
   dbBackers: (id: string) => request<{ count: number; backers: DBBacker[] }>(`/dreambacker/projects/${id}/backers`),
   dbUpdates: (id: string) => request<DBUpdate[]>(`/dreambacker/projects/${id}/updates`),
   dbCreateUpdate: (id: string, title: string, body: string) =>
     request<DBUpdate>(`/dreambacker/projects/${id}/updates`, { method: "POST", body: JSON.stringify({ title, body }) }),
+  dbComments: (id: string) => request<DBComment[]>(`/dreambacker/projects/${id}/comments`),
+  dbCreateComment: (id: string, body: string, parent_id: string | null) =>
+    request<DBComment>(`/dreambacker/projects/${id}/comments`, { method: "POST", body: JSON.stringify({ body, parent_id }) }),
+  dbRecurring: (id: string) => request<{ count: number; monthly_total_cents: number; supporters: DBRecurringSupporter[] }>(`/dreambacker/projects/${id}/recurring`),
+  dbMyBackings: () => request<(DBProject & { your_total_cents: number; your_recurring: boolean })[]>("/dreambacker/my-backings"),
   dbAlerts: () => request<{ count: number; project_ids: string[] }>("/dreambacker/alerts"),
   dbMarkSeen: (id: string) => request<{ ok: boolean }>(`/dreambacker/projects/${id}/seen`, { method: "POST" }),
 };

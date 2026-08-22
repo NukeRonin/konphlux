@@ -94,6 +94,18 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Dreambacker phase 4 — comments, recurring support, home trending row, funded ribbon, my backings, update push; user self-testing)
+- ✅ Comments & questions: db.db_comments; GET/POST /dreambacker/projects/{id}/comments. Anyone can comment; creator replies (parent_id) with a "Creator" tag; creator replies notify the original commenter (in-app). Detail page has a comment box + threaded replies.
+- ✅ Recurring support (monthly): DBBackBody+recurring → Stripe Checkout mode="subscription" with monthly recurring price_data (managed_payments disabled — REQUIRED or Stripe 400s on tax code). Detail has a "Make this monthly" checkbox; button becomes "Support monthly". Creator-only GET /dreambacker/projects/{id}/recurring lists recurring supporters + monthly total (shown on detail). NOTE: only the initial subscription is tracked (no invoice.payment_succeeded webhook for renewals — MVP).
+- ✅ Post Update → notification: db_create_update now in-app-notifies every paid backer via _notify (type dreambacker_update). User said "the app's notification system" → used existing in-app notifications (works in preview). Device/lock-screen push would need the Emergent push integration + a real build (not added).
+- ✅ Goal Reached badge: _db_project_public adds funded=raised>=goal. "Funded!" ribbon on gallery cards, detail progress card, home trending row, and my-backings.
+- ✅ My Backings: GET /dreambacker/my-backings (distinct backed projects + your_total_cents + your_recurring). New /dreambacker/backings screen; entry via hand-heart icon in gallery header.
+- ✅ Trending Home Row: (tabs)/index.tsx feed header shows a horizontal "Trending fundraisers" row (api.dbProjects("trending"), top 8) with progress + Funded badge → project detail; "See all" → /dreambacker.
+- Backend smoke-tested: comments+creator reply, recurring supporters (creator count/total, non-creator 403), my-backings, update→backer in-app notification + alert, recurring & one-time Stripe sessions both return checkout_url. Web bundle compiles.
+- Models: DBCommentCreate, DBBackBody+recurring. Files: frontend/app/dreambacker/{index,[id],backings}.tsx, (tabs)/index.tsx, src/api/client.ts (DBComment/DBRecurringSupporter + dbComments/dbCreateComment/dbRecurring/dbMyBackings + funded), _layout.tsx, backend/server.py.
+- NOTE: user opted to self-test (skip automated tests).
+
+
 ### 2026-06 (Dreambacker phase 3 — edit, delete, share, categories, update alerts; user self-testing)
 - ✅ Edit Fundraiser: creator-only /dreambacker/edit/[id] (title, goal, cover image, category, description) → PUT /dreambacker/projects/{id} (partial; 403 for non-creators). Edit reachable from detail header (pencil) + Mine-tab cards.
 - ✅ My Fundraisers: the "Mine" tab lists all your projects; each card gets Edit + Delete buttons. Delete uses a native Alert confirmation popup → DELETE /dreambacker/projects/{id} (403 for non-creators; also removes the project's updates).

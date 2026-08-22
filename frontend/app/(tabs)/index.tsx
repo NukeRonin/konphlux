@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -11,14 +12,14 @@ import {
   View,
 } from "react-native";
 
-import { api, District, FeedResponse, Post } from "@/src/api/client";
+import { api, DBProject, District, FeedResponse, Post } from "@/src/api/client";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AvatarInitials, RingAvatar } from "@/src/components/AvatarInitials";
 import { Eyebrow, Hairline } from "@/src/components/BrassText";
 import { Panel } from "@/src/components/Panel";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
-import { compactNumber, fonts, radius, spacing } from "@/src/theme/tokens";
+import { compactNumber, fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
 function PostCard({ post, onLike, onSave }: { post: Post; onLike: (id: string) => void; onSave: (id: string) => void }) {
   const { colors } = useTheme();
@@ -200,6 +201,68 @@ function Trending({ items }: { items: string[] }) {
   );
 }
 
+function DreambackerRow() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const [items, setItems] = useState<DBProject[]>([]);
+
+  useEffect(() => {
+    api.dbProjects("trending").then((list) => setItems(list.slice(0, 8))).catch(() => {});
+  }, []);
+
+  if (items.length === 0) return null;
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <View style={dbrStyles.rowHead}>
+        <Eyebrow>Trending fundraisers</Eyebrow>
+        <Pressable testID="home-db-all" onPress={() => router.push("/dreambacker")} hitSlop={8}>
+          <Text style={[dbrStyles.seeAll, { color: colors.brand }]}>See all</Text>
+        </Pressable>
+      </View>
+      <FlatList
+        horizontal
+        data={items}
+        keyExtractor={(p) => p.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.xs }}
+        renderItem={({ item }) => (
+          <Pressable testID={`home-db-${item.id}`} onPress={() => router.push(`/dreambacker/${item.id}`)} style={[dbrStyles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={[dbrStyles.cover, { backgroundColor: colors.surfaceTertiary }]}>
+              {item.cover_url ? <Image source={{ uri: item.cover_url }} style={dbrStyles.coverImg} contentFit="cover" /> : <MaterialCommunityIcons name="hand-heart" size={26} color={colors.brand} />}
+              {item.funded ? (
+                <View style={[dbrStyles.funded, { backgroundColor: colors.brand }]}>
+                  <Text style={[dbrStyles.fundedText, { color: colors.onBrandPrimary }]}>Funded!</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ padding: spacing.sm, gap: 4 }}>
+              <Text numberOfLines={2} style={[dbrStyles.title, { color: colors.onSurface }]}>{item.title}</Text>
+              <View style={[dbrStyles.track, { backgroundColor: colors.surfaceTertiary }]}>
+                <View style={[dbrStyles.fill, { backgroundColor: colors.brand, width: `${Math.round(item.progress * 100)}%` }]} />
+              </View>
+              <Text style={[dbrStyles.meta, { color: colors.muted }]}>{Math.round(item.progress * 100)}% · {item.backer_count} backers</Text>
+            </View>
+          </Pressable>
+        )}
+      />
+    </View>
+  );
+}
+
+const dbrStyles = StyleSheet.create({
+  rowHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  seeAll: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  card: { width: 200, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  cover: { width: "100%", height: 100, alignItems: "center", justifyContent: "center" },
+  coverImg: { width: "100%", height: "100%" },
+  funded: { position: "absolute", top: 8, left: 8, paddingHorizontal: 8, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  fundedText: { fontFamily: fonts.bodyBold, fontSize: 10 },
+  title: { fontFamily: fonts.displaySemi, fontSize: 14, lineHeight: 18 },
+  track: { height: 6, borderRadius: 3, overflow: "hidden", marginTop: 4 },
+  fill: { height: 6, borderRadius: 3 },
+  meta: { fontFamily: fonts.body, fontSize: 11.5 },
+});
+
 export default function FeedScreen() {
   const { colors } = useTheme();
   const [data, setData] = useState<FeedResponse | null>(null);
@@ -297,6 +360,7 @@ export default function FeedScreen() {
               <Composer />
               <Eyebrow>Explore districts</Eyebrow>
               <DistrictStrip districts={districts} />
+              <DreambackerRow />
               <Trending items={data?.trending ?? []} />
               <Eyebrow>Latest dispatches</Eyebrow>
             </View>

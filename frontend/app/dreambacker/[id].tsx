@@ -6,7 +6,7 @@ import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
-import { api, DBBacker, DBProject, DBUpdate } from "@/src/api/client";
+import { api, DBBacker, DBComment, DBProject, DBRecurringSupporter, DBUpdate } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { ErrorState, Loading } from "@/src/components/States";
@@ -53,25 +53,33 @@ export default function FundraiserDetail() {
   const [backers, setBackers] = useState<DBBacker[]>([]);
   const [backerCount, setBackerCount] = useState(0);
   const [updates, setUpdates] = useState<DBUpdate[]>([]);
+  const [comments, setComments] = useState<DBComment[]>([]);
+  const [recurring, setRecurring] = useState<{ count: number; monthly_total_cents: number; supporters: DBRecurringSupporter[] } | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [amount, setAmount] = useState("25");
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  const [monthly, setMonthly] = useState(false);
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState("");
   const [showUpdate, setShowUpdate] = useState(false);
   const [upTitle, setUpTitle] = useState("");
   const [upBody, setUpBody] = useState("");
   const [posting, setPosting] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [sendingComment, setSendingComment] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setStatus("loading");
-      const [p, b, u] = await Promise.all([api.dbProject(id), api.dbBackers(id), api.dbUpdates(id)]);
+      const [p, b, u, c] = await Promise.all([api.dbProject(id), api.dbBackers(id), api.dbUpdates(id), api.dbComments(id)]);
       setProject(p);
       setBackers(b.backers);
       setBackerCount(b.count);
       setUpdates(u);
+      setComments(c);
+      if (p.is_creator) api.dbRecurring(id).then(setRecurring).catch(() => {});
       setStatus("ready");
       api.dbMarkSeen(id).catch(() => {});
     } catch {
@@ -105,7 +113,7 @@ export default function FundraiserDetail() {
     setPaying(true);
     setNotice("");
     try {
-      const { checkout_url, session_id } = await api.dbBackProject(project.id, amountCents, RETURN_BASE, selectedTier);
+      const { checkout_url, session_id } = await api.dbBackProject(project.id, amountCents, RETURN_BASE, selectedTier, monthly);
       await WebBrowser.openBrowserAsync(checkout_url);
       const paid = await pollStatus(session_id);
       if (paid) {
@@ -147,6 +155,19 @@ export default function FundraiserDetail() {
     } catch { /* user dismissed */ }
   };
 
+  const sendComment = async () => {
+    if (!project || sendingComment || commentText.trim().length < 1) return;
+    setSendingComment(true);
+    try {
+      await api.dbCreateComment(project.id, commentText.trim(), replyTo);
+      setCommentText("");
+      setReplyTo(null);
+      setComments(await api.dbComments(project.id));
+    } catch { /* ignore */ } finally {
+      setSendingComment(false);
+    }
+  };
+
   if (status === "loading") return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><Loading label="Opening the fundraiser…" /></View>;
   if (status === "error" || !project) return <View style={[styles.screen, { backgroundColor: colors.surface }]}><View style={{ height: insets.top }} /><ErrorState onRetry={load} /></View>;
 
@@ -186,7 +207,13 @@ export default function FundraiserDetail() {
           </View>
         </View>
 
-        <View style={[styles.progressCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <View style={[styles.progressCard, { backgroundColor: colors.surfaceSecondary, borderColor: project.funded ? colors.brand : colors.border }]}>
+          {project.funded ? (
+            <View style={[styles.fundedRibbon, { backgroundColor: colors.brand }]}>
+              <MaterialCommunityIcons name="party-popper" size={14} color={colors.onBrandPrimary} />
+              <Text style={[styles.fundedRibbonText, { color: colors.onBrandPrimary }]}>Funded!</Text>
+            </View>
+          ) : null}
           <Text style={[styles.raised, { color: colors.brand }]}>{formatPrice(project.raised_cents)}</Text>
           <Text style={[styles.goal, { color: colors.muted }]}>raised of {formatPrice(project.goal_cents)} goal</Text>
           <View style={[styles.track, { backgroundColor: colors.surfaceTertiary }]}>
@@ -288,6 +315,73 @@ export default function FundraiserDetail() {
             ))}
           </>
         )}
+
+        {project.is_creator && recurring && recurring.count > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Recurring supporters ({recurring.count})</Text>
+            <View style={[styles.thankYou, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="autorenew" size={16} color={colors.brand} />
+              <Text style={[styles.thankYouText, { color: colors.onSurface }]}>{formatPrice(recurring.monthly_total_cents)} / month in recurring support.</Text>
+            </View>
+            {recurring.supporters.map((s, i) => (
+              <View key={i} style={styles.backerRow}>
+                <View style={[styles.backerAvatar, { backgroundColor: colors.surfaceTertiary }]}>
+                  <MaterialCommunityIcons name="autorenew" size={16} color={colors.brand} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.backerName, { color: colors.onSurface }]}>{s.backer_name}</Text>
+                  <Text style={[styles.backerTier, { color: colors.muted }]}>Monthly · since {fmtDeadline(s.since)}</Text>
+                </View>
+                <Text style={[styles.backerAmount, { color: colors.brand }]}>{formatPrice(s.amount_cents)}/mo</Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Comments &amp; questions</Text>
+        <View style={[styles.commentBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          {replyTo ? (
+            <View style={styles.replyingRow}>
+              <Text style={[styles.replyingText, { color: colors.brand }]}>Replying…</Text>
+              <Pressable onPress={() => setReplyTo(null)} hitSlop={8}><MaterialCommunityIcons name="close" size={14} color={colors.muted} /></Pressable>
+            </View>
+          ) : null}
+          <View style={styles.commentInputRow}>
+            <TextInput testID="detail-comment-input" value={commentText} onChangeText={setCommentText} placeholder={project.is_creator ? "Reply to your backers…" : "Ask a question or leave a comment…"} placeholderTextColor={colors.muted} multiline style={[styles.commentInput, { color: colors.onSurface }]} />
+            <Pressable testID="detail-comment-send" onPress={sendComment} disabled={commentText.trim().length < 1 || sendingComment} style={[styles.commentSend, { backgroundColor: commentText.trim() ? colors.brand : colors.surfaceTertiary }]}>
+              <MaterialCommunityIcons name="send" size={18} color={commentText.trim() ? colors.onBrandPrimary : colors.muted} />
+            </Pressable>
+          </View>
+        </View>
+        {comments.filter((c) => !c.parent_id).length === 0 ? (
+          <Text style={[styles.emptyLine, { color: colors.muted }]}>No comments yet. Start the conversation.</Text>
+        ) : (
+          comments.filter((c) => !c.parent_id).map((c) => (
+            <View key={c.id} style={[styles.comment, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <View style={styles.commentHead}>
+                <Text style={[styles.commentAuthor, { color: colors.onSurface }]}>{c.author_name}</Text>
+                {c.is_creator ? <View style={[styles.creatorTag, { backgroundColor: colors.brand }]}><Text style={[styles.creatorTagText, { color: colors.onBrandPrimary }]}>Creator</Text></View> : null}
+                <Text style={[styles.commentTime, { color: colors.muted }]}>{fmtDeadline(c.created_at)}</Text>
+              </View>
+              <Text style={[styles.commentBody, { color: colors.onSurface }]}>{c.body}</Text>
+              {comments.filter((r) => r.parent_id === c.id).map((r) => (
+                <View key={r.id} style={[styles.reply, { borderLeftColor: colors.brand }]}>
+                  <View style={styles.commentHead}>
+                    <Text style={[styles.commentAuthor, { color: colors.onSurface }]}>{r.author_name}</Text>
+                    {r.is_creator ? <View style={[styles.creatorTag, { backgroundColor: colors.brand }]}><Text style={[styles.creatorTagText, { color: colors.onBrandPrimary }]}>Creator</Text></View> : null}
+                  </View>
+                  <Text style={[styles.commentBody, { color: colors.onSurface }]}>{r.body}</Text>
+                </View>
+              ))}
+              {project.is_creator ? (
+                <Pressable testID={`detail-reply-${c.id}`} onPress={() => setReplyTo(c.id)} style={styles.replyBtn}>
+                  <MaterialCommunityIcons name="reply" size={14} color={colors.brand} />
+                  <Text style={[styles.replyBtnText, { color: colors.brand }]}>Reply</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ))
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
@@ -298,6 +392,10 @@ export default function FundraiserDetail() {
             <Text style={[styles.tierChosenText, { color: colors.brand }]}>Reward: {project.reward_tiers.find((t) => t.id === selectedTier)?.title} · tap to remove</Text>
           </Pressable>
         ) : null}
+        <Pressable testID="detail-monthly-toggle" onPress={() => setMonthly((m) => !m)} style={styles.monthlyRow}>
+          <MaterialCommunityIcons name={monthly ? "checkbox-marked" : "checkbox-blank-outline"} size={20} color={monthly ? colors.brand : colors.muted} />
+          <Text style={[styles.monthlyText, { color: colors.onSurface }]}>Make this a monthly recurring contribution</Text>
+        </Pressable>
         <View style={styles.presetRow}>
           {PRESETS.map((c) => (
             <Pressable key={c} testID={`detail-preset-${c}`} onPress={() => setAmount(String(c / 100))} style={[styles.preset, { backgroundColor: amountCents === c ? colors.brand : colors.surfaceSecondary, borderColor: amountCents === c ? colors.brand : colors.border }]}>
@@ -310,9 +408,9 @@ export default function FundraiserDetail() {
             <Text style={[styles.amountCurrency, { color: colors.brand }]}>$</Text>
             <TextInput testID="detail-amount" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="25" placeholderTextColor={colors.muted} style={[styles.amountInput, { color: colors.onSurface }]} />
           </View>
-          <ForgeButton label="Back this project" size="lg" disabled={amountCents < 100} loading={paying} onPress={back} testID="detail-back-btn" style={{ flex: 1 }} icon={<MaterialCommunityIcons name="hand-heart" size={18} color={colors.onBrandPrimary} />} />
+          <ForgeButton label={monthly ? "Support monthly" : "Back this project"} size="lg" disabled={amountCents < 100} loading={paying} onPress={back} testID="detail-back-btn" style={{ flex: 1 }} icon={<MaterialCommunityIcons name={monthly ? "autorenew" : "hand-heart"} size={18} color={colors.onBrandPrimary} />} />
         </View>
-        <Text style={[styles.secure, { color: colors.muted }]}>Secure payment via Stripe · minimum $1.00</Text>
+        <Text style={[styles.secure, { color: colors.muted }]}>{monthly ? "Billed monthly via Stripe · cancel anytime · minimum $1.00" : "Secure payment via Stripe · minimum $1.00"}</Text>
       </View>
 
       <Modal visible={showUpdate} transparent animationType="fade" onRequestClose={() => setShowUpdate(false)}>
@@ -342,6 +440,8 @@ const styles = StyleSheet.create({
   progressCard: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.lg },
   raised: { fontFamily: fonts.display, fontSize: 28 },
   goal: { fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
+  fundedRibbon: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, height: 24, paddingHorizontal: spacing.sm, borderRadius: radius.pill, marginBottom: spacing.sm },
+  fundedRibbonText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   track: { height: 10, borderRadius: 5, overflow: "hidden", marginTop: spacing.md },
   fill: { height: 10, borderRadius: 5 },
   progRow: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm },
@@ -395,6 +495,24 @@ const styles = StyleSheet.create({
   amountCurrency: { fontFamily: fonts.display, fontSize: 18, marginRight: 4 },
   amountInput: { flex: 1, fontFamily: fonts.display, fontSize: 18 },
   secure: { fontFamily: fonts.body, fontSize: 11.5, textAlign: "center", marginTop: spacing.sm },
+  monthlyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
+  monthlyText: { fontFamily: fonts.bodyMedium, fontSize: 13, flex: 1 },
+  commentBox: { borderRadius: radius.md, borderWidth: 1, padding: spacing.sm },
+  replyingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xs, paddingBottom: spacing.xs },
+  replyingText: { fontFamily: fonts.bodyBold, fontSize: 12 },
+  commentInputRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
+  commentInput: { flex: 1, minHeight: 40, maxHeight: 120, fontFamily: fonts.body, fontSize: 14, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
+  commentSend: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  comment: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.sm },
+  commentHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  commentAuthor: { fontFamily: fonts.bodyBold, fontSize: 13.5 },
+  creatorTag: { height: 18, paddingHorizontal: 6, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  creatorTagText: { fontFamily: fonts.bodyBold, fontSize: 9.5 },
+  commentTime: { fontFamily: fonts.body, fontSize: 11, marginLeft: "auto" },
+  commentBody: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  reply: { borderLeftWidth: 2, paddingLeft: spacing.md, marginTop: spacing.sm, marginLeft: spacing.xs },
+  replyBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.sm },
+  replyBtnText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
   tierChosen: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: spacing.sm },
   tierChosenText: { fontFamily: fonts.bodyMedium, fontSize: 12.5 },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: spacing.lg },

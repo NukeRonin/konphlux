@@ -111,6 +111,7 @@ function RootNavigator() {
         <Stack.Screen name="dreambacker/new" />
         <Stack.Screen name="dreambacker/[id]" />
         <Stack.Screen name="dreambacker/edit/[id]" />
+        <Stack.Screen name="dreambacker/backings" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

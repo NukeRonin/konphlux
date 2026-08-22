@@ -176,6 +176,12 @@ class DBBackBody(BaseModel):
     amount_cents: int = Field(ge=100)
     return_base: str
     tier_id: str | None = None
+    recurring: bool = False
+
+
+class DBCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    parent_id: str | None = None
 
 
 class DBUpdateCreate(BaseModel):
@@ -3477,6 +3483,7 @@ def _db_project_public(doc: dict, user_id: str) -> dict:
     d.setdefault("reward_tiers", [])
     d.setdefault("category", "other")
     d["progress"] = min(1.0, d["raised_cents"] / d["goal_cents"]) if d.get("goal_cents") else 0.0
+    d["funded"] = d["raised_cents"] >= d.get("goal_cents", 0) and d.get("goal_cents", 0) > 0
     d["is_creator"] = d.get("creator_id") == user_id
     return d
 
@@ -3649,22 +3656,23 @@ async def db_back_project(project_id: str, body: DBBackBody, user: dict = Depend
     success_url = f"{base}/api/checkout/return?result=success&session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{base}/api/checkout/return?result=cancel"
     product_name = f"Backing: {proj['title']}" + (f" — {tier_title}" if tier_title else "")
+    price_data: dict = {
+        "currency": CURRENCY,
+        "product_data": {"name": product_name},
+        "unit_amount": body.amount_cents,
+    }
+    if body.recurring:
+        price_data["recurring"] = {"interval": "month"}
+    session_args: dict = {
+        "mode": "subscription" if body.recurring else "payment",
+        "line_items": [{"price_data": price_data, "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "managed_payments": {"enabled": False},
+        "metadata": {"type": "contribution", "contribution_id": contribution_id, "project_id": project_id, "user_id": user["id"]},
+    }
     try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            line_items=[{
-                "price_data": {
-                    "currency": CURRENCY,
-                    "product_data": {"name": product_name},
-                    "unit_amount": body.amount_cents,
-                },
-                "quantity": 1,
-            }],
-            success_url=success_url,
-            cancel_url=cancel_url,
-            managed_payments={"enabled": False},
-            metadata={"type": "contribution", "contribution_id": contribution_id, "project_id": project_id, "user_id": user["id"]},
-        )
+        session = stripe.checkout.Session.create(**session_args)
     except Exception as e:  # noqa: BLE001
         logger.exception("Stripe contribution session error")
         raise HTTPException(status_code=502, detail="Could not start the contribution.") from e
@@ -3677,6 +3685,7 @@ async def db_back_project(project_id: str, body: DBBackBody, user: dict = Depend
         "amount_cents": body.amount_cents,
         "tier_id": body.tier_id,
         "tier_title": tier_title,
+        "recurring": body.recurring,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -3752,7 +3761,91 @@ async def db_create_update(project_id: str, body: DBUpdateCreate, user: dict = D
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.db_updates.insert_one(dict(doc))
+    # Notify every backer (in-app) that the creator posted an update.
+    backer_ids = await db.db_contributions.distinct("user_id", {"project_id": project_id, "status": "paid"})
+    for uid in backer_ids:
+        if uid != user["id"]:
+            await _notify(uid, "dreambacker_update", None, f"New update: {proj['title']}", body.title.strip())
     return doc
+
+
+@api_router.get("/dreambacker/projects/{project_id}/comments")
+async def db_list_comments(project_id: str, user: dict = Depends(require_user)):
+    docs = await db.db_comments.find({"project_id": project_id}, {"_id": 0}).to_list(1000)
+    docs.sort(key=lambda c: c.get("created_at", ""))
+    return docs
+
+
+@api_router.post("/dreambacker/projects/{project_id}/comments", status_code=201)
+async def db_create_comment(project_id: str, body: DBCommentCreate, user: dict = Depends(require_user)):
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    is_creator = proj.get("creator_id") == user["id"]
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "project_id": project_id,
+        "user_id": user["id"],
+        "author_name": user.get("display_name", "A backer"),
+        "is_creator": is_creator,
+        "body": body.body.strip(),
+        "parent_id": body.parent_id or None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.db_comments.insert_one(dict(doc))
+    # If the creator replies to a comment, notify that comment's author.
+    if is_creator and body.parent_id:
+        parent = await db.db_comments.find_one({"id": body.parent_id}, {"_id": 0})
+        if parent and parent.get("user_id") and parent["user_id"] != user["id"]:
+            await _notify(parent["user_id"], "dreambacker_reply", None, f"{proj['title']}: creator replied", body.body.strip()[:120])
+    return doc
+
+
+@api_router.get("/dreambacker/projects/{project_id}/recurring")
+async def db_recurring_supporters(project_id: str, user: dict = Depends(require_user)):
+    proj = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Fundraiser not found")
+    if proj.get("creator_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the creator can see recurring supporters.")
+    docs = await db.db_contributions.find(
+        {"project_id": project_id, "status": "paid", "recurring": True},
+        {"_id": 0, "user_id": 1, "backer_name": 1, "amount_cents": 1, "paid_at": 1},
+    ).to_list(1000)
+    by_user: dict = {}
+    for c in docs:
+        uid = c["user_id"]
+        if uid not in by_user or (c.get("paid_at") or "") < by_user[uid]["since"]:
+            by_user[uid] = {"backer_name": c["backer_name"], "amount_cents": c["amount_cents"], "since": c.get("paid_at") or ""}
+    out = list(by_user.values())
+    out.sort(key=lambda s: s["since"], reverse=True)
+    monthly_total = sum(s["amount_cents"] for s in out)
+    return {"count": len(out), "monthly_total_cents": monthly_total, "supporters": out}
+
+
+@api_router.get("/dreambacker/my-backings")
+async def db_my_backings(user: dict = Depends(require_user)):
+    contribs = await db.db_contributions.find(
+        {"user_id": user["id"], "status": "paid"}, {"_id": 0, "project_id": 1, "amount_cents": 1, "recurring": 1}
+    ).to_list(2000)
+    agg: dict = {}
+    for c in contribs:
+        pid = c["project_id"]
+        a = agg.setdefault(pid, {"total": 0, "recurring": False})
+        a["total"] += c.get("amount_cents", 0)
+        if c.get("recurring"):
+            a["recurring"] = True
+    if not agg:
+        return []
+    projects = await db.db_projects.find({"id": {"$in": list(agg)}}, {"_id": 0}).to_list(500)
+    out = []
+    for p in projects:
+        pub = _db_project_public(p, user["id"])
+        pub["your_total_cents"] = agg[p["id"]]["total"]
+        pub["your_recurring"] = agg[p["id"]]["recurring"]
+        out.append(pub)
+    out.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    return out
 
 
 app.include_router(api_router)
