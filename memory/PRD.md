@@ -124,6 +124,16 @@
 - Files: backend/server.py; frontend app/pictureshow/{ai,projects}.tsx; src/api/client.ts (PSPreset type, ps preset/render methods).
 - NOTE: user self-tests (skip automated tests). fal rendering only works once the user's FAL_KEY is added.
 
+### 2026-06 (Profession Plaza — Job Board)
+- ✅ Full Job Board hub at /profession with 3 tabs: **Find Jobs** (search + category filter), **Applications** (my applications with live status badges), **Jobs I Posted** (my listings + applicant counts).
+- ✅ **Post/Edit a Job** (/profession/post): title, company, location, remote toggle, job type & category chips, salary range, description; edit reuses the form via ?id=.
+- ✅ **Job detail** (/profession/[id]): full listing + Apply flow with optional cover note (bottom sheet); shows "Applied · <status>" once applied; owners see "Manage listing".
+- ✅ **Manage** (/profession/manage/[id]): applicant list with cover notes, tap a status pill to set submitted/reviewed/accepted/rejected, Edit / Close-Reopen / Delete actions.
+- ✅ In-app notifications: poster notified on new application; applicant notified on status change (reuses _notify).
+- Backend: collections jobs + job_applications; endpoints /profession/{meta, jobs[CRUD+mine], jobs/{id}/apply|applicants|close, applications/mine, applications/{id}/status}; dup-apply 409, apply-to-own 400, owner-only guards. Verified end-to-end via curl (create/list/mine/apply/status all pass).
+- Wiring: DISTRICT_HUBS + PROFESSION_ACTIONS in district/[slug].tsx ("Open the Job Board"); non-job features route to the plaza Chatmonger assistant. Routes registered in _layout.tsx. Shared util src/utils/jobs.ts.
+- Multi-language Settings still deferred (English only). User self-tests; automated tests skipped.
+
 
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.

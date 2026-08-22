@@ -398,6 +398,26 @@ class PSPresetBody(BaseModel):
     audio_effects: list[str] = Field(default_factory=list, max_length=10)
 
 
+class JobBody(BaseModel):
+    title: str = Field(min_length=2, max_length=120)
+    company: str = Field(default="", max_length=100)
+    location: str = Field(default="", max_length=100)
+    job_type: str = Field(default="Full-time", max_length=30)
+    category: str = Field(default="Other", max_length=40)
+    salary_min: int = Field(default=0, ge=0, le=100_000_000)
+    salary_max: int = Field(default=0, ge=0, le=100_000_000)
+    remote: bool = False
+    description: str = Field(min_length=1, max_length=6000)
+
+
+class JobApplyBody(BaseModel):
+    cover_note: str = Field(default="", max_length=3000)
+
+
+class AppStatusBody(BaseModel):
+    status: str = Field(pattern="^(submitted|reviewed|accepted|rejected)$")
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -3623,6 +3643,200 @@ async def pictureshow_render_status(project_id: str, user: dict = Depends(requir
         )
         return {"status": "failed", "video_url": ""}
 
+
+
+
+# ----- Profession Plaza: Job Board -----
+JOB_CATEGORIES = [
+    "Engineering", "Design", "Product", "Marketing", "Sales", "Operations",
+    "Finance", "Customer Support", "Writing", "Data", "Healthcare", "Education", "Other",
+]
+JOB_TYPES = ["Full-time", "Part-time", "Contract", "Freelance", "Internship", "Temporary"]
+
+
+def _job_public(doc: dict) -> dict:
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.get("/profession/meta")
+async def profession_meta(user: dict = Depends(require_user)):
+    return {"categories": JOB_CATEGORIES, "job_types": JOB_TYPES}
+
+
+@api_router.post("/profession/jobs", status_code=201)
+async def profession_create_job(body: JobBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "poster_id": user["id"],
+        "poster_name": user.get("display_name", "Someone"),
+        "title": body.title.strip(),
+        "company": body.company.strip(),
+        "location": body.location.strip(),
+        "job_type": body.job_type,
+        "category": body.category,
+        "salary_min": body.salary_min,
+        "salary_max": body.salary_max,
+        "remote": body.remote,
+        "description": body.description.strip(),
+        "status": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.jobs.insert_one(dict(doc))
+    return _job_public(doc)
+
+
+@api_router.get("/profession/jobs")
+async def profession_list_jobs(user: dict = Depends(require_user), q: str = "", category: str = ""):
+    query: dict = {"status": "open"}
+    if category and category != "All":
+        query["category"] = category
+    if q.strip():
+        rx = {"$regex": q.strip(), "$options": "i"}
+        query["$or"] = [{"title": rx}, {"company": rx}, {"description": rx}, {"location": rx}]
+    docs = await db.jobs.find(query, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    ids = [d["id"] for d in docs]
+    applied = set()
+    if ids:
+        apps = await db.job_applications.find({"applicant_id": user["id"], "job_id": {"$in": ids}}, {"_id": 0, "job_id": 1}).to_list(1000)
+        applied = {a["job_id"] for a in apps}
+    for d in docs:
+        d["has_applied"] = d["id"] in applied
+        d["is_owner"] = d["poster_id"] == user["id"]
+    return docs
+
+
+@api_router.get("/profession/jobs/mine")
+async def profession_my_jobs(user: dict = Depends(require_user)):
+    docs = await db.jobs.find({"poster_id": user["id"]}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    for d in docs:
+        d["applicant_count"] = await db.job_applications.count_documents({"job_id": d["id"]})
+    return docs
+
+
+@api_router.get("/profession/applications/mine")
+async def profession_my_applications(user: dict = Depends(require_user)):
+    apps = await db.job_applications.find({"applicant_id": user["id"]}, {"_id": 0}).to_list(500)
+    apps.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+    job_ids = [a["job_id"] for a in apps]
+    jobs = await db.jobs.find({"id": {"$in": job_ids}}, {"_id": 0}).to_list(500)
+    by_id = {j["id"]: j for j in jobs}
+    out = []
+    for a in apps:
+        j = by_id.get(a["job_id"])
+        out.append({
+            **a,
+            "job_title": j["title"] if j else "Removed listing",
+            "company": j.get("company", "") if j else "",
+            "job_open": bool(j and j.get("status") == "open"),
+        })
+    return out
+
+
+@api_router.get("/profession/jobs/{job_id}")
+async def profession_get_job(job_id: str, user: dict = Depends(require_user)):
+    doc = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    app = await db.job_applications.find_one({"job_id": job_id, "applicant_id": user["id"]}, {"_id": 0})
+    doc["is_owner"] = doc["poster_id"] == user["id"]
+    doc["has_applied"] = bool(app)
+    doc["my_application_status"] = app["status"] if app else ""
+    return doc
+
+
+@api_router.put("/profession/jobs/{job_id}")
+async def profession_update_job(job_id: str, body: JobBody, user: dict = Depends(require_user)):
+    doc = await db.jobs.find_one({"id": job_id, "poster_id": user["id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await db.jobs.update_one(
+        {"id": job_id},
+        {"$set": {
+            "title": body.title.strip(), "company": body.company.strip(), "location": body.location.strip(),
+            "job_type": body.job_type, "category": body.category, "salary_min": body.salary_min,
+            "salary_max": body.salary_max, "remote": body.remote, "description": body.description.strip(),
+        }},
+    )
+    updated = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    return _job_public(updated)
+
+
+@api_router.post("/profession/jobs/{job_id}/close")
+async def profession_close_job(job_id: str, user: dict = Depends(require_user)):
+    doc = await db.jobs.find_one({"id": job_id, "poster_id": user["id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    new_status = "closed" if doc.get("status") == "open" else "open"
+    await db.jobs.update_one({"id": job_id}, {"$set": {"status": new_status}})
+    return {"status": new_status}
+
+
+@api_router.delete("/profession/jobs/{job_id}")
+async def profession_delete_job(job_id: str, user: dict = Depends(require_user)):
+    res = await db.jobs.delete_one({"id": job_id, "poster_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await db.job_applications.delete_many({"job_id": job_id})
+    return {"deleted": True}
+
+
+@api_router.post("/profession/jobs/{job_id}/apply", status_code=201)
+async def profession_apply(job_id: str, body: JobApplyBody, user: dict = Depends(require_user)):
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["poster_id"] == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't apply to your own listing.")
+    if job.get("status") != "open":
+        raise HTTPException(status_code=400, detail="This listing is closed.")
+    existing = await db.job_applications.find_one({"job_id": job_id, "applicant_id": user["id"]})
+    if existing:
+        raise HTTPException(status_code=409, detail="You've already applied to this job.")
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "job_id": job_id,
+        "applicant_id": user["id"],
+        "applicant_name": user.get("display_name", "Someone"),
+        "applicant_handle": user.get("handle", ""),
+        "cover_note": body.cover_note.strip(),
+        "status": "submitted",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.job_applications.insert_one(dict(doc))
+    # Notify the poster in-app.
+    try:
+        await _notify(job["poster_id"], "job_application", job_id, "New application", f"{doc['applicant_name']} applied to your job \"{job['title']}\".")
+    except Exception:  # noqa: BLE001
+        pass
+    return _job_public(doc)
+
+
+@api_router.get("/profession/jobs/{job_id}/applicants")
+async def profession_applicants(job_id: str, user: dict = Depends(require_user)):
+    job = await db.jobs.find_one({"id": job_id, "poster_id": user["id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    apps = await db.job_applications.find({"job_id": job_id}, {"_id": 0}).to_list(1000)
+    apps.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+    return {"job": job, "applicants": apps}
+
+
+@api_router.put("/profession/applications/{app_id}/status")
+async def profession_set_status(app_id: str, body: AppStatusBody, user: dict = Depends(require_user)):
+    app = await db.job_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    job = await db.jobs.find_one({"id": app["job_id"], "poster_id": user["id"]})
+    if not job:
+        raise HTTPException(status_code=403, detail="Not your listing")
+    await db.job_applications.update_one({"id": app_id}, {"$set": {"status": body.status}})
+    try:
+        await _notify(app["applicant_id"], "job_status", app["job_id"], "Application update", f"Your application for \"{job['title']}\" is now {body.status}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": body.status}
 
 
 

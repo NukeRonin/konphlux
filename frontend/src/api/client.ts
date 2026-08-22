@@ -466,6 +466,44 @@ export type PSSuiteConfig = {
 
 export type PSPreset = { id: string; name: string; style: string; length: string; speed: string; transitions: string[]; atmospherics: string[]; titles: string[]; finishing: string[]; audio_effects: string[]; created_at: string };
 
+export type JobInput = { title: string; company: string; location: string; job_type: string; category: string; salary_min: number; salary_max: number; remote: boolean; description: string };
+
+export type Job = JobInput & {
+  id: string;
+  poster_id: string;
+  poster_name: string;
+  status: string;
+  created_at: string;
+  has_applied?: boolean;
+  is_owner?: boolean;
+  my_application_status?: string;
+  applicant_count?: number;
+};
+
+export type JobApplication = {
+  id: string;
+  job_id: string;
+  applicant_id: string;
+  applicant_name: string;
+  cover_note: string;
+  status: string;
+  created_at: string;
+  job_title: string;
+  company: string;
+  job_open: boolean;
+};
+
+export type Applicant = {
+  id: string;
+  job_id: string;
+  applicant_id: string;
+  applicant_name: string;
+  applicant_handle: string;
+  cover_note: string;
+  status: string;
+  created_at: string;
+};
+
 export type PSProject = {
   id: string;
   title: string;
@@ -792,4 +830,19 @@ export const api = {
   dbCancelRecurring: (projectId: string) => request<{ cancelled: number }>(`/dreambacker/backings/${projectId}/cancel-recurring`, { method: "POST" }),
   dbAlerts: () => request<{ count: number; project_ids: string[] }>("/dreambacker/alerts"),
   dbMarkSeen: (id: string) => request<{ ok: boolean }>(`/dreambacker/projects/${id}/seen`, { method: "POST" }),
+
+  // Profession Plaza — Job Board
+  jobMeta: () => request<{ categories: string[]; job_types: string[] }>("/profession/meta"),
+  jobList: (q?: string, category?: string) =>
+    request<Job[]>(`/profession/jobs?q=${encodeURIComponent(q || "")}&category=${encodeURIComponent(category || "")}`),
+  jobsMine: () => request<Job[]>("/profession/jobs/mine"),
+  jobApplicationsMine: () => request<JobApplication[]>("/profession/applications/mine"),
+  jobGet: (id: string) => request<Job>(`/profession/jobs/${id}`),
+  jobCreate: (body: JobInput) => request<Job>("/profession/jobs", { method: "POST", body: JSON.stringify(body) }),
+  jobUpdate: (id: string, body: JobInput) => request<Job>(`/profession/jobs/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  jobToggleClose: (id: string) => request<{ status: string }>(`/profession/jobs/${id}/close`, { method: "POST" }),
+  jobDelete: (id: string) => request<{ deleted: boolean }>(`/profession/jobs/${id}`, { method: "DELETE" }),
+  jobApply: (id: string, cover_note: string) => request<{ id: string }>(`/profession/jobs/${id}/apply`, { method: "POST", body: JSON.stringify({ cover_note }) }),
+  jobApplicants: (id: string) => request<{ job: Job; applicants: Applicant[] }>(`/profession/jobs/${id}/applicants`),
+  jobSetStatus: (appId: string, status: string) => request<{ status: string }>(`/profession/applications/${appId}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
 };

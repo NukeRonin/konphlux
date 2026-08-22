@@ -29,6 +29,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   chatterbox: { route: "/chatterbox", label: "Enter Chatterbox" },
   dreambacker: { route: "/dreambacker", label: "Enter Dreambacker" },
   "frankenstein-lab": { route: "/frankenstein-lab/audio", label: "Open Audio Studio" },
+  "profession-plaza": { route: "/profession", label: "Open the Job Board" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -152,6 +153,18 @@ const FRANKENSTEIN_ACTIONS: Record<string, { route: string; icon: IconName }> = 
   GenoMeme: { route: "/frankenstein-lab/visual?type=meme", icon: "emoticon-lol" },
 };
 
+// Profession Plaza — Job Board. Job features open the board; the rest open the plaza assistant.
+const PROFESSION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Find jobs": { route: "/profession", icon: "briefcase-search" },
+  "Post jobs": { route: "/profession/post", icon: "briefcase-plus" },
+  "Job Categories": { route: "/profession", icon: "shape-outline" },
+  "Apply & track applications": { route: "/profession?tab=applications", icon: "clipboard-check-outline" },
+  "Find Freelance Gigs": { route: "/chatmonger/profession-plaza", icon: "account-hard-hat" },
+  "Freelancer marketplace": { route: "/chatmonger/profession-plaza", icon: "storefront-outline" },
+  "Resumés": { route: "/chatmonger/profession-plaza", icon: "file-account-outline" },
+  "Interview scheduling": { route: "/chatmonger/profession-plaza", icon: "calendar-clock" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -164,6 +177,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   bluepaint: BLUEPAINT_ACTIONS,
   dreambacker: DREAMBACKER_ACTIONS,
   "frankenstein-lab": FRANKENSTEIN_ACTIONS,
+  "profession-plaza": PROFESSION_ACTIONS,
 };
 
 export default function DistrictDetail() {

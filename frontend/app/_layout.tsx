@@ -95,6 +95,10 @@ function RootNavigator() {
         <Stack.Screen name="pictureshow/ai" />
         <Stack.Screen name="pictureshow/characters" />
         <Stack.Screen name="pictureshow/projects" />
+        <Stack.Screen name="profession/index" />
+        <Stack.Screen name="profession/post" />
+        <Stack.Screen name="profession/[id]" />
+        <Stack.Screen name="profession/manage/[id]" />
         <Stack.Screen name="pictureshow/streamora/index" />
         <Stack.Screen name="pictureshow/streamora/golive" options={{ presentation: "modal" }} />
         <Stack.Screen name="pictureshow/streamora/watch" />
