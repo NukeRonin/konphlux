@@ -144,6 +144,15 @@
 - Wiring: district actions Find Freelance Gigs/Freelancer marketplace/Resumés → marketplace routes; new routes in _layout.tsx. Entry banner on Find Jobs tab.
 - Backend verified end-to-end via curl (save, saved list, alerts→notification, gigs, freelancer save/list/get). Marketplace UI smoke-tested. Deps already present (expo-print/sharing/document-picker/image-picker). User self-tests; automated tests skipped.
 
+### 2026-06 (Profession Plaza v3 — Hire from Chat, Interviews→Evention, Reviews, Featured, Résumé Themes)
+- ✅ **Hire From Chat**: briefcase action in a DM → send a formal **offer** (title/rate/note) as an interactive card in chat; recipient taps Accept/Decline; status syncs on the card + notifies. Backend job_offers + /profession/offers[+/respond]; cb_messages now carry kind/meta; conversation detail exposes other_id.
+- ✅ **Interview Scheduling**: from the same chat action, propose an **interview** (title + quick time-slot chips + location/link) → interactive card; recipient Confirms/Declines. Backend interviews collection + /profession/interviews[+/respond].
+- ✅ **Evention Center sync**: new /evention/interviews screen ("Upcoming Interviews", also wired as the Evention Center hub + district actions) lists a user's upcoming/past interviews (as poster or applicant) with Confirm/Decline; reads the same interviews collection. Verified: scheduled interview appears there with confirmed status.
+- ✅ **Reviews & Ratings**: businesses rate a freelancer (1–5★ + comment) on the profile; avg rating + count shown on profile & marketplace cards. Backend freelancer_reviews + /profession/freelancers/{id}/review; get returns reviews + can_review.
+- ✅ **Featured Freelancers**: marketplace list sorts available + higher-rated first and tags them with a "Featured" badge (backend featured flag + sort).
+- ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
+- All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
+
 
 ### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
 - ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.

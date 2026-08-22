@@ -428,8 +428,8 @@ export type CBConvSummary = {
   last_at: string;
   unread: number;
 };
-export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string };
-export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string };
+export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string; kind?: string; meta?: Record<string, any> };
+export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string; other_id?: string };
 
 // Bluepaint Space Designer
 export type BPWall = { x1: number; y1: number; x2: number; y2: number };
@@ -550,7 +550,16 @@ export type Freelancer = FreelancerInput & {
   created_at: string;
   updated_at: string;
   is_me?: boolean;
+  avg_rating?: number;
+  review_count?: number;
+  featured?: boolean;
+  can_review?: boolean;
+  reviews?: FreelancerReview[];
 };
+
+export type FreelancerReview = { id: string; reviewer_name: string; rating: number; comment: string; job_title: string; created_at: string };
+
+export type Interview = { id: string; job_id: string; conversation_id: string; poster_id: string; poster_name: string; applicant_id: string; applicant_name: string; title: string; scheduled_at: string; location: string; status: string; role?: string; created_at: string };
 
 export type PSProject = {
   id: string;
@@ -902,4 +911,14 @@ export const api = {
   freelancerMe: () => request<Freelancer | Record<string, never>>("/profession/freelancer/me"),
   freelancerSave: (body: FreelancerInput) => request<Freelancer>("/profession/freelancer/me", { method: "PUT", body: JSON.stringify(body) }),
   freelancerGet: (id: string) => request<Freelancer>(`/profession/freelancers/${id}`),
+  freelancerReview: (id: string, rating: number, comment: string, job_title: string) =>
+    request<FreelancerReview>(`/profession/freelancers/${id}/review`, { method: "POST", body: JSON.stringify({ rating, comment, job_title }) }),
+  sendOffer: (body: { conversation_id: string; to_user_id: string; title: string; rate_text: string; note: string }) =>
+    request<{ id: string }>("/profession/offers", { method: "POST", body: JSON.stringify(body) }),
+  respondOffer: (id: string, accept: boolean) => request<{ status: string }>(`/profession/offers/${id}/respond`, { method: "POST", body: JSON.stringify({ accept }) }),
+  scheduleInterview: (body: { to_user_id: string; conversation_id?: string; job_id?: string; title: string; scheduled_at: string; location: string }) =>
+    request<Interview>("/profession/interviews", { method: "POST", body: JSON.stringify(body) }),
+  respondInterview: (id: string, status: "confirmed" | "declined") =>
+    request<{ status: string }>(`/profession/interviews/${id}/respond`, { method: "POST", body: JSON.stringify({ status }) }),
+  eventionInterviews: () => request<{ upcoming: Interview[]; past: Interview[] }>("/evention/interviews"),
 };

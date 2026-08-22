@@ -30,6 +30,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   dreambacker: { route: "/dreambacker", label: "Enter Dreambacker" },
   "frankenstein-lab": { route: "/frankenstein-lab/audio", label: "Open Audio Studio" },
   "profession-plaza": { route: "/profession", label: "Open the Job Board" },
+  "evention-center": { route: "/evention/interviews", label: "Open Upcoming Interviews" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -165,6 +166,21 @@ const PROFESSION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Interview scheduling": { route: "/chatmonger/profession-plaza", icon: "calendar-clock" },
 };
 
+// Evention Center — the calendar district. Interviews open the live schedule.
+const EVENTION_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Upcoming Interviews": { route: "/evention/interviews", icon: "calendar-account" },
+  "Calendar view": { route: "/evention/interviews", icon: "calendar-month" },
+  "Meetings": { route: "/chatmonger/evention-center", icon: "account-group" },
+  "Upcoming Flights & Trips": { route: "/chatmonger/evention-center", icon: "airplane" },
+  "Reminders": { route: "/chatmonger/evention-center", icon: "bell-outline" },
+  "Appointments": { route: "/chatmonger/evention-center", icon: "clock-outline" },
+  "Events": { route: "/chatmonger/evention-center", icon: "calendar-star" },
+  "Birthdays & Special Days": { route: "/chatmonger/evention-center", icon: "cake-variant" },
+  "Agendas": { route: "/chatmonger/evention-center", icon: "clipboard-list" },
+  "Lists": { route: "/chatmonger/evention-center", icon: "format-list-bulleted" },
+  "Create a List": { route: "/chatmonger/evention-center", icon: "playlist-plus" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -178,6 +194,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   dreambacker: DREAMBACKER_ACTIONS,
   "frankenstein-lab": FRANKENSTEIN_ACTIONS,
   "profession-plaza": PROFESSION_ACTIONS,
+  "evention-center": EVENTION_ACTIONS,
 };
 
 export default function DistrictDetail() {

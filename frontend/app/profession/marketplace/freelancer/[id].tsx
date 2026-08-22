@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Freelancer } from "@/src/api/client";
@@ -11,7 +11,7 @@ import { ForgeButton } from "@/src/components/ForgeButton";
 import { Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
-import { shareResumePdf } from "@/src/utils/resumePdf";
+import { RESUME_THEMES, shareResumePdf } from "@/src/utils/resumePdf";
 
 export default function FreelancerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,6 +22,9 @@ export default function FreelancerDetail() {
   const [f, setF] = useState<Freelancer | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -48,13 +51,26 @@ export default function FreelancerDetail() {
 
   const download = async () => {
     if (!f) return;
-    setDownloading(true);
+    Alert.alert("Choose a résumé theme", undefined, [
+      ...RESUME_THEMES.map((t) => ({
+        text: t.label,
+        onPress: async () => {
+          setDownloading(true);
+          try { await shareResumePdf(f, t.key); } catch { Alert.alert("Couldn't create PDF", "Please try again."); } finally { setDownloading(false); }
+        },
+      })),
+      { text: "Cancel", style: "cancel" as const },
+    ]);
+  };
+
+  const submitReview = async () => {
+    if (!f) return;
     try {
-      await shareResumePdf(f);
-    } catch {
-      Alert.alert("Couldn't create PDF", "Please try again.");
-    } finally {
-      setDownloading(false);
+      await api.freelancerReview(f.id, rating, comment.trim(), "");
+      setReviewing(false); setComment(""); setRating(5);
+      await load();
+    } catch (e: any) {
+      Alert.alert("Couldn't submit", e?.message || "Try again.");
     }
   };
 
@@ -82,6 +98,9 @@ export default function FreelancerDetail() {
           <Text style={[styles.name, { color: colors.onSurface }]}>{f.name}</Text>
           {f.headline ? <Text style={[styles.headline, { color: colors.brand }]}>{f.headline}</Text> : null}
           <Text style={[styles.meta, { color: colors.muted }]}>{[f.location, f.hourly_rate ? `$${f.hourly_rate}/hr` : "", f.category].filter(Boolean).join(" · ")}</Text>
+          {(f.review_count || 0) > 0 ? (
+            <Text style={[styles.ratingLine, { color: colors.brand }]}>★ {f.avg_rating} · {f.review_count} review{f.review_count === 1 ? "" : "s"}</Text>
+          ) : null}
           {f.available ? <View style={[styles.availBadge, { backgroundColor: "#2F855A22", borderColor: "#2F855A" }]}><Text style={[styles.availText, { color: "#2F855A" }]}>● Available for work</Text></View> : null}
         </View>
 
@@ -116,6 +135,39 @@ export default function FreelancerDetail() {
             </Pressable>
           ))}</>
         ) : null}
+
+        <View style={styles.reviewHead}>
+          <Text style={[styles.section, { color: colors.onSurface, marginTop: 0 }]}>Reviews</Text>
+          {f.can_review ? (
+            <Pressable onPress={() => setReviewing((v) => !v)} testID="fd-review-toggle"><Text style={[styles.reviewToggle, { color: colors.brand }]}>{reviewing ? "Cancel" : "Leave a review"}</Text></Pressable>
+          ) : null}
+        </View>
+        {reviewing ? (
+          <View style={[styles.reviewForm, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={styles.stars}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Pressable key={n} onPress={() => setRating(n)} testID={`fd-star-${n}`}>
+                  <MaterialCommunityIcons name={n <= rating ? "star" : "star-outline"} size={28} color={colors.brand} />
+                </Pressable>
+              ))}
+            </View>
+            <TextInput value={comment} onChangeText={setComment} placeholder="Share how the gig went…" placeholderTextColor={colors.muted} multiline style={[styles.reviewInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.onSurface }]} testID="fd-review-input" />
+            <ForgeButton label="Submit review" fullWidth onPress={submitReview} testID="fd-review-submit" style={{ marginTop: spacing.sm }} />
+          </View>
+        ) : null}
+        {(f.reviews || []).length === 0 ? (
+          <Text style={[styles.noReviews, { color: colors.muted }]}>No reviews yet.</Text>
+        ) : (
+          (f.reviews || []).map((r) => (
+            <View key={r.id} style={[styles.reviewCard, { borderColor: colors.border }]}>
+              <View style={styles.reviewRow}>
+                <Text style={[styles.reviewer, { color: colors.onSurface }]}>{r.reviewer_name}</Text>
+                <Text style={[styles.reviewStars, { color: colors.brand }]}>{"★".repeat(r.rating)}</Text>
+              </View>
+              {r.comment ? <Text style={[styles.reviewComment, { color: colors.muted }]}>{r.comment}</Text> : null}
+            </View>
+          ))
+        )}
       </ScrollView>
 
       <View style={[styles.actionBar, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.md }]}>
@@ -152,6 +204,18 @@ const styles = StyleSheet.create({
   name: { fontFamily: fonts.display, fontSize: 24, marginTop: spacing.md, textAlign: "center" },
   headline: { fontFamily: fonts.bodyBold, fontSize: 14, marginTop: 4, textAlign: "center" },
   meta: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: 6, textAlign: "center" },
+  ratingLine: { fontFamily: fonts.bodyBold, fontSize: 13, marginTop: 6 },
+  reviewHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xl, marginBottom: spacing.sm },
+  reviewToggle: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  reviewForm: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  stars: { flexDirection: "row", gap: 4, marginBottom: spacing.sm },
+  reviewInput: { minHeight: 70, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, fontFamily: fonts.body, fontSize: 14, textAlignVertical: "top" },
+  noReviews: { fontFamily: fonts.body, fontSize: 13.5 },
+  reviewCard: { borderTopWidth: 1, paddingVertical: spacing.md },
+  reviewRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  reviewer: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  reviewStars: { fontFamily: fonts.body, fontSize: 14 },
+  reviewComment: { fontFamily: fonts.body, fontSize: 13.5, lineHeight: 20, marginTop: 4 },
   availBadge: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1, marginTop: spacing.md },
   availText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   section: { fontFamily: fonts.displaySemi, fontSize: 16, marginTop: spacing.xl, marginBottom: spacing.sm },

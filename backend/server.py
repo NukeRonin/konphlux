@@ -445,6 +445,37 @@ class FreelancerBody(BaseModel):
     available: bool = True
 
 
+class OfferBody(BaseModel):
+    conversation_id: str = Field(min_length=1, max_length=40)
+    to_user_id: str = Field(min_length=1, max_length=60)
+    title: str = Field(min_length=1, max_length=120)
+    rate_text: str = Field(default="", max_length=60)
+    note: str = Field(default="", max_length=1000)
+
+
+class RespondBody(BaseModel):
+    accept: bool
+
+
+class InterviewBody(BaseModel):
+    to_user_id: str = Field(min_length=1, max_length=60)
+    conversation_id: str = Field(default="", max_length=40)
+    job_id: str = Field(default="", max_length=40)
+    title: str = Field(min_length=1, max_length=120)
+    scheduled_at: str = Field(min_length=4, max_length=40)
+    location: str = Field(default="", max_length=200)
+
+
+class InterviewRespondBody(BaseModel):
+    status: str = Field(pattern="^(confirmed|declined)$")
+
+
+class ReviewBody(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=1000)
+    job_title: str = Field(default="", max_length=120)
+
+
 
 # ---- Chatterbox ----
 class CBStartDM(BaseModel):
@@ -3981,6 +4012,13 @@ def _freelancer_public(doc: dict) -> dict:
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
+async def _freelancer_rating(user_id: str) -> tuple[float, int]:
+    revs = await db.freelancer_reviews.find({"freelancer_user_id": user_id}, {"_id": 0, "rating": 1}).to_list(1000)
+    if not revs:
+        return 0.0, 0
+    return round(sum(r["rating"] for r in revs) / len(revs), 1), len(revs)
+
+
 @api_router.get("/profession/freelancers")
 async def profession_list_freelancers(user: dict = Depends(require_user), q: str = "", category: str = ""):
     query: dict = {}
@@ -3990,7 +4028,12 @@ async def profession_list_freelancers(user: dict = Depends(require_user), q: str
         rx = {"$regex": q.strip(), "$options": "i"}
         query["$or"] = [{"name": rx}, {"headline": rx}, {"bio": rx}, {"skills": rx}]
     docs = await db.freelancers.find(query, {"_id": 0}).to_list(500)
-    docs.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
+    for d in docs:
+        d["avg_rating"], d["review_count"] = await _freelancer_rating(d["user_id"])
+    # Featured order: available first, then highest rating, then most recent.
+    docs.sort(key=lambda d: (d.get("available", False), d.get("avg_rating", 0), d.get("updated_at", "")), reverse=True)
+    for i, d in enumerate(docs):
+        d["featured"] = bool(d.get("available") and (d.get("avg_rating", 0) >= 4 or i < 3))
     return docs
 
 
@@ -4031,7 +4074,139 @@ async def profession_get_freelancer(freelancer_id: str, user: dict = Depends(req
     if not doc:
         raise HTTPException(status_code=404, detail="Profile not found")
     doc["is_me"] = doc.get("user_id") == user["id"]
+    doc["avg_rating"], doc["review_count"] = await _freelancer_rating(doc["user_id"])
+    reviews = await db.freelancer_reviews.find({"freelancer_user_id": doc["user_id"]}, {"_id": 0}).to_list(200)
+    reviews.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    doc["reviews"] = reviews
+    doc["can_review"] = not doc["is_me"]
     return doc
+
+
+@api_router.post("/profession/freelancers/{freelancer_id}/review", status_code=201)
+async def profession_review_freelancer(freelancer_id: str, body: ReviewBody, user: dict = Depends(require_user)):
+    fl = await db.freelancers.find_one({"id": freelancer_id}, {"_id": 0})
+    if not fl:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if fl["user_id"] == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't review your own profile.")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "freelancer_id": freelancer_id, "freelancer_user_id": fl["user_id"],
+        "reviewer_id": user["id"], "reviewer_name": user.get("display_name", "Someone"),
+        "rating": body.rating, "comment": body.comment.strip(), "job_title": body.job_title.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.freelancer_reviews.update_one({"freelancer_id": freelancer_id, "reviewer_id": user["id"]}, {"$set": doc}, upsert=True)
+    try:
+        await _notify(fl["user_id"], "freelancer_review", freelancer_id, "New review", f"{doc['reviewer_name']} rated you {body.rating}★.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+# ----- Profession Plaza: Hire from chat (offers) -----
+async def _cb_post_card(conv_id: str, sender: dict, text: str, kind: str, meta: dict) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": uuid.uuid4().hex[:12], "conversation_id": conv_id, "sender_id": sender["id"],
+           "sender_name": sender.get("display_name", "Someone"), "text": text, "kind": kind, "meta": meta, "created_at": now}
+    await db.cb_messages.insert_one(dict(msg))
+    await db.cb_conversations.update_one({"id": conv_id}, {"$set": {"last_message": text[:120], "last_at": now}})
+
+
+@api_router.post("/profession/offers", status_code=201)
+async def profession_send_offer(body: OfferBody, user: dict = Depends(require_user)):
+    conv = await db.cb_conversations.find_one({"id": body.conversation_id, "participants": user["id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    offer = {
+        "id": uuid.uuid4().hex[:12], "conversation_id": body.conversation_id,
+        "from_user_id": user["id"], "from_name": user.get("display_name", "Someone"),
+        "to_user_id": body.to_user_id, "title": body.title.strip(), "rate_text": body.rate_text.strip(),
+        "note": body.note.strip(), "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.job_offers.insert_one(dict(offer))
+    await _cb_post_card(body.conversation_id, user, f"Sent an offer: {offer['title']}", "offer",
+                        {"offer_id": offer["id"], "title": offer["title"], "rate_text": offer["rate_text"], "note": offer["note"], "status": "pending", "to_user_id": body.to_user_id})
+    try:
+        await _notify(body.to_user_id, "job_offer", body.conversation_id, "New offer", f"{offer['from_name']} sent you an offer: {offer['title']}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {k: v for k, v in offer.items() if k != "_id"}
+
+
+@api_router.post("/profession/offers/{offer_id}/respond")
+async def profession_respond_offer(offer_id: str, body: RespondBody, user: dict = Depends(require_user)):
+    offer = await db.job_offers.find_one({"id": offer_id}, {"_id": 0})
+    if not offer or offer["to_user_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    new_status = "accepted" if body.accept else "declined"
+    await db.job_offers.update_one({"id": offer_id}, {"$set": {"status": new_status}})
+    await db.cb_messages.update_one({"conversation_id": offer["conversation_id"], "meta.offer_id": offer_id}, {"$set": {"meta.status": new_status}})
+    await _cb_post_card(offer["conversation_id"], user, f"{'Accepted' if body.accept else 'Declined'} the offer: {offer['title']}", "system", {})
+    try:
+        await _notify(offer["from_user_id"], "job_offer", offer["conversation_id"], "Offer " + new_status, f"{user.get('display_name','Someone')} {new_status} your offer: {offer['title']}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": new_status}
+
+
+# ----- Profession Plaza + Evention Center: Interview scheduling -----
+def _interview_public(doc: dict) -> dict:
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.post("/profession/interviews", status_code=201)
+async def profession_schedule_interview(body: InterviewBody, user: dict = Depends(require_user)):
+    other = await db.users.find_one({"id": body.to_user_id})
+    if not other:
+        raise HTTPException(status_code=404, detail="Person not found")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "job_id": body.job_id, "conversation_id": body.conversation_id,
+        "poster_id": user["id"], "poster_name": user.get("display_name", "Someone"),
+        "applicant_id": body.to_user_id, "applicant_name": other.get("display_name", "Someone"),
+        "title": body.title.strip(), "scheduled_at": body.scheduled_at, "location": body.location.strip(),
+        "status": "proposed", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.interviews.insert_one(dict(doc))
+    if body.conversation_id:
+        conv = await db.cb_conversations.find_one({"id": body.conversation_id, "participants": user["id"]}, {"_id": 0})
+        if conv:
+            await _cb_post_card(body.conversation_id, user, f"Proposed an interview: {doc['title']}", "interview",
+                                {"interview_id": doc["id"], "title": doc["title"], "scheduled_at": doc["scheduled_at"], "location": doc["location"], "status": "proposed", "to_user_id": body.to_user_id})
+    try:
+        await _notify(body.to_user_id, "interview", body.job_id or body.conversation_id, "Interview proposed", f"{doc['poster_name']} proposed an interview: {doc['title']}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return _interview_public(doc)
+
+
+@api_router.post("/profession/interviews/{interview_id}/respond")
+async def profession_respond_interview(interview_id: str, body: InterviewRespondBody, user: dict = Depends(require_user)):
+    iv = await db.interviews.find_one({"id": interview_id}, {"_id": 0})
+    if not iv or user["id"] not in (iv["applicant_id"], iv["poster_id"]):
+        raise HTTPException(status_code=404, detail="Interview not found")
+    await db.interviews.update_one({"id": interview_id}, {"$set": {"status": body.status}})
+    if iv.get("conversation_id"):
+        await db.cb_messages.update_one({"conversation_id": iv["conversation_id"], "meta.interview_id": interview_id}, {"$set": {"meta.status": body.status}})
+        await _cb_post_card(iv["conversation_id"], user, f"{'Confirmed' if body.status == 'confirmed' else 'Declined'} the interview: {iv['title']}", "system", {})
+    other_id = iv["poster_id"] if user["id"] == iv["applicant_id"] else iv["applicant_id"]
+    try:
+        await _notify(other_id, "interview", iv.get("job_id") or iv.get("conversation_id"), "Interview " + body.status, f"{user.get('display_name','Someone')} {body.status} the interview: {iv['title']}.")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": body.status}
+
+
+@api_router.get("/evention/interviews")
+async def evention_interviews(user: dict = Depends(require_user)):
+    docs = await db.interviews.find({"$or": [{"poster_id": user["id"]}, {"applicant_id": user["id"]}], "status": {"$ne": "declined"}}, {"_id": 0}).to_list(500)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    upcoming = [d for d in docs if d.get("scheduled_at", "") >= now_iso]
+    past = [d for d in docs if d.get("scheduled_at", "") < now_iso]
+    upcoming.sort(key=lambda d: d.get("scheduled_at", ""))
+    past.sort(key=lambda d: d.get("scheduled_at", ""), reverse=True)
+    for d in upcoming + past:
+        d["role"] = "poster" if d["poster_id"] == user["id"] else "applicant"
+    return {"upcoming": upcoming, "past": past}
 
 
 
@@ -4258,7 +4433,9 @@ async def chatterbox_conversation_detail(conv_id: str, user: dict = Depends(requ
     msgs = await db.cb_messages.find({"conversation_id": conv_id}, {"_id": 0}).to_list(1000)
     msgs.sort(key=lambda m: m.get("created_at", ""))
     summary = await _cb_conv_summary(conv, user["id"])
-    return {**summary, "messages": msgs, "me": user["id"]}
+    others = [p for p in conv.get("participants", []) if p != user["id"]]
+    other_id = others[0] if (conv.get("type") != "group" and others) else ""
+    return {**summary, "messages": msgs, "me": user["id"], "other_id": other_id}
 
 
 @api_router.get("/chatterbox/conversations/{conv_id}/messages")

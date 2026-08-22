@@ -116,10 +116,19 @@ export default function Marketplace() {
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.cardTitle, { color: colors.onSurface }]} numberOfLines={1}>{f.name}</Text>
+                  <View style={styles.nameRow}>
+                    <Text style={[styles.cardTitle, { color: colors.onSurface }]} numberOfLines={1}>{f.name}</Text>
+                    {f.featured ? (
+                      <View style={[styles.featBadge, { backgroundColor: colors.brand }]}>
+                        <MaterialCommunityIcons name="star" size={10} color={colors.onBrandPrimary} />
+                        <Text style={[styles.featText, { color: colors.onBrandPrimary }]}>Featured</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={[styles.cardSub, { color: colors.muted }]} numberOfLines={1}>{f.headline || f.category}</Text>
                   <View style={styles.rowGap}>
                     {f.hourly_rate ? <Text style={[styles.cardMeta, { color: colors.brand }]}>${f.hourly_rate}/hr</Text> : null}
+                    {(f.review_count || 0) > 0 ? <Text style={[styles.cardMeta, { color: colors.onSurface }]}>★ {f.avg_rating}</Text> : null}
                     {(f.skills || []).slice(0, 2).map((s) => (
                       <View key={s} style={[styles.miniBadge, { backgroundColor: colors.surfaceTertiary }]}>
                         <Text style={[styles.miniBadgeText, { color: colors.brand }]}>{s}</Text>
@@ -197,6 +206,9 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displaySemi, fontSize: 15.5 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  featBadge: { flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill },
+  featText: { fontFamily: fonts.bodyBold, fontSize: 9.5 },
   cardSub: { fontFamily: fonts.body, fontSize: 12.5, marginTop: 1 },
   cardMeta: { fontFamily: fonts.bodyMedium, fontSize: 12 },
   rowGap: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6, flexWrap: "wrap" },
