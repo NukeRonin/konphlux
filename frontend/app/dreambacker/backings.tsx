@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, DBProject } from "@/src/api/client";
@@ -13,7 +13,7 @@ import { categoryMeta } from "@/src/utils/dreambacker";
 import { fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
-type Backing = DBProject & { your_total_cents: number; your_recurring: boolean };
+type Backing = DBProject & { your_total_cents: number; your_recurring: boolean; can_cancel_recurring: boolean };
 
 export default function MyBackings() {
   const { colors } = useTheme();
@@ -33,6 +33,13 @@ export default function MyBackings() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const cancelRecurring = (p: Backing) => {
+    Alert.alert("Stop monthly support?", `Your monthly contribution to "${p.title}" will end. You won't be charged again.`, [
+      { text: "Keep supporting", style: "cancel" },
+      { text: "Stop", style: "destructive", onPress: async () => { try { await api.dbCancelRecurring(p.id); load(); } catch { /* ignore */ } } },
+    ]);
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -68,6 +75,12 @@ export default function MyBackings() {
                   <Text style={[styles.yours, { color: colors.brand }]}>You gave {formatPrice(item.your_total_cents)}{item.your_recurring ? "/mo" : ""}</Text>
                 </View>
                 {item.funded ? <Text style={[styles.funded, { color: colors.brand }]}>🎉 Goal reached</Text> : null}
+                {item.can_cancel_recurring ? (
+                  <Pressable testID={`backing-cancel-${item.id}`} onPress={() => cancelRecurring(item)} style={[styles.cancelBtn, { borderColor: colors.error ?? colors.muted }]}>
+                    <MaterialCommunityIcons name="close-circle-outline" size={14} color={colors.error ?? colors.muted} />
+                    <Text style={[styles.cancelText, { color: colors.error ?? colors.muted }]}>Stop monthly support</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </Pressable>
           );
@@ -97,4 +110,6 @@ const styles = StyleSheet.create({
   meta: { fontFamily: fonts.body, fontSize: 12 },
   yours: { fontFamily: fonts.bodyBold, fontSize: 12 },
   funded: { fontFamily: fonts.bodyBold, fontSize: 12, marginTop: 4 },
+  cancelBtn: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, marginTop: spacing.sm, height: 30, paddingHorizontal: spacing.sm, borderRadius: radius.pill, borderWidth: 1 },
+  cancelText: { fontFamily: fonts.bodyBold, fontSize: 12 },
 });

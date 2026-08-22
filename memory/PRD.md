@@ -94,6 +94,28 @@
 - New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
 - Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
 
+### 2026-06 (Frankenstein Lab — Audio Creation Studio: GenoTune + GenoFX; user self-testing)
+- ✅ New /frankenstein-lab/audio screen with two tabs: GenoTune (music) and GenoFX (sfx). Reads ?mode=music|sfx. Prompt box + suggestion chips + option chips (music: genre/mood/length; sfx: character/length). Generate → renders a Nano Banana visual + the AI concept parsed into sections + a "playable audio coming soon" note.
+- ✅ Backend POST /api/frankenstein/audio (FrankAudioBody kind=music|sfx): music → detailed MUSIC CONCEPT (title/genre&mood/instrumentation/structure/tempo&key/production) via _anvil_llm (gpt-5.4); sfx → SFX DESCRIPTION (name/category/description/layers/duration&dynamics/use). Visual via _ps_generate_image (Gemini Nano Banana). Returns {kind, concept, image_path}.
+- ✅ District wiring: FRANKENSTEIN_ACTIONS maps GenoTune→audio?mode=music, GenoFX→audio?mode=sfx; DISTRICT_HUBS "frankenstein-lab" → "Open Audio Studio". Route registered. (GenoPic/GenoLogo/GenoMeme/GenoGIF remain unmapped/hidden — not part of this task.)
+- Real audio generation (Suno/ElevenLabs) intentionally deferred — studio produces concept + visual only for now.
+- Credit-free checks only (per user): 401 no-auth, 422 bad kind / empty prompt, frankenstein-lab present in /districts. Web bundle compiles. Did NOT run real LLM/image generation to save credits.
+- Files: backend/server.py (FrankAudioBody + frankenstein_audio), frontend/app/frankenstein-lab/audio.tsx, district/[slug].tsx, _layout.tsx, src/api/client.ts (frankAudio).
+
+
+### 2026-06 (Dreambacker phase 5 + Headquarters/Settings; user self-testing)
+- ✅ Cancel Monthly: my-backings now returns can_cancel_recurring; new POST /dreambacker/backings/{project_id}/cancel-recurring cancels the Stripe subscription (subscription_id captured in _fulfill_contribution for recurring) and marks recurring=False. Backings screen shows a "Stop monthly support" button with a native Alert confirm.
+- ✅ Comment notifications: db_create_comment now in-app-notifies the creator (type dreambacker_comment) on any non-creator comment.
+- ✅ Funded celebration: db_get_project returns celebrate=true ONCE for the creator when funded (funded_celebrated flag). New ConfettiCelebration overlay (RN Animated emoji burst + "Funded!" card) shows on the detail screen. _fulfill_contribution also notifies the creator once (dreambacker_funded) when the goal is first reached.
+- ✅ Headquarters (profile/HQ tab): cog → /settings; balance card → /orders; handleMenu maps all menu items (bookmarks→/saved, warehouse→/orders, notifications→/notifications, messages→/chatterbox/inbox, achievements→/achievements, dashboard→home, settings/privacy/security/appearance/help/support/id/resume→/settings).
+- ✅ New /settings screen: Appearance (theme), Notifications & Privacy preference toggles (persisted via storage singleton), Account/security shortcuts (bookmarks/orders/backings + security info), Help Center + Contact support (mailto), About, Sign out.
+- ✅ New /achievements screen: badge grid derived from profile stats (posts/followers/saved/balance/title), earned vs locked.
+- Backend smoke-tested: comment→creator notif True; celebrate true-then-false; my-backings can_cancel true→cancel→false + your_recurring false. Web bundle compiles.
+- ⏳ Device Push (real lock-screen push) NOT implemented — needs Emergent push integration + user's Firebase google-services.json + a native build (can't run in Expo Go/preview). Pending user decision.
+- Files: backend/server.py; frontend app/dreambacker/{[id],backings}.tsx, (tabs)/profile.tsx, settings.tsx, achievements.tsx, _layout.tsx; src/components/ConfettiCelebration.tsx; src/api/client.ts.
+- NOTE: user opted to self-test (skip automated tests).
+
+
 ### 2026-06 (Dreambacker phase 4 — comments, recurring support, home trending row, funded ribbon, my backings, update push; user self-testing)
 - ✅ Comments & questions: db.db_comments; GET/POST /dreambacker/projects/{id}/comments. Anyone can comment; creator replies (parent_id) with a "Creator" tag; creator replies notify the original commenter (in-app). Detail page has a comment box + threaded replies.
 - ✅ Recurring support (monthly): DBBackBody+recurring → Stripe Checkout mode="subscription" with monthly recurring price_data (managed_payments disabled — REQUIRED or Stripe 400s on tax code). Detail has a "Make this monthly" checkbox; button becomes "Support monthly". Creator-only GET /dreambacker/projects/{id}/recurring lists recurring supporters + monthly total (shown on detail). NOTE: only the initial subscription is tracked (no invoice.payment_succeeded webhook for renewals — MVP).

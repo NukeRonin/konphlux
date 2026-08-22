@@ -28,6 +28,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "pictureshow-theatre": { route: "/pictureshow", label: "Enter PictureShow" },
   chatterbox: { route: "/chatterbox", label: "Enter Chatterbox" },
   dreambacker: { route: "/dreambacker", label: "Enter Dreambacker" },
+  "frankenstein-lab": { route: "/frankenstein-lab/audio", label: "Open Audio Studio" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -141,6 +142,12 @@ const DREAMBACKER_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Fundraisers I Created": { route: "/dreambacker?filter=mine", icon: "account-star" },
 };
 
+// Frankenstein Lab — AI creation studio. Audio tools open the Audio Creation Studio.
+const FRANKENSTEIN_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  GenoTune: { route: "/frankenstein-lab/audio?mode=music", icon: "music-clef-treble" },
+  GenoFX: { route: "/frankenstein-lab/audio?mode=sfx", icon: "waveform" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -152,6 +159,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   chatterbox: CHATTERBOX_ACTIONS,
   bluepaint: BLUEPAINT_ACTIONS,
   dreambacker: DREAMBACKER_ACTIONS,
+  "frankenstein-lab": FRANKENSTEIN_ACTIONS,
 };
 
 export default function DistrictDetail() {

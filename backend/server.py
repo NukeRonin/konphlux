@@ -271,6 +271,14 @@ class GenoBody(BaseModel):
     length: str = Field(default="short", max_length=20)  # short | medium
 
 
+class FrankAudioBody(BaseModel):
+    kind: str = Field(default="music", pattern="^(music|sfx)$")
+    prompt: str = Field(min_length=1, max_length=600)
+    mood: str = Field(default="", max_length=60)
+    genre: str = Field(default="", max_length=60)
+    duration: str = Field(default="", max_length=40)
+
+
 class PromptCreate(BaseModel):
     text: str = Field(min_length=8, max_length=400)
 
@@ -3196,6 +3204,68 @@ async def pictureshow_ai_concept(body: PSAIConceptBody, user: dict = Depends(req
     return {"kind": kind, "storyboard": storyboard.strip(), "poster_path": poster_path}
 
 
+# ----- Frankenstein Lab: Audio Creation Studio (GenoTune music + GenoFX sfx) -----
+@api_router.post("/frankenstein/audio")
+async def frankenstein_audio(body: FrankAudioBody, user: dict = Depends(require_user)):
+    is_music = body.kind == "music"
+    if is_music:
+        system = (
+            "You are GenoTune, the AI music-smith of Frankenstein Lab in the steampunk world of Konphlux. "
+            "Given a brief, produce a detailed MUSIC CONCEPT in plain text with exactly these section headers, each on its own line:\n"
+            "TITLE: an evocative track title\n"
+            "GENRE & MOOD: the style and emotional feel\n"
+            "INSTRUMENTATION: the key instruments and textures\n"
+            "STRUCTURE: 4-6 sections (e.g. Intro, Verse, Chorus, Bridge, Outro), one line each with a short description\n"
+            "TEMPO & KEY: approximate BPM and musical key\n"
+            "PRODUCTION NOTES: mixing/atmosphere guidance\n"
+            "Keep it vivid but concise. No other commentary."
+        )
+        prompt = f"Brief: {body.prompt.strip()}"
+        if body.genre:
+            prompt += f"\nGenre: {body.genre}"
+        if body.mood:
+            prompt += f"\nMood: {body.mood}"
+        if body.duration:
+            prompt += f"\nApprox length: {body.duration}"
+        img_prompt = (
+            f"Abstract album cover / sound visualization for a piece of music: {body.prompt.strip()}. "
+            f"{body.genre} {body.mood}. Flowing waveforms, glowing brass tuning forks, aether light, steampunk, no text."
+        )
+    else:
+        system = (
+            "You are GenoFX, the AI sound-effects engineer of Frankenstein Lab in the steampunk world of Konphlux. "
+            "Given a brief, produce a detailed SFX DESCRIPTION in plain text with exactly these section headers, each on its own line:\n"
+            "NAME: a short name for the effect\n"
+            "CATEGORY: the type of sound (e.g. mechanical, ambient, UI, creature, impact)\n"
+            "DESCRIPTION: what the listener hears, vividly\n"
+            "LAYERS: 3-5 sound layers that build the effect, one line each\n"
+            "DURATION & DYNAMICS: length and how loudness/pitch evolve\n"
+            "SUGGESTED USE: where this effect fits\n"
+            "Keep it precise and practical. No other commentary."
+        )
+        prompt = f"Brief: {body.prompt.strip()}"
+        if body.mood:
+            prompt += f"\nCharacter: {body.mood}"
+        if body.duration:
+            prompt += f"\nApprox length: {body.duration}"
+        img_prompt = (
+            f"Abstract visual representation of a sound effect: {body.prompt.strip()}. "
+            f"Waveform and spectrogram motifs, sparks, brass gears, aether glow, steampunk, no text."
+        )
+    try:
+        concept = await _anvil_llm(system, prompt, session=f"frank-audio:{body.kind}:{user['id']}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Frankenstein audio concept error")
+        raise HTTPException(status_code=502, detail="The lab's aether coils overloaded. Try again.") from e
+    image_path = ""
+    try:
+        image_path = await _ps_generate_image(img_prompt, user["id"])
+    except Exception:  # noqa: BLE001
+        logger.exception("Frankenstein audio image error")
+        image_path = ""
+    return {"kind": body.kind, "concept": concept.strip(), "image_path": image_path}
+
+
 # ---------- Chatterbox (messaging: private DMs + group chats) ----------
 def _cb_avatar_for(uid: str) -> str:
     return f"https://picsum.photos/seed/cbuser{uid[:8]}/200"
@@ -3631,7 +3701,13 @@ async def db_get_project(project_id: str, user: dict = Depends(require_user)):
     doc = await db.db_projects.find_one({"id": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Fundraiser not found")
-    return _db_project_public(doc, user["id"])
+    pub = _db_project_public(doc, user["id"])
+    # One-time confetti moment for the creator the first time it's funded.
+    pub["celebrate"] = False
+    if pub["is_creator"] and pub["funded"] and not doc.get("funded_celebrated"):
+        await db.db_projects.update_one({"id": project_id}, {"$set": {"funded_celebrated": True}})
+        pub["celebrate"] = True
+    return pub
 
 
 @api_router.post("/dreambacker/projects/{project_id}/back")
@@ -3697,10 +3773,16 @@ async def _fulfill_contribution(session_id: str):
     c = await db.db_contributions.find_one({"session_id": session_id})
     if not c or c.get("status") == "paid":
         return
-    await db.db_contributions.update_one(
-        {"session_id": session_id},
-        {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
-    )
+    set_fields = {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}
+    # For monthly plans, capture the Stripe subscription id so the backer can cancel later.
+    if c.get("recurring") and not c.get("subscription_id") and stripe.api_key:
+        try:
+            sess = stripe.checkout.Session.retrieve(session_id)
+            if getattr(sess, "subscription", None):
+                set_fields["subscription_id"] = sess.subscription
+        except Exception:  # noqa: BLE001
+            logger.exception("Stripe subscription capture error")
+    await db.db_contributions.update_one({"session_id": session_id}, {"$set": set_fields})
     await db.db_projects.update_one(
         {"id": c["project_id"]},
         {"$inc": {"raised_cents": c["amount_cents"], "backer_count": 1}},
@@ -3710,6 +3792,11 @@ async def _fulfill_contribution(session_id: str):
             {"id": c["project_id"], "reward_tiers.id": c["tier_id"]},
             {"$inc": {"reward_tiers.$.backer_count": 1}},
         )
+    # If this contribution pushed the project to its goal, notify the creator once.
+    proj = await db.db_projects.find_one({"id": c["project_id"]}, {"_id": 0})
+    if proj and proj.get("goal_cents") and proj.get("raised_cents", 0) >= proj["goal_cents"] and not proj.get("funded_notified"):
+        await db.db_projects.update_one({"id": proj["id"]}, {"$set": {"funded_notified": True}})
+        await _notify(proj["creator_id"], "dreambacker_funded", None, "🎉 Your fundraiser is funded!", f"'{proj['title']}' reached its goal.")
 
 
 @api_router.get("/dreambacker/contributions/status/{session_id}")
@@ -3798,6 +3885,9 @@ async def db_create_comment(project_id: str, body: DBCommentCreate, user: dict =
         parent = await db.db_comments.find_one({"id": body.parent_id}, {"_id": 0})
         if parent and parent.get("user_id") and parent["user_id"] != user["id"]:
             await _notify(parent["user_id"], "dreambacker_reply", None, f"{proj['title']}: creator replied", body.body.strip()[:120])
+    # If a backer/visitor comments, notify the creator.
+    if not is_creator:
+        await _notify(proj["creator_id"], "dreambacker_comment", None, f"New comment on {proj['title']}", f"{doc['author_name']}: {body.body.strip()[:100]}")
     return doc
 
 
@@ -3837,15 +3927,44 @@ async def db_my_backings(user: dict = Depends(require_user)):
             a["recurring"] = True
     if not agg:
         return []
+    # Which projects have an active (cancellable) monthly subscription for this user.
+    active_recurring = await db.db_contributions.find(
+        {"user_id": user["id"], "status": "paid", "recurring": True}, {"_id": 0, "project_id": 1}
+    ).to_list(2000)
+    cancellable = {c["project_id"] for c in active_recurring}
     projects = await db.db_projects.find({"id": {"$in": list(agg)}}, {"_id": 0}).to_list(500)
     out = []
     for p in projects:
         pub = _db_project_public(p, user["id"])
         pub["your_total_cents"] = agg[p["id"]]["total"]
         pub["your_recurring"] = agg[p["id"]]["recurring"]
+        pub["can_cancel_recurring"] = p["id"] in cancellable
         out.append(pub)
     out.sort(key=lambda p: p.get("created_at", ""), reverse=True)
     return out
+
+
+@api_router.post("/dreambacker/backings/{project_id}/cancel-recurring")
+async def db_cancel_recurring(project_id: str, user: dict = Depends(require_user)):
+    contribs = await db.db_contributions.find(
+        {"user_id": user["id"], "project_id": project_id, "status": "paid", "recurring": True}, {"_id": 0}
+    ).to_list(100)
+    if not contribs:
+        raise HTTPException(status_code=404, detail="No active monthly support found.")
+    cancelled = 0
+    for c in contribs:
+        sub_id = c.get("subscription_id")
+        if sub_id and stripe.api_key:
+            try:
+                stripe.Subscription.cancel(sub_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("Stripe subscription cancel error")
+        await db.db_contributions.update_one(
+            {"id": c["id"]},
+            {"$set": {"recurring": False, "cancelled_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        cancelled += 1
+    return {"cancelled": cancelled}
 
 
 app.include_router(api_router)

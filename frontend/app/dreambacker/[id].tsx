@@ -10,6 +10,7 @@ import { api, DBBacker, DBComment, DBProject, DBRecurringSupporter, DBUpdate } f
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { ErrorState, Loading } from "@/src/components/States";
+import { ConfettiCelebration } from "@/src/components/ConfettiCelebration";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { FUNDING_MODELS, categoryMeta, fmtDeadline, useCountdown } from "@/src/utils/dreambacker";
 import { fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
@@ -68,6 +69,7 @@ export default function FundraiserDetail() {
   const [commentText, setCommentText] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [sendingComment, setSendingComment] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -75,6 +77,7 @@ export default function FundraiserDetail() {
       setStatus("loading");
       const [p, b, u, c] = await Promise.all([api.dbProject(id), api.dbBackers(id), api.dbUpdates(id), api.dbComments(id)]);
       setProject(p);
+      if (p.celebrate) setShowConfetti(true);
       setBackers(b.backers);
       setBackerCount(b.count);
       setUpdates(u);
@@ -423,6 +426,7 @@ export default function FundraiserDetail() {
           </Pressable>
         </Pressable>
       </Modal>
+      {showConfetti ? <ConfettiCelebration onDone={() => setShowConfetti(false)} /> : null}
     </View>
   );
 }

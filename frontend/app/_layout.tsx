@@ -112,6 +112,9 @@ function RootNavigator() {
         <Stack.Screen name="dreambacker/[id]" />
         <Stack.Screen name="dreambacker/edit/[id]" />
         <Stack.Screen name="dreambacker/backings" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="achievements" />
+        <Stack.Screen name="frankenstein-lab/audio" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

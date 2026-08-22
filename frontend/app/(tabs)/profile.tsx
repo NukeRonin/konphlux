@@ -51,8 +51,24 @@ export default function ProfileScreen() {
   );
 
   const handleMenu = (to: string) => {
-    if (to === "bookmarks") router.push("/saved");
-    else if (to === "warehouse") router.push("/orders");
+    const routes: Record<string, string> = {
+      bookmarks: "/saved",
+      warehouse: "/orders",
+      notifications: "/notifications",
+      messages: "/chatterbox/inbox",
+      achievements: "/achievements",
+      dashboard: "/",
+      settings: "/settings",
+      privacy: "/settings",
+      security: "/settings",
+      appearance: "/settings",
+      help: "/settings",
+      support: "/settings",
+      id: "/settings",
+      resume: "/settings",
+    };
+    const dest = routes[to];
+    if (dest) router.push(dest as never);
   };
 
   return (
@@ -60,7 +76,7 @@ export default function ProfileScreen() {
       <AppHeader
         title="Headquarters"
         subtitle="Your Konphlux ID"
-        actions={[{ icon: "cog-outline", onPress: () => {}, testID: "settings-btn" }]}
+        actions={[{ icon: "cog-outline", onPress: () => router.push("/settings"), testID: "settings-btn" }]}
       />
       {status === "loading" ? (
         <Loading label="Opening your HQ…" />
@@ -94,7 +110,7 @@ export default function ProfileScreen() {
           </Panel>
 
           {/* Treasury balance */}
-          <Pressable testID="balance-card">
+          <Pressable testID="balance-card" onPress={() => router.push("/orders")}>
             <LinearGradient
               colors={colors.brassGradient}
               start={{ x: 0, y: 0 }}

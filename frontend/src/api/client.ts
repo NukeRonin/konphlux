@@ -421,6 +421,7 @@ export type DBProject = {
   created_at: string;
   category: string;
   funded: boolean;
+  celebrate?: boolean;
 };
 
 export const api = {
@@ -653,6 +654,8 @@ export const api = {
     request<{ following: boolean }>(`/pictureshow/streamora/${channel_id}/follow`, { method: "POST" }),
   psAiConcept: (body: { prompt: string; kind: "video" | "animation"; style?: string }) =>
     request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/concept", { method: "POST", body: JSON.stringify(body) }),
+  frankAudio: (body: { kind: "music" | "sfx"; prompt: string; mood?: string; genre?: string; duration?: string }) =>
+    request<{ kind: string; concept: string; image_path: string }>("/frankenstein/audio", { method: "POST", body: JSON.stringify(body) }),
 
   // Chatterbox (private messaging + group chats)
   cbUsers: (q?: string) => request<CBUser[]>(`/chatterbox/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
@@ -696,7 +699,8 @@ export const api = {
   dbCreateComment: (id: string, body: string, parent_id: string | null) =>
     request<DBComment>(`/dreambacker/projects/${id}/comments`, { method: "POST", body: JSON.stringify({ body, parent_id }) }),
   dbRecurring: (id: string) => request<{ count: number; monthly_total_cents: number; supporters: DBRecurringSupporter[] }>(`/dreambacker/projects/${id}/recurring`),
-  dbMyBackings: () => request<(DBProject & { your_total_cents: number; your_recurring: boolean })[]>("/dreambacker/my-backings"),
+  dbMyBackings: () => request<(DBProject & { your_total_cents: number; your_recurring: boolean; can_cancel_recurring: boolean })[]>("/dreambacker/my-backings"),
+  dbCancelRecurring: (projectId: string) => request<{ cancelled: number }>(`/dreambacker/backings/${projectId}/cancel-recurring`, { method: "POST" }),
   dbAlerts: () => request<{ count: number; project_ids: string[] }>("/dreambacker/alerts"),
   dbMarkSeen: (id: string) => request<{ ok: boolean }>(`/dreambacker/projects/${id}/seen`, { method: "POST" }),
 };
