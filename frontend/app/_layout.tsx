@@ -104,6 +104,7 @@ function RootNavigator() {
         <Stack.Screen name="chatterbox/call" />
         <Stack.Screen name="bluepaint/index" />
         <Stack.Screen name="bluepaint/design/[id]" />
+        <Stack.Screen name="bluepaint/estimator" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

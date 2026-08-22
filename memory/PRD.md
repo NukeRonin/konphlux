@@ -80,6 +80,12 @@
 - Files: frontend/app/bluepaint/index.tsx, frontend/app/bluepaint/design/[id].tsx, district/[slug].tsx (BLUEPAINT_ACTIONS), client.ts (bp*), backend/server.py.
 - NOTE: user opted to self-test (skip automated tests). Backend smoke-tested via curl.
 
+### 2026-08 (Bluepaint Materials Estimator + Bazaar search — user self-testing)
+- ✅ /bluepaint/estimator: pick a saved design + set plan width (m) → auto-calculates Paint (litres+cans, 2 coats/10m²/L over wall area), Timber/Wood (linear m + 2.4m boards), Flooring (m² + boxes) from the floor plan's walls (wall length + bounding-box floor area). Wired district "Materials Estimator" button to it.
+- ✅ "Purchase in Bazaar" button → /(tabs)/bazaar?q=paint wood flooring; per-material magnifier → bazaar?q=<material>.
+- ✅ Bazaar now has a text search bar (q param, OR-word match on title/category/seller). Seeded "Building Materials" listings (paint, primer, oak boards, parquet flooring) so the search returns real items.
+- Files: frontend/app/bluepaint/estimator.tsx, frontend/app/(tabs)/bazaar.tsx (search), district/[slug].tsx, _layout.tsx, backend/server.py (MATERIAL_LISTINGS + seed).
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).

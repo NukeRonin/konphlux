@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { api, BazaarResponse, Listing } from "@/src/api/client";
 import { AppHeader } from "@/src/components/AppHeader";
@@ -100,10 +100,11 @@ function ProductCard({ item }: { item: Listing }) {
 export default function BazaarScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ category?: string }>();
+  const params = useLocalSearchParams<{ category?: string; q?: string }>();
   const [data, setData] = useState<BazaarResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [active, setActive] = useState(ALL);
+  const [search, setSearch] = useState("");
   const [cartCount, setCartCount] = useState(0);
   const [unread, setUnread] = useState(0);
 
@@ -127,6 +128,11 @@ export default function BazaarScreen() {
     if (params.category) setActive(params.category);
   }, [params.category]);
 
+  // Deep-link search (e.g. from Bluepaint Materials Estimator "Purchase in Bazaar").
+  useEffect(() => {
+    if (params.q !== undefined) setSearch(params.q);
+  }, [params.q]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -136,10 +142,15 @@ export default function BazaarScreen() {
   );
 
   const chips = useMemo(() => [ALL, ...(data?.categories ?? [])], [data]);
-  const listings = useMemo(
-    () => (data?.listings ?? []).filter((l) => active === ALL || l.category === active),
-    [data, active],
-  );
+  const listings = useMemo(() => {
+    const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return (data?.listings ?? []).filter((l) => {
+      if (active !== ALL && l.category !== active) return false;
+      if (words.length === 0) return true;
+      const hay = `${l.title} ${l.category} ${l.seller ?? ""}`.toLowerCase();
+      return words.some((w) => hay.includes(w));
+    });
+  }, [data, active, search]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -159,6 +170,23 @@ export default function BazaarScreen() {
       ) : (
         <>
           <View style={[styles.chipBar, { borderBottomColor: colors.border }]}>
+            <View style={[styles.searchBar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="magnify" size={18} color={colors.muted} />
+              <TextInput
+                testID="bazaar-search"
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search the Bazaar…"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                style={[styles.searchInput, { color: colors.onSurface }]}
+              />
+              {search ? (
+                <Pressable testID="bazaar-search-clear" onPress={() => setSearch("")} hitSlop={8}>
+                  <MaterialCommunityIcons name="close-circle" size={16} color={colors.muted} />
+                </Pressable>
+              ) : null}
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -184,11 +212,11 @@ export default function BazaarScreen() {
   );
 }
 
-const CHIP_ROW_HEIGHT = 56;
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  chipBar: { height: CHIP_ROW_HEIGHT, borderBottomWidth: 1, justifyContent: "center" },
+  chipBar: { borderBottomWidth: 1, justifyContent: "center", paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm },
+  searchBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, height: 42, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md },
+  searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
   chipRow: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: "center" },
   chip: {
     height: 36,

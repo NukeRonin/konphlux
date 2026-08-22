@@ -486,6 +486,18 @@ BAZAAR = [
      "description": "A face-mounted pressure reader for home boilers and small forges. Glows a gentle amber in safe range, an alarming red otherwise."},
 ]
 
+# Building materials — surfaced by the Bluepaint Materials Estimator "Purchase in Bazaar" flow.
+MATERIAL_LISTINGS = [
+    {"id": "m-paint", "title": "Aether-Grade Wall Paint (2.5L)", "price_cents": 3200, "seller": "Copperline Collective", "rating": 4.7, "reviews": 210, "category": "Building Materials", "image": IMG_GEARS,
+     "description": "Smooth, low-odour interior paint with a faint pearlescent sheen. Covers roughly 10 m² per litre, two coats recommended."},
+    {"id": "m-primer", "title": "Sealing Primer & Undercoat (2.5L)", "price_cents": 2400, "seller": "Copperline Collective", "rating": 4.5, "reviews": 98, "category": "Building Materials", "image": IMG_GEARS,
+     "description": "A dependable primer that grips plaster and timber alike, readying any wall for a clean coat of paint."},
+    {"id": "m-wood", "title": "Seasoned Oak Timber Boards (2.4m)", "price_cents": 5400, "seller": "Grast Workshop", "rating": 4.8, "reviews": 176, "category": "Building Materials", "image": IMG_ARCH,
+     "description": "Kiln-dried oak boards, 2.4 metres each — ideal for framing, studs and skirting. Sold per board."},
+    {"id": "m-floor", "title": "Reclaimed Parquet Flooring (per m²)", "price_cents": 4100, "seller": "Marlowe & Sons", "rating": 4.9, "reviews": 143, "category": "Building Materials", "image": IMG_ARCH,
+     "description": "Warm reclaimed parquet flooring, sold by the square metre. Adds instant character to any room."},
+]
+
 IMG_BOOK = "https://images.unsplash.com/photo-1544947950-fa07a98d237f?crop=entropy&cs=srgb&fm=jpg&q=85&w=800"
 IMG_AUDIO = "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?crop=entropy&cs=srgb&fm=jpg&q=85&w=800"
 
@@ -1143,6 +1155,10 @@ async def seed():
         logger.info("Seeded bazaar")
     # Book media (eBooks + Audio Books) — insert any that are missing (idempotent).
     for b in BOOK_LISTINGS:
+        if not await db.bazaar.find_one({"id": b["id"]}):
+            await db.bazaar.insert_one(dict(b))
+    # Building materials (idempotent).
+    for b in MATERIAL_LISTINGS:
         if not await db.bazaar.find_one({"id": b["id"]}):
             await db.bazaar.insert_one(dict(b))
     # Sparking Dawn seeded profiles (idempotent).
