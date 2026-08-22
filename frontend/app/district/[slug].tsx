@@ -124,8 +124,8 @@ const CHATTERBOX_ACTIONS: Record<string, { route: string; icon: IconName }> = {
 const BLUEPAINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Space Designer": { route: "/bluepaint", icon: "floor-plan" },
   "Materials Estimator": { route: "/bluepaint/estimator", icon: "cube-scan" },
-  "Construction Cost Estimator": { route: "/chatmonger/bluepaint", icon: "calculator-variant" },
-  "Design Reviews with Iris": { route: "/chatmonger/bluepaint", icon: "eye-check" },
+  "Construction Cost Estimator": { route: "/bluepaint/cost", icon: "calculator-variant" },
+  "Design Reviews with Iris": { route: "/bluepaint/review", icon: "eye-check" },
   "Saved Blueprints": { route: "/bluepaint", icon: "folder-multiple-image" },
 };
 

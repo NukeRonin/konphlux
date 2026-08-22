@@ -4,10 +4,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Line } from "react-native-svg";
+import * as Sharing from "expo-sharing";
+import { captureRef } from "react-native-view-shot";
 
 import { api, BPItem, BPWall } from "@/src/api/client";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
+import { computeEstimate, fmtArea, fmtLen } from "@/src/utils/bpEstimate";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
@@ -102,7 +105,20 @@ export default function SpaceDesigner() {
   const [dirty, setDirty] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [size, setSize] = useState(0);
+  const [scale, setScale] = useState(8);
   const drawStart = useRef<{ x: number; y: number } | null>(null);
+  const canvasRef = useRef<View>(null);
+
+  const measure = useMemo(() => computeEstimate(walls, scale), [walls, scale]);
+
+  const shareImage = async () => {
+    try {
+      const uri = await captureRef(canvasRef, { format: "png", quality: 1 });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+    } catch {
+      /* cancelled or unsupported */
+    }
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -221,6 +237,9 @@ export default function SpaceDesigner() {
           <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.onSurface }]}>{name || "Design"}</Text>
           <Text style={[styles.headerSub, { color: colors.muted }]}>{walls.length} walls · {items.length} items{dirty ? " · unsaved" : ""}</Text>
         </View>
+        <Pressable testID="designer-share" onPress={shareImage} hitSlop={8} style={[styles.shareBtn, { borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="share-variant" size={18} color={colors.brand} />
+        </Pressable>
         <Pressable testID="designer-save" onPress={save} disabled={saving} style={[styles.saveBtn, { backgroundColor: dirty ? colors.brand : colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="content-save" size={16} color={dirty ? colors.onBrandPrimary : colors.muted} />
           <Text style={[styles.saveText, { color: dirty ? colors.onBrandPrimary : colors.muted }]}>{savedMsg || "Save"}</Text>
@@ -247,6 +266,8 @@ export default function SpaceDesigner() {
           <View style={styles.canvasWrap}>
             <View
               testID="designer-canvas"
+              ref={canvasRef}
+              collapsable={false}
               onLayout={(e) => setSize(e.nativeEvent.layout.width)}
               style={[styles.canvas, { borderColor: colors.borderStrong, backgroundColor: colors.surfaceSecondary }]}
             >
@@ -283,6 +304,23 @@ export default function SpaceDesigner() {
                   {mode === "floor" ? <View {...drawResponder.panHandlers} style={StyleSheet.absoluteFill} /> : null}
                 </>
               ) : null}
+            </View>
+          </View>
+
+          {/* Live measurements + plan scale */}
+          <View style={styles.measureBar}>
+            <View style={[styles.measurePill, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="ruler" size={14} color={colors.brand} />
+              <Text style={[styles.measureText, { color: colors.onSurface }]}>{fmtLen(measure.wallLen)}</Text>
+            </View>
+            <View style={[styles.measurePill, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="vector-square" size={14} color={colors.brand} />
+              <Text style={[styles.measureText, { color: colors.onSurface }]}>{fmtArea(measure.floorArea)}</Text>
+            </View>
+            <View style={[styles.scaleMini, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <Pressable testID="designer-scale-down" onPress={() => setScale((s) => Math.max(2, s - 1))} hitSlop={6}><MaterialCommunityIcons name="minus" size={16} color={colors.brand} /></Pressable>
+              <Text style={[styles.scaleMiniText, { color: colors.onSurface }]}>{scale}m</Text>
+              <Pressable testID="designer-scale-up" onPress={() => setScale((s) => Math.min(40, s + 1))} hitSlop={6}><MaterialCommunityIcons name="plus" size={16} color={colors.brand} /></Pressable>
             </View>
           </View>
 
@@ -346,6 +384,12 @@ const styles = StyleSheet.create({
   headerSub: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
   saveBtn: { flexDirection: "row", alignItems: "center", gap: 5, height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
   saveText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  shareBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  measureBar: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, marginTop: -spacing.xs, marginBottom: spacing.md, flexWrap: "wrap" },
+  measurePill: { flexDirection: "row", alignItems: "center", gap: 5, height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  measureText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
+  scaleMini: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  scaleMiniText: { fontFamily: fonts.bodyBold, fontSize: 12, minWidth: 28, textAlign: "center" },
   modeRow: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   modeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 44, borderRadius: radius.md, borderWidth: 1 },
   modeText: { fontFamily: fonts.bodyBold, fontSize: 14 },

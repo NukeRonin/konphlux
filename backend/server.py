@@ -7,6 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import math
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
 import uuid
@@ -318,6 +319,10 @@ class BPDesignUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     walls: list[BPWall] = Field(default_factory=list)
     items: list[BPItem] = Field(default_factory=list)
+
+
+class BPReviewBody(BaseModel):
+    plan_width: float = Field(default=8, gt=0, le=100)
 
 
 # ----------------------------- Seed data -----------------------------
@@ -3348,6 +3353,75 @@ async def bp_delete_design(design_id: str, user: dict = Depends(require_user)):
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Design not found")
     return {"deleted": True}
+
+
+def _bp_plan_summary(walls: list[dict], items: list[dict], plan_width: float) -> dict:
+    total_len = 0.0
+    minx = miny = 1.0
+    maxx = maxy = 0.0
+    has = False
+    for w in walls:
+        total_len += math.hypot(w["x2"] - w["x1"], w["y2"] - w["y1"]) * plan_width
+        minx = min(minx, w["x1"], w["x2"]); miny = min(miny, w["y1"], w["y2"])
+        maxx = max(maxx, w["x1"], w["x2"]); maxy = max(maxy, w["y1"], w["y2"])
+        has = True
+    width_m = max(0.0, (maxx - minx)) * plan_width if has else 0.0
+    depth_m = max(0.0, (maxy - miny)) * plan_width if has else 0.0
+    kinds: dict[str, int] = {}
+    for it in items:
+        kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+    return {
+        "wall_count": len(walls),
+        "total_wall_len": round(total_len, 1),
+        "bbox_w": round(width_m, 1),
+        "bbox_d": round(depth_m, 1),
+        "floor_area": round(width_m * depth_m, 1),
+        "doors": kinds.get("door", 0),
+        "windows": kinds.get("window", 0),
+        "furniture": {k: v for k, v in kinds.items() if k not in ("door", "window")},
+    }
+
+
+@api_router.post("/bluepaint/designs/{design_id}/review")
+async def bp_review_design(design_id: str, body: BPReviewBody, user: dict = Depends(require_user)):
+    d = await db.bp_designs.find_one({"id": design_id, "user_id": user["id"]}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Design not found")
+    walls = d.get("walls", [])
+    if not walls:
+        raise HTTPException(status_code=400, detail="Draw a floor plan first — Iris needs walls to review.")
+    s = _bp_plan_summary(walls, d.get("items", []), body.plan_width)
+    furniture_desc = ", ".join(f"{v}× {k}" for k, v in s["furniture"].items()) or "none placed"
+    system = (
+        "You are Iris, the Grand Visionary architect of the steampunk district Bluepaint. "
+        "You give professional, constructive design reviews of residential floor plans. "
+        "Your tone is warm, encouraging and expert — like a seasoned architect mentoring a client. "
+        "Focus on practical critique: traffic flow and circulation, natural light and window placement, "
+        "room proportions and sizes, door placement, furniture layout, and any safety concerns. "
+        "Be specific and reference the numbers you are given. Never invent measurements you were not told."
+    )
+    prompt = (
+        f"Please review this floor plan named '{d['name']}'.\n"
+        f"- Overall footprint: {s['bbox_w']} m wide × {s['bbox_d']} m deep\n"
+        f"- Enclosed floor area: {s['floor_area']} m²\n"
+        f"- Wall segments: {s['wall_count']} (about {s['total_wall_len']} m of wall in total)\n"
+        f"- Doors placed: {s['doors']}\n"
+        f"- Windows placed: {s['windows']}\n"
+        f"- Furniture & fixtures placed: {furniture_desc}\n\n"
+        "Write your review in plain text using these exact section headers, each on its own line:\n"
+        "OVERALL: one or two encouraging sentences on the plan's strengths.\n"
+        "TRAFFIC FLOW: comment on circulation and door placement.\n"
+        "NATURAL LIGHT: comment on windows (clearly flag if there are none or too few).\n"
+        "ROOM SIZES: say whether the space/area seems too small, cramped or well proportioned.\n"
+        "SUGGESTIONS: 2-4 short improvements, each on its own line starting with '- '.\n"
+        "Keep the whole review concise and genuinely helpful."
+    )
+    try:
+        text = await _anvil_llm(system, prompt, session=f"bp-review:{user['id']}:{design_id}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Bluepaint review error")
+        raise HTTPException(status_code=502, detail="Iris set down her drafting pen for a moment. Try again.") from e
+    return {"summary": s, "review": text.strip()}
 
 
 app.include_router(api_router)

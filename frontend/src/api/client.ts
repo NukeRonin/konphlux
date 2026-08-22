@@ -645,4 +645,9 @@ export const api = {
   bpSaveDesign: (id: string, data: { name?: string; walls: BPWall[]; items: BPItem[] }) =>
     request<BPDesign>(`/bluepaint/designs/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   bpDeleteDesign: (id: string) => request<{ deleted: boolean }>(`/bluepaint/designs/${id}`, { method: "DELETE" }),
+  bpReview: (id: string, planWidth: number) =>
+    request<{
+      summary: { wall_count: number; total_wall_len: number; bbox_w: number; bbox_d: number; floor_area: number; doors: number; windows: number; furniture: Record<string, number> };
+      review: string;
+    }>(`/bluepaint/designs/${id}/review`, { method: "POST", body: JSON.stringify({ plan_width: planWidth }) }),
 };

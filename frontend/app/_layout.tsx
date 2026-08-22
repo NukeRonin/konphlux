@@ -105,6 +105,8 @@ function RootNavigator() {
         <Stack.Screen name="bluepaint/index" />
         <Stack.Screen name="bluepaint/design/[id]" />
         <Stack.Screen name="bluepaint/estimator" />
+        <Stack.Screen name="bluepaint/cost" />
+        <Stack.Screen name="bluepaint/review" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

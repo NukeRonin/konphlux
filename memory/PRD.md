@@ -86,6 +86,22 @@
 - ✅ Bazaar now has a text search bar (q param, OR-word match on title/category/seller). Seeded "Building Materials" listings (paint, primer, oak boards, parquet flooring) so the search returns real items.
 - Files: frontend/app/bluepaint/estimator.tsx, frontend/app/(tabs)/bazaar.tsx (search), district/[slug].tsx, _layout.tsx, backend/server.py (MATERIAL_LISTINGS + seed).
 
+### 2026-08 (Bluepaint Cost Estimator, live pricing, exports, measurements — user self-testing)
+- ✅ Construction Cost Estimator (/bluepaint/cost): inputs local labour rate/hr + hours (auto-suggested from floor area) + permit costs + contingency %; combines with materials subtotal (live Bazaar prices) → total project budget with breakdown. Export as PDF (expo-print + expo-sharing) or share as text (RN Share).
+- ✅ Materials Estimator now shows live Bazaar prices per material + estimated materials total ("Cost Total"). "Purchase in Bazaar" → ONE-TAP adds paint(cans)/wood(boards)/flooring(m²) to cart via /api/cart, then opens /cart.
+- ✅ Space Designer editor shows live measurements as you draw: wall length + floor area in BOTH metres and feet, with a plan-width (scale) stepper. Added "Share as image" (react-native-view-shot capture of the canvas → expo-sharing).
+- ✅ Wired district "Construction Cost Estimator" button → /bluepaint/cost.
+- New util: src/utils/bpEstimate.ts (shared compute + m/ft formatting + material ids). New pkgs: expo-print, expo-sharing, react-native-view-shot.
+- Files: bluepaint/cost.tsx, bluepaint/estimator.tsx (rewrite), bluepaint/design/[id].tsx, district/[slug].tsx, _layout.tsx, src/utils/bpEstimate.ts.
+
+### 2026-06 (Bluepaint Design Reviews with Iris — user self-testing)
+- ✅ New /bluepaint/review screen: pick a saved design + plan width → "Review with Iris" sends floor-plan data to AI. Iris (gpt-5.4) returns a professional, structured critique (OVERALL / TRAFFIC FLOW / NATURAL LIGHT / ROOM SIZES / SUGGESTIONS) parsed into sections, plus a footprint/area/doors/windows/walls stat strip.
+- ✅ Backend POST /api/bluepaint/designs/{id}/review: computes plan summary in Python (_bp_plan_summary: wall length, bounding-box footprint & floor area from normalized coords × plan_width, door/window/furniture counts) and prompts Iris with those numbers. 400 if no walls drawn yet.
+- ✅ Rewired district "Design Reviews with Iris" button → /bluepaint/review (was generic /chatmonger/bluepaint). Route registered in _layout.tsx.
+- Files: frontend/app/bluepaint/review.tsx (new), src/api/client.ts (bpReview), district/[slug].tsx, _layout.tsx, backend/server.py (BPReviewBody, _bp_plan_summary, bp_review_design, import math).
+- NOTE: user opted to self-test (skip automated tests to save credits). Backend loaded clean; frontend lint clean.
+
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).
