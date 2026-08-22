@@ -120,6 +120,15 @@ const CHATTERBOX_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Video calls": { route: "/chatterbox/new?call=video", icon: "video" },
 };
 
+// Bluepaint — Space Designer replaces Floor Plan Studio + Room Planner.
+const BLUEPAINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Space Designer": { route: "/bluepaint", icon: "floor-plan" },
+  "Materials Estimator": { route: "/chatmonger/bluepaint", icon: "cube-scan" },
+  "Construction Cost Estimator": { route: "/chatmonger/bluepaint", icon: "calculator-variant" },
+  "Design Reviews with Iris": { route: "/chatmonger/bluepaint", icon: "eye-check" },
+  "Saved Blueprints": { route: "/bluepaint", icon: "folder-multiple-image" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   roundtable: ROUNDTABLE_ACTIONS,
   answerfier: ANSWERFIER_ACTIONS,
@@ -129,6 +138,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   brainboost: BRAINBOOST_ACTIONS,
   "pictureshow-theatre": PICTURESHOW_ACTIONS,
   chatterbox: CHATTERBOX_ACTIONS,
+  bluepaint: BLUEPAINT_ACTIONS,
 };
 
 export default function DistrictDetail() {

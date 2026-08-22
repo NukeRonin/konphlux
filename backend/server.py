@@ -293,6 +293,33 @@ class CBSendMessage(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
 
+# ---- Bluepaint Space Designer ----
+class BPWall(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+class BPItem(BaseModel):
+    id: str
+    kind: str
+    x: float
+    y: float
+    rotation: float = 0
+    scale: float = 1
+
+
+class BPDesignCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class BPDesignUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    walls: list[BPWall] = Field(default_factory=list)
+    items: list[BPItem] = Field(default_factory=list)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -404,7 +431,7 @@ DISTRICTS = [
      "tagline": "Draw the dream before you pour the footing.",
      "description": "Design floor plans and homes room by room, then let Iris weigh the light, the flow, the materials and the likely cost of building it.",
      "chatmonger": {"name": "Iris", "role": "Grand Visionary", "greeting": "Show me the shape of it. Then we'll discover what it will take to build."},
-     "features": ["Floor Plan Studio", "Room Planner", "Materials Estimator", "Construction Cost Estimator", "Design Reviews with Iris", "Saved Blueprints"]},
+     "features": ["Space Designer", "Materials Estimator", "Construction Cost Estimator", "Design Reviews with Iris", "Saved Blueprints"]},
 ]
 
 FEED_POSTS = [
@@ -3251,6 +3278,60 @@ async def chatterbox_send(conv_id: str, body: CBSendMessage, user: dict = Depend
             {"id": conv_id}, {"$set": {"last_message": reply_text[:120], "last_at": reply_at}}
         )
     return {"message": msg}
+
+
+# ---------- Bluepaint Space Designer (2D floor plans + room planning) ----------
+@api_router.get("/bluepaint/designs")
+async def bp_list_designs(user: dict = Depends(require_user)):
+    docs = await db.bp_designs.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
+    return [
+        {"id": d["id"], "name": d["name"], "wall_count": len(d.get("walls", [])),
+         "item_count": len(d.get("items", [])), "updated_at": d.get("updated_at", "")}
+        for d in docs
+    ]
+
+
+@api_router.post("/bluepaint/designs", status_code=201)
+async def bp_create_design(body: BPDesignCreate, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {"id": uuid.uuid4().hex[:12], "user_id": user["id"], "name": body.name.strip(),
+           "walls": [], "items": [], "created_at": now, "updated_at": now}
+    await db.bp_designs.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/bluepaint/designs/{design_id}")
+async def bp_get_design(design_id: str, user: dict = Depends(require_user)):
+    d = await db.bp_designs.find_one({"id": design_id, "user_id": user["id"]}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Design not found")
+    return d
+
+
+@api_router.put("/bluepaint/designs/{design_id}")
+async def bp_update_design(design_id: str, body: BPDesignUpdate, user: dict = Depends(require_user)):
+    d = await db.bp_designs.find_one({"id": design_id, "user_id": user["id"]}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Design not found")
+    update: dict = {
+        "walls": [w.model_dump() for w in body.walls],
+        "items": [i.model_dump() for i in body.items],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if body.name is not None and body.name.strip():
+        update["name"] = body.name.strip()
+    await db.bp_designs.update_one({"id": design_id}, {"$set": update})
+    return {**d, **update}
+
+
+@api_router.delete("/bluepaint/designs/{design_id}")
+async def bp_delete_design(design_id: str, user: dict = Depends(require_user)):
+    res = await db.bp_designs.delete_one({"id": design_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Design not found")
+    return {"deleted": True}
 
 
 app.include_router(api_router)

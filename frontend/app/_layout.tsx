@@ -102,6 +102,8 @@ function RootNavigator() {
         <Stack.Screen name="chatterbox/new-group" options={{ presentation: "modal" }} />
         <Stack.Screen name="chatterbox/conversation/[id]" />
         <Stack.Screen name="chatterbox/call" />
+        <Stack.Screen name="bluepaint/index" />
+        <Stack.Screen name="bluepaint/design/[id]" />
         <Stack.Screen name="compose" options={{ presentation: "modal" }} />
       </Stack>
     </>

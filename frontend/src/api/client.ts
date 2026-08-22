@@ -391,6 +391,12 @@ export type CBConvSummary = {
 export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string };
 export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string };
 
+// Bluepaint Space Designer
+export type BPWall = { x1: number; y1: number; x2: number; y2: number };
+export type BPItem = { id: string; kind: string; x: number; y: number; rotation: number; scale: number };
+export type BPDesignSummary = { id: string; name: string; wall_count: number; item_count: number; updated_at: string };
+export type BPDesign = { id: string; name: string; walls: BPWall[]; items: BPItem[]; created_at: string; updated_at: string };
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<AuthResponse>("/auth/register", {
@@ -631,4 +637,12 @@ export const api = {
   cbConversation: (id: string) => request<CBConvDetail>(`/chatterbox/conversations/${id}`),
   cbPoll: (id: string, after: string) => request<{ messages: CBMessage[] }>(`/chatterbox/conversations/${id}/messages?after=${encodeURIComponent(after)}`),
   cbSend: (id: string, text: string) => request<{ message: CBMessage }>(`/chatterbox/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+
+  // Bluepaint Space Designer
+  bpDesigns: () => request<BPDesignSummary[]>("/bluepaint/designs"),
+  bpCreateDesign: (name: string) => request<BPDesign>("/bluepaint/designs", { method: "POST", body: JSON.stringify({ name }) }),
+  bpDesign: (id: string) => request<BPDesign>(`/bluepaint/designs/${id}`),
+  bpSaveDesign: (id: string, data: { name?: string; walls: BPWall[]; items: BPItem[] }) =>
+    request<BPDesign>(`/bluepaint/designs/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  bpDeleteDesign: (id: string) => request<{ deleted: boolean }>(`/bluepaint/designs/${id}`, { method: "DELETE" }),
 };

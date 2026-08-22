@@ -73,6 +73,13 @@
 - Backend collections: cb_conversations, cb_messages (reads map per conversation). Contacts are constant CB_CONTACTS (not real accounts).
 - Files: frontend/app/chatterbox/* (index, inbox, new, new-group, conversation/[id], call), client.ts (cb*), backend/server.py.
 
+### 2026-08 (Bluepaint Space Designer — replaces Floor Plan Studio + Room Planner; user self-testing)
+- ✅ New Space Designer: one design holds a 2D floor plan (draw walls) AND room planning (place/drag furniture & decor). Two modes: "Floor Plan" (drag on grid to draw snapped walls, undo/clear) and "Room View" (16-piece furniture palette; tap to add, drag to move, rotate/scale/delete). Rendered with react-native-svg (installed).
+- ✅ Removed "Floor Plan Studio" and "Room Planner" from Bluepaint features → replaced by single "Space Designer". Other buttons (Materials/Cost/Reviews → Iris chatmonger; Saved Blueprints → designer list) wired.
+- ✅ Backend CRUD: db.bp_designs; GET/POST/PUT/DELETE /api/bluepaint/designs[/{id}]. Coords stored normalized 0..1.
+- Files: frontend/app/bluepaint/index.tsx, frontend/app/bluepaint/design/[id].tsx, district/[slug].tsx (BLUEPAINT_ACTIONS), client.ts (bp*), backend/server.py.
+- NOTE: user opted to self-test (skip automated tests). Backend smoke-tested via curl.
+
 ## Backlog (prioritized)
 ### P1
 - Bazaar cart + checkout (add-to-cart is currently a local stub).
