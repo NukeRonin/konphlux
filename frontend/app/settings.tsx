@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { Panel } from "@/src/components/Panel";
+import { api } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { storage } from "@/src/utils/storage";
@@ -46,15 +47,26 @@ export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [dating, setDating] = useState<{ visible: boolean; men: boolean; women: boolean }>({ visible: true, men: true, women: true });
 
   const loadPrefs = useCallback(async () => {
     const entries = await Promise.all(
       Object.entries(PREF_KEYS).map(async ([k, key]) => [k, (await storage.getItem(key, true)) as boolean] as const),
     );
     setPrefs(Object.fromEntries(entries));
+    try {
+      const me = await api.datingMe();
+      if (me) setDating({ visible: me.visible !== false, men: (me.seeking || []).includes("man"), women: (me.seeking || []).includes("woman") });
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { loadPrefs(); }, [loadPrefs]);
+
+  const saveDating = async (next: { visible: boolean; men: boolean; women: boolean }) => {
+    setDating(next);
+    const seeking = [next.men ? "man" : null, next.women ? "woman" : null].filter(Boolean) as string[];
+    try { await api.datingPreferences({ visible: next.visible, seeking }); } catch { /* ignore */ }
+  };
 
   const setPref = async (k: keyof typeof PREF_KEYS, v: boolean) => {
     setPrefs((p) => ({ ...p, [k]: v }));
@@ -99,9 +111,20 @@ export default function Settings() {
           <Row icon="pulse" label="Show activity" sub="Display your posts & backings" right={sw("privacyActivity")} />
         </Panel>
 
+        <Eyebrow style={styles.groupLabel}>Sparking Dawn Privacy</Eyebrow>
+        <Panel padded={false}>
+          <Row icon="heart-flash" label="Make Profile Visible in Sparking Dawn" sub="Choose when you're active in the dating pool" right={<Switch value={dating.visible} onValueChange={(v) => saveDating({ ...dating, visible: v })} trackColor={{ false: colors.border, true: colors.brand }} thumbColor={colors.surfaceSecondary} testID="dating-visible" />} />
+          <Divider />
+          <Row icon="gender-male" label="I'm interested in Men" sub="Show men in your dating pool" right={<Switch value={dating.men} onValueChange={(v) => saveDating({ ...dating, men: v })} trackColor={{ false: colors.border, true: colors.brand }} thumbColor={colors.surfaceSecondary} testID="dating-men" />} />
+          <Divider />
+          <Row icon="gender-female" label="I'm interested in Women" sub="Show women in your dating pool" right={<Switch value={dating.women} onValueChange={(v) => saveDating({ ...dating, women: v })} trackColor={{ false: colors.border, true: colors.brand }} thumbColor={colors.surfaceSecondary} testID="dating-women" />} />
+        </Panel>
+
         <Eyebrow style={styles.groupLabel}>Account & security</Eyebrow>
         <Panel padded={false}>
           <Row icon="bookmark-multiple-outline" label="Bookmarks" onPress={() => router.push("/saved")} testID="settings-bookmarks" />
+          <Divider />
+          <Row icon="bookshelf" label="Library" sub="Your downloaded eBooks" onPress={() => router.push("/library")} testID="settings-library" />
           <Divider />
           <Row icon="receipt" label="My Orders" onPress={() => router.push("/orders")} testID="settings-orders" />
           <Divider />

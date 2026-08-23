@@ -57,6 +57,7 @@ export default function ProfileScreen() {
       notifications: "/notifications",
       messages: "/chatterbox/inbox",
       achievements: "/achievements",
+      library: "/library",
       dashboard: "/",
       settings: "/settings",
       privacy: "/settings",

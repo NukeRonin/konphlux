@@ -24,6 +24,7 @@ export default function VaultItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [item, setItem] = useState<VaultItem | null>(null);
   const [collections, setCollections] = useState<VaultCollection[]>([]);
+  const [shared, setShared] = useState<{ collection_id: string; board_name: string; owner_name: string }[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [boardModal, setBoardModal] = useState(false);
   const [newBoard, setNewBoard] = useState("");
@@ -31,8 +32,8 @@ export default function VaultItemDetail() {
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      const [it, colls] = await Promise.all([api.vaultGetItem(id!), api.vaultCollections()]);
-      setItem(it); setCollections(colls); setStatus("ready");
+      const [it, colls, shd] = await Promise.all([api.vaultGetItem(id!), api.vaultCollections(), api.vaultShared()]);
+      setItem(it); setCollections(colls); setShared(shd); setStatus("ready");
     } catch { setStatus("error"); }
   }, [id]);
 
@@ -52,6 +53,10 @@ export default function VaultItemDetail() {
       onPress: async () => { try { await api.vaultMoveItem(item.id, c.id); load(); } catch { /* ignore */ } },
     }));
     if (item.collection_id) buttons.push({ text: "Remove from board", onPress: async () => { try { await api.vaultMoveItem(item.id, null); load(); } catch { /* ignore */ } } });
+    shared.forEach((s) => buttons.push({
+      text: `${s.board_name} (shared by ${s.owner_name})`,
+      onPress: async () => { try { await api.vaultMoveItem(item.id, s.collection_id); load(); } catch { /* ignore */ } },
+    }));
     buttons.push({ text: "New board…", onPress: () => setBoardModal(true) });
     buttons.push({ text: "Cancel", style: "cancel" });
     Alert.alert("Add to a board", item.title, buttons);

@@ -1204,6 +1204,7 @@ PROFILE = {
             {"label": "Resumé", "icon": "file-account", "to": "resume"},
             {"label": "My Orders", "icon": "receipt", "to": "warehouse"},
             {"label": "Bookmarks", "icon": "bookmark-multiple", "to": "bookmarks"},
+            {"label": "Library", "icon": "bookshelf", "to": "library"},
             {"label": "Achievements", "icon": "trophy", "to": "achievements"},
         ]},
         {"group": "Signals", "items": [
@@ -1920,7 +1921,7 @@ async def me(user: dict = Depends(require_user)):
 # ---------- Districts ----------
 @api_router.get("/districts")
 async def get_districts():
-    docs = await db.districts.find({"slug": {"$ne": "streamora"}}, {"_id": 0}).to_list(100)
+    docs = await db.districts.find({"slug": {"$nin": ["streamora", "library"]}}, {"_id": 0}).to_list(100)
     docs.sort(key=lambda d: d["name"])
     return docs
 
@@ -2038,9 +2039,38 @@ async def dating_save_profile(body: DatingProfileBody, user: dict = Depends(requ
         "seed": False,
         "active": True,
     }
+    # Preserve an existing visibility choice; default to visible for new profiles.
+    prev = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0, "visible": 1})
+    doc["visible"] = bool(prev.get("visible", True)) if prev else True
     await db.dating_profiles.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
     doc.pop("_id", None)
     return doc
+
+
+class DatingPrefsBody(BaseModel):
+    visible: bool | None = None
+    seeking: list[str] | None = None
+
+
+@api_router.post("/dating/preferences")
+async def dating_preferences(body: DatingPrefsBody, user: dict = Depends(require_user)):
+    """Lightweight privacy/preference update from App Settings (no full profile needed)."""
+    updates: dict = {}
+    if body.visible is not None:
+        updates["visible"] = bool(body.visible)
+    if body.seeking is not None:
+        updates["seeking"] = [s for s in body.seeking if s in ("man", "woman", "nonbinary")]
+    if not updates:
+        return {"ok": True}
+    existing = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not existing:
+        updates.setdefault("user_id", user["id"])
+        updates.setdefault("display_name", user["display_name"])
+        updates.setdefault("active", True)
+        updates.setdefault("seed", False)
+    await db.dating_profiles.update_one({"user_id": user["id"]}, {"$set": updates}, upsert=True)
+    prof = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0})
+    return {"ok": True, "visible": prof.get("visible", True), "seeking": prof.get("seeking", ["man", "woman"])}
 
 
 @api_router.get("/dating/discover")
@@ -2051,9 +2081,16 @@ async def dating_discover(user: dict = Depends(require_user), seeking: str = "al
     for m in my_matches:
         matched_ids.update(u for u in m["users"] if u != user["id"])
     exclude = swiped | matched_ids | {user["id"]}
-    query: dict = {"active": True, "user_id": {"$nin": list(exclude)}}
+    # Only surface profiles the owner has kept visible.
+    query: dict = {"active": True, "visible": {"$ne": False}, "user_id": {"$nin": list(exclude)}}
     if seeking in ("man", "woman", "nonbinary"):
         query["gender"] = seeking
+    else:
+        # Honour the viewer's own "interested in" preferences.
+        me = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0, "seeking": 1})
+        prefs = [s for s in (me or {}).get("seeking", []) if s in ("man", "woman", "nonbinary")]
+        if prefs:
+            query["gender"] = {"$in": prefs}
     docs = await db.dating_profiles.find(query, {"_id": 0}).to_list(200)
     random.shuffle(docs)
     return [_dating_card(d) for d in docs[:30]]
@@ -6353,19 +6390,147 @@ async def _news_fetch(topic: str) -> list:
     return articles
 
 
+def _news_story_key(headline: str) -> str:
+    return _news_norm_title(headline)[:120]
+
+
+async def _news_update_follows(user_id: str, clusters: list) -> None:
+    """When a followed story gains new outlets, record it and notify the follower once."""
+    follows = await db.news_follows.find({"user_id": user_id}, {"_id": 0}).to_list(500)
+    if not follows:
+        return
+    from difflib import SequenceMatcher
+    for f in follows:
+        best = None
+        for c in clusters:
+            if SequenceMatcher(None, f["story_key"], _news_story_key(c["headline"])).ratio() >= 0.7:
+                best = c
+                break
+        if not best:
+            continue
+        known = set(f.get("source_names", []))
+        current = {s["source_name"] for s in best["sources"]}
+        new_outlets = current - known
+        if new_outlets:
+            await db.news_follows.update_one(
+                {"user_id": user_id, "story_key": f["story_key"]},
+                {"$set": {"source_names": sorted(known | current)}},
+            )
+            await _notify(
+                user_id, "news_followup", None,
+                f"New coverage on a story you follow",
+                f"{len(new_outlets)} more outlet(s) now cover \u201c{f['headline'][:80]}\u201d: {', '.join(list(new_outlets)[:3])}.",
+            )
+
+
 @api_router.get("/telegraph/news")
 async def tg_news(topic: str = "top", user: dict = Depends(require_user)):
     import os, time
     configured = bool(os.environ.get("NEWS_API_KEY", "").strip()) and \
         os.environ.get("NEWS_API_KEY", "").strip() not in ("placeholder", "replace_with_your_key")
+    follow_keys = {f["story_key"] for f in await db.news_follows.find({"user_id": user["id"]}, {"_id": 0, "story_key": 1}).to_list(500)}
+
+    if topic == "following":
+        follows = await db.news_follows.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+        follows.sort(key=lambda f: f.get("created_at", ""), reverse=True)
+        clusters = [{
+            "id": f["story_key"][:12], "headline": f["headline"], "summary": "",
+            "image_url": f.get("image_url", ""), "published_at": f.get("created_at", ""),
+            "source_count": len(f.get("source_names", [])),
+            "coverage": f.get("coverage", {"Left": 0, "Center": 0, "Right": 0}),
+            "sources": [{"source_name": n, "bias": _news_bias(n), "title": f["headline"], "description": "", "url": f.get("url", ""), "image_url": ""} for n in f.get("source_names", [])],
+            "following": True,
+        } for f in follows]
+        return {"configured": configured, "topic": topic, "clusters": clusters, "cached": False}
+
     now = time.time()
     cached = _NEWS_CACHE.get(topic)
     if cached and now - cached["ts"] < _NEWS_TTL:
-        return {"configured": configured, "topic": topic, "clusters": cached["clusters"], "cached": True}
-    articles = await _news_fetch(topic)
-    clusters = _news_group(articles)
-    _NEWS_CACHE[topic] = {"ts": now, "clusters": clusters}
-    return {"configured": configured, "topic": topic, "clusters": clusters, "cached": False}
+        clusters = cached["clusters"]
+    else:
+        articles = await _news_fetch("top" if topic == "blindspot" else topic)
+        clusters = _news_group(articles)
+        if topic == "blindspot":
+            clusters = [c for c in clusters
+                        if (c["coverage"]["Left"] > 0 and c["coverage"]["Right"] == 0)
+                        or (c["coverage"]["Right"] > 0 and c["coverage"]["Left"] == 0)]
+        _NEWS_CACHE[topic] = {"ts": now, "clusters": clusters}
+    for c in clusters:
+        c["following"] = _news_story_key(c["headline"]) in follow_keys
+    await _news_update_follows(user["id"], clusters)
+    return {"configured": configured, "topic": topic, "clusters": clusters, "cached": bool(cached)}
+
+
+@api_router.post("/telegraph/news/follow")
+async def tg_news_follow(body: dict, user: dict = Depends(require_user)):
+    headline = (body.get("headline") or "").strip()
+    if not headline:
+        raise HTTPException(status_code=400, detail="Missing headline")
+    key = _news_story_key(headline)
+    existing = await db.news_follows.find_one({"user_id": user["id"], "story_key": key})
+    if existing:
+        await db.news_follows.delete_one({"user_id": user["id"], "story_key": key})
+        return {"following": False}
+    await db.news_follows.insert_one({
+        "user_id": user["id"], "story_key": key, "headline": headline,
+        "source_names": sorted({s for s in (body.get("sources") or []) if s}),
+        "coverage": body.get("coverage") or {"Left": 0, "Center": 0, "Right": 0},
+        "image_url": body.get("image_url", ""), "url": body.get("url", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"following": True}
+
+
+# ----------------------------- Library (downloaded eBooks) -----------------------------
+LIBRARY_SEED = [
+    {"ref_id": "e1", "title": "The Aetherwright's Handbook", "author": "The Vault Bindery", "cover_url": IMG_BOOK, "format": "eBook", "pages": 248},
+    {"ref_id": "e2", "title": "Clockwork & Consequence", "author": "Iolanthe Vex", "cover_url": IMG_PARCH, "format": "eBook", "pages": 312},
+    {"ref_id": "e3", "title": "Brass-Forward Interiors", "author": "Ashgrove Press", "cover_url": IMG_ARCH, "format": "eBook", "pages": 180},
+]
+
+
+async def _library_seed_if_empty(user_id: str) -> None:
+    if await db.library_items.count_documents({"user_id": user_id}) > 0:
+        return
+    now = datetime.now(timezone.utc)
+    for i, b in enumerate(LIBRARY_SEED):
+        await db.library_items.insert_one({
+            "id": uuid.uuid4().hex[:12], "user_id": user_id, **b,
+            "downloaded_at": (now - timedelta(days=i)).isoformat(),
+        })
+
+
+@api_router.get("/library/ebooks")
+async def library_ebooks(user: dict = Depends(require_user)):
+    await _library_seed_if_empty(user["id"])
+    rows = await db.library_items.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    rows.sort(key=lambda r: r.get("downloaded_at", ""), reverse=True)
+    return rows
+
+
+@api_router.post("/library/ebooks", status_code=201)
+async def library_add_ebook(body: dict, user: dict = Depends(require_user)):
+    ref = (body.get("ref_id") or "").strip() or uuid.uuid4().hex[:8]
+    existing = await db.library_items.find_one({"user_id": user["id"], "ref_id": ref}, {"_id": 0})
+    if existing:
+        return {"added": True, "item": existing}
+    item = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "ref_id": ref,
+        "title": (body.get("title") or "Untitled").strip(), "author": (body.get("author") or "").strip(),
+        "cover_url": (body.get("cover_url") or "").strip(), "format": body.get("format") or "eBook",
+        "pages": int(body.get("pages") or 0), "downloaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.library_items.insert_one(dict(item))
+    item.pop("_id", None)
+    return {"added": True, "item": item}
+
+
+@api_router.delete("/library/ebooks/{item_id}")
+async def library_delete_ebook(item_id: str, user: dict = Depends(require_user)):
+    res = await db.library_items.delete_one({"id": item_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not in your library")
+    return {"deleted": True}
 
 
 # ----------------------------- Waypoint (stays & bookings) -----------------------------
@@ -6712,7 +6877,13 @@ async def vault_list_items(q: str = "", collection: str = "", category: str = ""
     await _vault_seed_if_empty(user["id"])
     query: dict = {"user_id": user["id"]}
     if collection:
-        query["collection_id"] = collection
+        # If this board is shared with (or owned by) the user, show everyone's contributions.
+        is_owner = bool(await db.vault_collections.find_one({"id": collection, "user_id": user["id"]}, {"_id": 0, "id": 1}))
+        is_member = bool(await db.vault_shares.find_one({"collection_id": collection, "recipient_id": user["id"]}, {"_id": 0, "id": 1}))
+        if is_owner or is_member:
+            query = {"collection_id": collection}
+        else:
+            query["collection_id"] = collection
     if category:
         query["category"] = category
     rows = await db.vault_items.find(query, {"_id": 0}).to_list(2000)
@@ -6777,7 +6948,9 @@ async def vault_delete_item(item_id: str, user: dict = Depends(require_user)):
 @api_router.post("/vault/items/{item_id}/move")
 async def vault_move_item(item_id: str, body: VaultMoveBody, user: dict = Depends(require_user)):
     if body.collection_id:
-        if not await db.vault_collections.find_one({"id": body.collection_id, "user_id": user["id"]}, {"_id": 0, "id": 1}):
+        owns = await db.vault_collections.find_one({"id": body.collection_id, "user_id": user["id"]}, {"_id": 0, "id": 1})
+        member = await db.vault_shares.find_one({"collection_id": body.collection_id, "recipient_id": user["id"]}, {"_id": 0, "id": 1})
+        if not owns and not member:
             raise HTTPException(status_code=404, detail="Collection not found")
     res = await db.vault_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": {"collection_id": body.collection_id}})
     if res.matched_count == 0:
@@ -6854,9 +7027,9 @@ async def vault_shared_with_me(user: dict = Depends(require_user)):
     shares = await db.vault_shares.find({"recipient_id": user["id"]}, {"_id": 0}).to_list(200)
     out = []
     for s in shares:
-        items = await db.vault_items.find({"user_id": s["owner_id"], "collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
+        items = await db.vault_items.find({"collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
         cover = next((i["image_url"] for i in items if i.get("image_url")), "")
-        out.append({"share_id": s["id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
+        out.append({"share_id": s["id"], "collection_id": s["collection_id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
                     "count": len(items), "cover_url": cover, "created_at": s.get("created_at", "")})
     out.sort(key=lambda c: c.get("created_at", ""), reverse=True)
     return out
@@ -6867,9 +7040,9 @@ async def vault_shared_detail(share_id: str, user: dict = Depends(require_user))
     s = await db.vault_shares.find_one({"id": share_id, "recipient_id": user["id"]}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Shared board not found")
-    items = await db.vault_items.find({"user_id": s["owner_id"], "collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
+    items = await db.vault_items.find({"collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
     items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    return {"share_id": s["id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
+    return {"share_id": s["id"], "collection_id": s["collection_id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
             "items": [_vault_public(i) for i in items]}
 
 

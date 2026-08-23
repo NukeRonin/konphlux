@@ -213,7 +213,10 @@ export type DatingProfile = {
   tagline: string;
   photo: string;
   age: number | null;
+  visible?: boolean;
 };
+
+export type LibraryBook = { id: string; ref_id: string; title: string; author: string; cover_url: string; format: string; pages: number; downloaded_at: string };
 
 export type SparkCard = {
   id: string;
@@ -671,11 +674,11 @@ export type NewsCluster = {
   source_count: number;
   coverage: { Left: number; Center: number; Right: number };
   sources: NewsSource[];
+  following?: boolean;
 };
 
 export type NewsResponse = { configured: boolean; topic: string; clusters: NewsCluster[]; cached: boolean };
-
-export type VaultSharedBoard = { share_id: string; board_name: string; owner_name: string; count: number; cover_url: string; created_at: string };
+export type VaultSharedBoard = { share_id: string; collection_id: string; board_name: string; owner_name: string; count: number; cover_url: string; created_at: string };
 
 export type TGComment = {
   id: string;
@@ -940,6 +943,8 @@ export const api = {
     age: number | null;
   }) => request<DatingProfile>("/dating/profile", { method: "POST", body: JSON.stringify(payload) }),
   datingDiscover: (seeking: string) => request<SparkCard[]>(`/dating/discover?seeking=${seeking}`),
+  datingPreferences: (prefs: { visible?: boolean; seeking?: string[] }) =>
+    request<{ ok: boolean; visible?: boolean; seeking?: string[] }>("/dating/preferences", { method: "POST", body: JSON.stringify(prefs) }),
   datingSwipe: (target_id: string, action: "like" | "pass") =>
     request<{ match: boolean; profile?: SparkCard }>("/dating/swipe", {
       method: "POST",
@@ -1204,6 +1209,12 @@ export const api = {
   tgToggleReading: (id: string) => request<{ saved: boolean }>(`/telegraph/articles/${id}/reading-list`, { method: "POST" }),
   tgReadingList: () => request<TGArticle[]>("/telegraph/reading-list"),
   tgNews: (topic = "top") => request<NewsResponse>(`/telegraph/news?topic=${encodeURIComponent(topic)}`),
+  tgNewsFollow: (cluster: { headline: string; sources?: string[]; coverage?: any; image_url?: string; url?: string }) =>
+    request<{ following: boolean }>("/telegraph/news/follow", { method: "POST", body: JSON.stringify(cluster) }),
+  libraryEbooks: () => request<LibraryBook[]>("/library/ebooks"),
+  libraryAddEbook: (b: { ref_id?: string; title: string; author?: string; cover_url?: string; format?: string; pages?: number }) =>
+    request<{ added: boolean; item: LibraryBook }>("/library/ebooks", { method: "POST", body: JSON.stringify(b) }),
+  libraryDeleteEbook: (id: string) => request<{ deleted: boolean }>(`/library/ebooks/${id}`, { method: "DELETE" }),
 
   // ---- Waypoint (stays & bookings) ----
   wpStays: (q: string, type: string, group = "", kind = "rent") =>

@@ -12,7 +12,8 @@ import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
-const TOPICS = ["top", "technology", "business", "science", "health", "sports", "world", "politics"];
+const TOPICS = ["following", "top", "blindspot", "technology", "business", "science", "health", "sports", "world", "politics"];
+const TOPIC_LABEL: Record<string, string> = { following: "Following", top: "Top", blindspot: "Blindspot" };
 const BIAS_COLOR: Record<string, string> = { Left: "#3B6FE0", Center: "#7A7A85", Right: "#D0453B" };
 
 function timeAgo(iso: string): string {
@@ -40,13 +41,53 @@ function CoverageBar({ coverage }: { coverage: { Left: number; Center: number; R
 function StoryCard({ cluster }: { cluster: NewsCluster }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const [following, setFollowing] = useState(!!cluster.following);
+  const [saved, setSaved] = useState(false);
   const total = cluster.source_count || 1;
+
+  const toggleFollow = async () => {
+    setFollowing((f) => !f);
+    try {
+      await api.tgNewsFollow({
+        headline: cluster.headline,
+        sources: cluster.sources.map((s) => s.source_name),
+        coverage: cluster.coverage,
+        image_url: cluster.image_url,
+        url: cluster.sources[0]?.url || "",
+      });
+    } catch { setFollowing((f) => !f); }
+  };
+
+  const saveToVault = async () => {
+    if (saved) return;
+    setSaved(true);
+    try {
+      await api.vaultSave({
+        source: "other", ref_id: `news-${cluster.id}`, title: cluster.headline,
+        image_url: cluster.image_url, subtitle: "News",
+        text: `${cluster.summary}\n\nCoverage: ${cluster.source_count} source(s).`,
+        notes: cluster.sources.map((s) => `${s.source_name} (${s.bias}): ${s.url}`).join("\n"),
+      });
+    } catch { setSaved(false); }
+  };
+
   return (
     <View style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
       {cluster.image_url ? <Image source={{ uri: cluster.image_url }} style={styles.cover} contentFit="cover" transition={180} /> : null}
       <View style={styles.cardBody}>
         <Text style={[styles.headline, { color: colors.onSurface }]}>{cluster.headline}</Text>
         {cluster.summary ? <Text numberOfLines={3} style={[styles.summary, { color: colors.muted }]}>{cluster.summary}</Text> : null}
+
+        <View style={styles.actionRow}>
+          <Pressable onPress={toggleFollow} testID={`news-follow-${cluster.id}`} style={[styles.actBtn, { borderColor: following ? colors.brand : colors.border, backgroundColor: following ? colors.brand : "transparent" }]}>
+            <MaterialCommunityIcons name={following ? "bell" : "bell-outline"} size={15} color={following ? colors.onBrandPrimary : colors.brand} />
+            <Text style={[styles.actText, { color: following ? colors.onBrandPrimary : colors.brand }]}>{following ? "Following" : "Follow story"}</Text>
+          </Pressable>
+          <Pressable onPress={saveToVault} testID={`news-save-${cluster.id}`} style={[styles.actBtn, { borderColor: colors.border }]}>
+            <MaterialCommunityIcons name={saved ? "bookmark-check" : "bookmark-plus-outline"} size={15} color={colors.brand} />
+            <Text style={[styles.actText, { color: colors.brand }]}>{saved ? "Saved" : "Save"}</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.covRow}>
           <CoverageBar coverage={cluster.coverage} />
@@ -126,7 +167,7 @@ export default function TelegraphNews() {
             const active = topic === t;
             return (
               <Pressable key={t} testID={`news-topic-${t}`} onPress={() => setTopic(t)} style={[styles.topicChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
-                <Text style={[styles.topicText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{t === "top" ? "Top" : t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+                <Text style={[styles.topicText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{TOPIC_LABEL[t] ?? (t.charAt(0).toUpperCase() + t.slice(1))}</Text>
               </Pressable>
             );
           })}
@@ -166,6 +207,9 @@ const styles = StyleSheet.create({
   cardBody: { padding: spacing.md, gap: spacing.sm },
   headline: { fontFamily: fonts.displaySemi, fontSize: 18, lineHeight: 24 },
   summary: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
+  actionRow: { flexDirection: "row", gap: spacing.sm },
+  actBtn: { flexDirection: "row", alignItems: "center", gap: 5, height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  actText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   covRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   covBar: { flex: 1, flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden" },
   covMeta: { fontFamily: fonts.bodyMedium, fontSize: 12 },

@@ -163,6 +163,7 @@ function RootNavigator() {
         <Stack.Screen name="vault/item/[id]" />
         <Stack.Screen name="vault/collection/[id]" />
         <Stack.Screen name="vault/shared/[id]" />
+        <Stack.Screen name="library/index" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />
