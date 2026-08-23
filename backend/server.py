@@ -145,6 +145,13 @@ class ReplyCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
 
 
+class DiscussBody(BaseModel):
+    category: str = Field(min_length=2, max_length=60)
+    slug: str | None = Field(default=None, max_length=60)
+    title: str | None = Field(default=None, max_length=140)
+    body: str | None = Field(default=None, max_length=4000)
+
+
 class CartAdd(BaseModel):
     item_id: str
     qty: int = Field(default=1, ge=1, le=99)
@@ -695,9 +702,18 @@ class VaultItemBody(BaseModel):
     image_url: str = Field(default="", max_length=600)
     subtitle: str = Field(default="", max_length=160)
     route: str = Field(default="", max_length=200)
-    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|)$")
-    text: str = Field(default="", max_length=2000)
+    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|)$")
+    text: str = Field(default="", max_length=4000)
+    notes: str = Field(default="", max_length=2000)
     collection_id: str | None = Field(default=None, max_length=40)
+
+
+class VaultUpdateBody(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    image_url: str = Field(default="", max_length=600)
+    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|)$")
+    text: str = Field(default="", max_length=4000)
+    notes: str = Field(default="", max_length=2000)
 
 
 class VaultCollectionBody(BaseModel):
@@ -2753,14 +2769,44 @@ async def get_profile(user: dict = Depends(require_user)):
 
 
 # ---------- Roundtable ----------
+def _district_icon(category: str) -> str:
+    for d in DISTRICTS:
+        if d["name"].lower() == category.lower():
+            return d["icon"]
+    return "forum"
+
+
+async def _ensure_category_community(category: str, icon: str | None = None) -> dict:
+    """Find (or create) the Roundtable community that hosts a district's discussions."""
+    existing = await db.rt_communities.find_one({"category": category}, {"_id": 0})
+    if existing:
+        return existing
+    community = {
+        "id": uuid.uuid4().hex,
+        "name": f"{category} Discussions",
+        "description": f"Site-wide discussions routed here from the {category} district. Start a thread or join the conversation.",
+        "icon": icon or _district_icon(category),
+        "members": 0,
+        "category": category,
+        "created_by": "seed",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.rt_communities.insert_one(dict(community))
+    community.pop("_id", None)
+    return community
+
+
 async def _thread_meta(thread: dict, user_id: str, community_name: str | None = None) -> dict:
     t = {k: v for k, v in thread.items() if k != "_id"}
     t["reply_count"] = await db.rt_replies.count_documents({"thread_id": t["id"]})
     t["voted"] = bool(await db.rt_votes.find_one({"user_id": user_id, "thread_id": t["id"]}))
     if community_name is None:
-        c = await db.rt_communities.find_one({"id": t["community_id"]}, {"_id": 0, "name": 1})
+        c = await db.rt_communities.find_one({"id": t["community_id"]}, {"_id": 0, "name": 1, "category": 1})
         community_name = c["name"] if c else "Roundtable"
+        if c and c.get("category") and not t.get("category"):
+            t["category"] = c.get("category")
     t["community_name"] = community_name
+    t.setdefault("category", None)
     return t
 
 
@@ -2846,6 +2892,7 @@ async def rt_create_thread(body: ThreadCreate, user: dict = Depends(require_user
     thread = {
         "id": uuid.uuid4().hex,
         "community_id": body.community_id,
+        "category": c.get("category"),
         "title": body.title.strip(),
         "body": body.body.strip(),
         "author": user["display_name"],
@@ -2906,6 +2953,64 @@ async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(r
     await db.rt_replies.insert_one(dict(reply))
     reply.pop("_id", None)
     return reply
+
+
+@api_router.get("/roundtable/category/{category}")
+async def rt_category(category: str, user: dict = Depends(require_user)):
+    """Enter the discussion space for a district category (creating it if needed)."""
+    category = category.strip()
+    community = await _ensure_category_community(category, _district_icon(category))
+    c = await db.rt_communities.find_one({"id": community["id"]}, {"_id": 0})
+    c["member"] = bool(await db.rt_members.find_one({"user_id": user["id"], "community_id": c["id"]}))
+    threads = await db.rt_threads.find({"community_id": c["id"]}).to_list(500)
+    threads = [await _thread_meta(t, user["id"], c["name"]) for t in threads]
+    threads.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    c["threads"] = threads
+    c["thread_count"] = len(threads)
+    return c
+
+
+@api_router.post("/roundtable/discuss", status_code=201)
+async def rt_discuss(body: DiscussBody, user: dict = Depends(require_user)):
+    """Route a 'Discuss' action from any district into the Roundtable.
+
+    Ensures a category-tagged community exists, auto-joins the user, then either
+    creates a new thread or joins an existing one with the same title.
+    """
+    category = body.category.strip()
+    community = await _ensure_category_community(category, _district_icon(category))
+    q = {"user_id": user["id"], "community_id": community["id"]}
+    if not await db.rt_members.find_one(q):
+        await db.rt_members.insert_one(dict(q))
+        await db.rt_communities.update_one({"id": community["id"]}, {"$inc": {"members": 1}})
+
+    result = {"community_id": community["id"], "thread_id": None, "created": False}
+    title = (body.title or "").strip()
+    if title:
+        key = title.lower()
+        existing = None
+        for t in await db.rt_threads.find({"community_id": community["id"]}).to_list(1000):
+            if t.get("title", "").strip().lower() == key:
+                existing = t
+                break
+        if existing:
+            result["thread_id"] = existing["id"]
+        else:
+            thread = {
+                "id": uuid.uuid4().hex,
+                "community_id": community["id"],
+                "category": category,
+                "title": title,
+                "body": (body.body or f"A new discussion from the {category} district.").strip(),
+                "author": user["display_name"],
+                "user_id": user["id"],
+                "upvotes": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.rt_threads.insert_one(dict(thread))
+            result["thread_id"] = thread["id"]
+            result["created"] = True
+    return result
 
 
 # ---------- Answerfier (Q&A) ----------
@@ -6310,6 +6415,9 @@ VAULT_SEED = [
     {"source": "other", "ref_id": "seed-joke-2", "title": "Gears", "subtitle": "Joke", "text": "I told my clockmaker friend a joke about gears.\n\nHe didn't laugh — I think it went right over his head, tick by tick.", "category": "Jokes"},
     {"source": "other", "ref_id": "seed-quote-1", "title": "On Craft", "subtitle": "Quote", "text": "\u201cThe best inventions are not the newest — they are the ones that outlive the hands that made them.\u201d", "category": "Quotes"},
     {"source": "other", "ref_id": "seed-quote-2", "title": "On Patience", "subtitle": "Quote", "text": "\u201cAnyone can go fast and be wrong. The art is in the pause.\u201d\n\n— A wire operator", "category": "Quotes"},
+    {"source": "other", "ref_id": "seed-recipe-1", "title": "Copperpot Spiced Cocoa", "subtitle": "Recipe", "image_url": f"{_VAULT_IMG}1542990253-0d0f5be5f0ed?w=800&q=80", "category": "Recipes", "text": "1. Warm 2 cups milk in a copper pot.\n2. Whisk in 3 tbsp cocoa, 1 tbsp sugar, a pinch of cinnamon and clove.\n3. Simmer 4 minutes, don't boil.\n4. Pour and top with a curl of orange peel.", "notes": "Doubles well for guests. A splash of vanilla makes it sing."},
+    {"source": "other", "ref_id": "seed-diy-1", "title": "Pipe-Fitting Coat Rack", "subtitle": "DIY Project", "image_url": f"{_VAULT_IMG}1503389152951-9f343605f61e?w=800&q=80", "category": "DIY Projects", "text": "1. Gather 4 brass elbows, 2 flanges and a 60cm pipe.\n2. Mount flanges to a reclaimed board.\n3. Thread pipe + elbows to form hooks.\n4. Buff with beeswax.", "notes": "Pre-drill the board to avoid splitting the wood."},
+    {"source": "other", "ref_id": "seed-decor-1", "title": "Gaslamp Reading Corner", "subtitle": "Decor Idea", "image_url": f"{_VAULT_IMG}1493809842364-78817add7ffb?w=800&q=80", "category": "Decor Ideas", "text": "Layer a wingback chair, a brass floor lamp and a small side table with a stack of leather books.", "notes": "Warm 2700K bulbs keep the mood cozy."},
 ]
 
 
@@ -6329,6 +6437,7 @@ async def _vault_seed_if_empty(user_id: str) -> None:
             "id": uuid.uuid4().hex[:12], "user_id": user_id, "source": s["source"], "ref_id": s["ref_id"],
             "title": s["title"], "subtitle": s.get("subtitle", ""), "image_url": s.get("image_url", ""),
             "route": s.get("route", ""), "category": s.get("category", ""), "text": s.get("text", ""),
+            "notes": s.get("notes", ""),
             "collection_id": coll_id if i < 3 else None, "seeded": True,
             "created_at": (now - timedelta(minutes=i)).isoformat(),
         })
@@ -6339,7 +6448,7 @@ def _vault_public(v: dict) -> dict:
         "id": v["id"], "source": v.get("source", "other"), "ref_id": v.get("ref_id", ""),
         "title": v.get("title", ""), "subtitle": v.get("subtitle", ""),
         "image_url": v.get("image_url", ""), "route": v.get("route", ""),
-        "category": v.get("category", ""), "text": v.get("text", ""),
+        "category": v.get("category", ""), "text": v.get("text", ""), "notes": v.get("notes", ""),
         "collection_id": v.get("collection_id"), "created_at": v.get("created_at", ""),
     }
 
@@ -6374,12 +6483,33 @@ async def vault_save_item(body: VaultItemBody, user: dict = Depends(require_user
     item = {
         "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": body.source, "ref_id": body.ref_id,
         "title": body.title.strip(), "subtitle": body.subtitle.strip(), "image_url": body.image_url.strip(),
-        "route": body.route.strip(), "category": body.category, "text": body.text.strip(),
+        "route": body.route.strip(), "category": body.category, "text": body.text.strip(), "notes": body.notes.strip(),
         "collection_id": body.collection_id, "seeded": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.vault_items.insert_one(dict(item))
     return {"saved": True, "item": _vault_public(item)}
+
+
+@api_router.get("/vault/items/{item_id}")
+async def vault_get_item(item_id: str, user: dict = Depends(require_user)):
+    v = await db.vault_items.find_one({"id": item_id, "user_id": user["id"]}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return _vault_public(v)
+
+
+@api_router.put("/vault/items/{item_id}")
+async def vault_update_item(item_id: str, body: VaultUpdateBody, user: dict = Depends(require_user)):
+    res = await db.vault_items.update_one(
+        {"id": item_id, "user_id": user["id"]},
+        {"$set": {"title": body.title.strip(), "image_url": body.image_url.strip(),
+                  "category": body.category, "text": body.text.strip(), "notes": body.notes.strip()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    v = await db.vault_items.find_one({"id": item_id, "user_id": user["id"]}, {"_id": 0})
+    return _vault_public(v)
 
 
 @api_router.delete("/vault/items/{item_id}")

@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -62,7 +62,15 @@ const CATEGORIES: { key: string; icon: IconName }[] = [
   { key: "Memes", icon: "emoticon-happy-outline" },
   { key: "Artwork", icon: "palette-outline" },
   { key: "Quotes", icon: "format-quote-close" },
+  { key: "Recipes", icon: "silverware-fork-knife" },
+  { key: "DIY Projects", icon: "hammer-screwdriver" },
+  { key: "Magic Tricks", icon: "auto-fix" },
+  { key: "Life Hacks", icon: "lightbulb-on-outline" },
+  { key: "Crafts", icon: "scissors-cutting" },
+  { key: "Decor Ideas", icon: "sofa-outline" },
+  { key: "Fashion", icon: "hanger" },
 ];
+const TEXT_CATS = ["Jokes", "Quotes"];
 
 function TextCard({ item, colors, onPress, onLong }: { item: VaultItem; colors: any; onPress: () => void; onLong: () => void }) {
   return (
@@ -78,8 +86,9 @@ export default function VaultHub() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ category?: string }>();
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState("All");
+  const [cat, setCat] = useState(params.category && CATEGORIES.some((c) => c.key === params.category) ? params.category : "All");
   const [items, setItems] = useState<VaultItem[]>([]);
   const [collections, setCollections] = useState<VaultCollection[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -121,12 +130,12 @@ export default function VaultHub() {
 
   const openItem = (item: VaultItem) => {
     if (item.route) router.push(item.route as any);
-    else itemActions(item);
+    else router.push(`/vault/item/${item.id}`);
   };
 
   const cols: VaultItem[][] = [[], []];
   items.forEach((it, i) => cols[i % 2].push(it));
-  const textLayout = cat === "Jokes" || cat === "Quotes";
+  const textLayout = TEXT_CATS.includes(cat);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -138,8 +147,11 @@ export default function VaultHub() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>The Vault</Text>
           <Eyebrow>Everything you've saved, in one place</Eyebrow>
         </View>
-        <Pressable testID="vault-new-collection" onPress={() => setModal(true)} style={[styles.iconBtn, { backgroundColor: colors.brand }]}>
-          <MaterialCommunityIcons name="folder-plus-outline" size={19} color={colors.onBrandPrimary} />
+        <Pressable testID="vault-add" onPress={() => router.push(cat !== "All" ? `/vault/add?category=${encodeURIComponent(cat)}` : "/vault/add")} style={[styles.iconBtn, { backgroundColor: colors.brand }]}>
+          <MaterialCommunityIcons name="plus" size={21} color={colors.onBrandPrimary} />
+        </Pressable>
+        <Pressable testID="vault-new-collection" onPress={() => setModal(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="folder-plus-outline" size={19} color={colors.onSurface} />
         </Pressable>
       </View>
 

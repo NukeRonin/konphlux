@@ -153,6 +153,16 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Vault — Lifestyle & Ideas categories + create/edit items; user self-testing)
+- ✅ **7 Lifestyle & Ideas categories** added to the Vault chip row: Recipes, DIY Projects, Magic Tricks, Life Hacks, Crafts, Decor Ideas, Fashion (alongside existing Jokes/GIFs/Logos/Memes/Artwork/Quotes + All). All use the standard visual masonry grid — layout consistent with the rest of the Vault.
+- ✅ **Save images + instructions + notes**: new "+ Add" button in the Vault header → /vault/add form (category chips, optional image upload to Object Storage, title, Instructions, Notes). Creates a user item (source other, ref_id idea-*). Prefills category when opened from a selected category.
+- ✅ **Item detail** (/vault/item/[id]): shows image, category badge, title, Instructions and a Notes box; Edit (user items) + Delete. Tapping any non-source tile opens this detail; source tiles still deep-link to their origin. Edit reuses /vault/add?id= with PUT.
+- ✅ **Memes button**: already present in the category row (confirmed still working) — no regression.
+- ✅ District feature chips now deep-link to filtered views (e.g. Recipes → /vault?category=Recipes); hub reads the `category` param to preselect.
+- Backend: VaultItemBody category enum expanded + `notes` field; VaultUpdateBody added; text limit raised to 4000; GET /vault/items/{id} + PUT /vault/items/{id} added; _vault_public/save persist notes; 3 lifestyle seed samples (Recipe/DIY/Decor with notes).
+- Curl-verified: all new categories seed + filter; create item with instructions+notes; get; PUT edit (category change); invalid category → 422; Memes intact. Lint clean, backend + Expo restarted. Tests/screenshots skipped per user.
+- Files: backend/server.py (category enum+notes, VaultUpdateBody, GET/PUT item, lifestyle seeds); frontend app/vault/index.tsx (categories, add button, category param, tile→detail), app/vault/add.tsx + app/vault/item/[id].tsx (new), app/district/[slug].tsx (filtered chip routes), app/_layout.tsx (routes), src/api/client.ts (notes, vaultGetItem/vaultUpdateItem, VaultItem type).
+
 ### 2026-06 (Vault — Visual & Creative Hub categories; user self-testing)
 - ✅ **Category buttons** in the Vault: All, Jokes, GIFs, Logos, Memes, Artwork, Quotes (horizontal chip row under search). Selecting filters the grid by category.
 - ✅ **Layout by type**: visual categories (GIFs/Logos/Memes/Artwork + All) render the Pinterest-style two-column masonry; text categories (Jokes/Quotes) render a clean single-column card layout. In mixed/All view, text items render as compact text tiles within the masonry.
@@ -402,3 +412,9 @@ No seeded account — register fresh (see /app/memory/test_credentials.md). Use 
 
 ## Next Tasks
 - Await user direction: Bazaar checkout, or make a specific district (Roundtable) fully functional, or messaging.
+
+## Roundtable — central discussion engine (2026-06)
+- Roundtable is now the hub for public discussions across Konphlux. Every district detail page (except Roundtable) has a "Discuss <District> at the Roundtable" button.
+- Backend: `POST /api/roundtable/discuss` (create-or-join thread by title, auto-joins user, tags category) and `GET /api/roundtable/category/{category}` (ensures a per-district community exists, returns its threads). Communities & threads now carry a `category` tag; district icon auto-mapped via `_district_icon`.
+- Frontend: new screen `app/roundtable/discuss.tsx` (category banner + composer + join-existing thread list); `api.rtDiscuss` / `api.rtCategory`; ThreadRow shows a category tag pill.
+- Verified (agent, direct backend smoke): category community auto-create + district icon, discuss create (201) vs join-existing (same thread id), category tag on thread, distinct Waypoint community. Screenshots/testing-agent skipped per user request.

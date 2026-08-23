@@ -70,6 +70,7 @@ function RootNavigator() {
         <Stack.Screen name="roundtable/my-threads" />
         <Stack.Screen name="roundtable/community/[id]" />
         <Stack.Screen name="roundtable/thread/[id]" />
+        <Stack.Screen name="roundtable/discuss" />
         <Stack.Screen name="roundtable/new-community" options={{ presentation: "modal" }} />
         <Stack.Screen name="roundtable/new-thread" options={{ presentation: "modal" }} />
         <Stack.Screen name="answerfier/index" />
@@ -156,6 +157,8 @@ function RootNavigator() {
         <Stack.Screen name="waypoint/trip" />
         <Stack.Screen name="waypoint/[id]" />
         <Stack.Screen name="vault/index" />
+        <Stack.Screen name="vault/add" />
+        <Stack.Screen name="vault/item/[id]" />
         <Stack.Screen name="vault/collection/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />

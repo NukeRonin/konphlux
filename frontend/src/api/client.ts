@@ -258,6 +258,7 @@ export type Community = {
   members: number;
   thread_count: number;
   member: boolean;
+  category?: string | null;
   threads?: Thread[];
 };
 
@@ -265,6 +266,7 @@ export type Thread = {
   id: string;
   community_id: string;
   community_name: string;
+  category?: string | null;
   title: string;
   body: string;
   author: string;
@@ -697,6 +699,7 @@ export type VaultItem = {
   route: string;
   category: string;
   text: string;
+  notes: string;
   collection_id: string | null;
   created_at: string;
 };
@@ -849,6 +852,13 @@ export const api = {
     request<Reply>(`/roundtable/threads/${id}/replies`, {
       method: "POST",
       body: JSON.stringify({ body }),
+    }),
+  rtCategory: (category: string) =>
+    request<Community>(`/roundtable/category/${encodeURIComponent(category)}`),
+  rtDiscuss: (category: string, title?: string, body?: string) =>
+    request<{ community_id: string; thread_id: string | null; created: boolean }>("/roundtable/discuss", {
+      method: "POST",
+      body: JSON.stringify({ category, title, body }),
     }),
 
   getCart: () => request<Cart>("/cart"),
@@ -1183,8 +1193,11 @@ export const api = {
   // ---- Vault (visual organization hub) ----
   vaultItems: (q = "", collection = "", category = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}&category=${encodeURIComponent(category)}`),
   vaultSavedCheck: (source: string, refId: string) => request<{ saved: boolean; id: string | null }>(`/vault/saved-check?source=${encodeURIComponent(source)}&ref_id=${encodeURIComponent(refId)}`),
-  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; category?: string; text?: string; collection_id?: string | null }) =>
+  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; category?: string; text?: string; notes?: string; collection_id?: string | null }) =>
     request<{ saved: boolean; item: VaultItem }>("/vault/items", { method: "POST", body: JSON.stringify(body) }),
+  vaultGetItem: (id: string) => request<VaultItem>(`/vault/items/${id}`),
+  vaultUpdateItem: (id: string, body: { title: string; image_url?: string; category?: string; text?: string; notes?: string }) =>
+    request<VaultItem>(`/vault/items/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   vaultDeleteItem: (id: string) => request<{ deleted: boolean }>(`/vault/items/${id}`, { method: "DELETE" }),
   vaultMoveItem: (id: string, collectionId: string | null) => request<{ moved: boolean }>(`/vault/items/${id}/move`, { method: "POST", body: JSON.stringify({ collection_id: collectionId }) }),
   vaultCollections: () => request<VaultCollection[]>("/vault/collections"),

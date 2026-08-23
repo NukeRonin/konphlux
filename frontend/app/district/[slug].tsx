@@ -240,17 +240,17 @@ const WAYPOINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
 };
 
 const VAULT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
-  "Recipes": { route: "/vault", icon: "silverware-fork-knife" },
-  "DIY projects": { route: "/vault", icon: "hammer-screwdriver" },
-  "Magic tricks": { route: "/vault", icon: "auto-fix" },
-  "Life hacks": { route: "/vault", icon: "lightbulb-on-outline" },
-  "Crafts": { route: "/vault", icon: "palette-outline" },
-  "Decor Ideas": { route: "/vault", icon: "sofa-outline" },
+  "Recipes": { route: "/vault?category=Recipes", icon: "silverware-fork-knife" },
+  "DIY projects": { route: "/vault?category=DIY%20Projects", icon: "hammer-screwdriver" },
+  "Magic tricks": { route: "/vault?category=Magic%20Tricks", icon: "auto-fix" },
+  "Life hacks": { route: "/vault?category=Life%20Hacks", icon: "lightbulb-on-outline" },
+  "Crafts": { route: "/vault?category=Crafts", icon: "scissors-cutting" },
+  "Decor Ideas": { route: "/vault?category=Decor%20Ideas", icon: "sofa-outline" },
   "Travel Ideas": { route: "/vault", icon: "airplane" },
-  "AI Artwork": { route: "/vault", icon: "image-multiple-outline" },
-  "Fashion": { route: "/vault", icon: "hanger" },
+  "AI Artwork": { route: "/vault?category=Artwork", icon: "image-multiple-outline" },
+  "Fashion": { route: "/vault?category=Fashion", icon: "hanger" },
   "Reading List": { route: "/vault", icon: "book-open-page-variant-outline" },
-  "Quotes": { route: "/vault", icon: "format-quote-close" },
+  "Quotes": { route: "/vault?category=Quotes", icon: "format-quote-close" },
   "Collections & boards": { route: "/vault", icon: "folder-multiple-image" },
   "Tutorials": { route: "/vault", icon: "school-outline" },
 };
@@ -365,6 +365,17 @@ export default function DistrictDetail() {
                   : router.push(`/chatmonger/${district.slug}`)
               }
             />
+            {district.slug !== "roundtable" ? (
+              <ForgeButton
+                label={`Discuss ${district.name} at the Roundtable`}
+                variant="outline"
+                fullWidth
+                style={{ marginTop: spacing.sm }}
+                testID="district-discuss"
+                icon={<MaterialCommunityIcons name="forum-outline" size={18} color={colors.brand} />}
+                onPress={() => router.push(`/roundtable/discuss?category=${encodeURIComponent(district.name)}`)}
+              />
+            ) : null}
           </LinearGradient>
 
           {/* Features */}

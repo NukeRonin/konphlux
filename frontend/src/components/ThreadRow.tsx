@@ -48,6 +48,12 @@ export function ThreadRow({
         </View>
         <View style={{ flex: 1 }}>
           {showCommunity ? <Eyebrow>{thread.community_name}</Eyebrow> : null}
+          {thread.category ? (
+            <View style={[styles.tag, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="tag-outline" size={11} color={colors.brand} />
+              <Text style={[styles.tagText, { color: colors.brand }]}>{thread.category}</Text>
+            </View>
+          ) : null}
           <Text style={[styles.title, { color: colors.onSurface }]}>{thread.title}</Text>
           <Text numberOfLines={2} style={[styles.body, { color: colors.muted }]}>
             {thread.body}
@@ -77,5 +83,17 @@ const styles = StyleSheet.create({
   meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.sm },
   metaText: { fontFamily: fonts.body, fontSize: 12 },
   metaDot: { fontFamily: fonts.body, fontSize: 12 },
+  tag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 3,
+  },
+  tagText: { fontFamily: fonts.bodyBold, fontSize: 10, letterSpacing: 0.3 },
   _r: { borderRadius: radius.md },
 });
