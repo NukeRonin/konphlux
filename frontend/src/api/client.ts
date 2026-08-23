@@ -235,7 +235,7 @@ export type SparkCard = {
   liked?: boolean;
   matched?: boolean;
 };
-export type SparkMessage = { id: string; sender_id: string; body: string; kind: string; created_at: string; mine: boolean };
+export type SparkMessage = { id: string; sender_id: string; body: string; kind: string; created_at: string; mine: boolean; seen?: boolean };
 
 export type BazaarResponse = { categories: string[]; listings: Listing[] };
 
@@ -953,7 +953,16 @@ export const api = {
     photo: string;
     age: number | null;
   }) => request<DatingProfile>("/dating/profile", { method: "POST", body: JSON.stringify(payload) }),
-  datingDiscover: (seeking: string) => request<SparkCard[]>(`/dating/discover?seeking=${seeking}`),
+  datingDiscover: (seeking: string, filters?: { minAge?: number; maxAge?: number; interests?: string[] }) => {
+    const p = new URLSearchParams({ seeking });
+    if (filters?.minAge) p.set("min_age", String(filters.minAge));
+    if (filters?.maxAge) p.set("max_age", String(filters.maxAge));
+    if (filters?.interests?.length) p.set("interests", filters.interests.join(","));
+    return request<SparkCard[]>(`/dating/discover?${p.toString()}`);
+  },
+  datingDailyPicks: () => request<SparkCard[]>("/dating/daily-picks"),
+  datingUnmatch: (id: string) => request<{ unmatched: boolean }>(`/dating/unmatch/${id}`, { method: "POST" }),
+  datingBlock: (id: string) => request<{ blocked: boolean }>(`/dating/block/${id}`, { method: "POST" }),
   datingPreferences: (prefs: { visible?: boolean; seeking?: string[] }) =>
     request<{ ok: boolean; visible?: boolean; seeking?: string[] }>("/dating/preferences", { method: "POST", body: JSON.stringify(prefs) }),
   datingSwipe: (target_id: string, action: "like" | "pass") =>
@@ -1055,7 +1064,15 @@ export const api = {
     request<{ kind: string; concept: string; image_path: string }>("/frankenstein/audio", { method: "POST", body: JSON.stringify(body) }),
   frankVisual: (body: { kind: "pic" | "logo" | "gif" | "meme"; prompt: string }) =>
     request<{ kind: string; image_path: string }>("/frankenstein/visual", { method: "POST", body: JSON.stringify(body) }),
-  frankVaultSave: (body: { kind: string; prompt?: string; image_path?: string; concept?: string; title?: string }) =>
+  frankAudioRender: (body: { kind: "music" | "sfx"; prompt: string; mood?: string; genre?: string; duration?: string }) =>
+    request<{ job_id: string; status: string }>("/frankenstein/audio/render", { method: "POST", body: JSON.stringify(body) }),
+  frankAudioStatus: (jobId: string) =>
+    request<{ status: string; output_url: string }>(`/frankenstein/audio/render-status/${jobId}`),
+  frankGifRender: (prompt: string) =>
+    request<{ job_id: string; status: string }>("/frankenstein/gif/render", { method: "POST", body: JSON.stringify({ kind: "gif", prompt }) }),
+  frankGifStatus: (jobId: string) =>
+    request<{ status: string; output_url: string }>(`/frankenstein/gif/render-status/${jobId}`),
+  frankVaultSave: (body: { kind: string; prompt?: string; image_path?: string; concept?: string; media_url?: string; title?: string }) =>
     request<FrankVaultItem>("/frankenstein/vault", { method: "POST", body: JSON.stringify(body) }),
   frankVault: (kind?: string) => request<FrankVaultItem[]>(`/frankenstein/vault${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`),
   frankVaultDelete: (id: string) => request<{ deleted: boolean }>(`/frankenstein/vault/${id}`, { method: "DELETE" }),

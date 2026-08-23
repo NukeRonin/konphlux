@@ -4,9 +4,9 @@ import { StyleSheet, View } from "react-native";
 
 import { radius } from "@/src/theme/tokens";
 
-export function VideoPlayer({ uri, style, onProgress, syncPosition }: { uri: string; style?: any; onProgress?: (position: number, duration: number) => void; syncPosition?: number }) {
+export function VideoPlayer({ uri, style, onProgress, syncPosition, loop }: { uri: string; style?: any; onProgress?: (position: number, duration: number) => void; syncPosition?: number; loop?: boolean }) {
   const player = useVideoPlayer(uri || null, (p) => {
-    p.loop = false;
+    p.loop = !!loop;
   });
   const cbRef = useRef(onProgress);
   cbRef.current = onProgress;

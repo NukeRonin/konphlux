@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, SparkCard } from "@/src/api/client";
@@ -49,6 +49,15 @@ export default function SparkDetail() {
     } catch { /* ignore */ } finally { setSending(null); }
   };
 
+  const manage = () => {
+    if (!id) return;
+    const opts: any[] = [];
+    if (spark?.matched) opts.push({ text: "Unmatch", style: "destructive", onPress: async () => { try { await api.datingUnmatch(id); } catch { /* ignore */ } router.back(); } });
+    opts.push({ text: "Block", style: "destructive", onPress: async () => { try { await api.datingBlock(id); } catch { /* ignore */ } router.back(); } });
+    opts.push({ text: "Cancel", style: "cancel" });
+    Alert.alert(spark?.display_name ?? "Manage", "Quietly remove this connection?", opts);
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       {status === "loading" ? (
@@ -63,8 +72,11 @@ export default function SparkDetail() {
             <Pressable onPress={() => router.back()} hitSlop={12} testID="spark-back" style={[styles.backBtn, { top: insets.top + spacing.sm }]}>
               <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
             </Pressable>
+            <Pressable onPress={manage} hitSlop={12} testID="spark-manage" style={[styles.manageBtn, { top: insets.top + spacing.sm }]}>
+              <MaterialCommunityIcons name="dots-horizontal" size={24} color="#fff" />
+            </Pressable>
             {spark.matched ? (
-              <View style={[styles.matchTag, { backgroundColor: colors.brandSecondary, top: insets.top + spacing.sm }]}>
+              <View style={[styles.matchTag, { backgroundColor: colors.brandSecondary, top: insets.top + spacing.sm + 52 }]}>
                 <MaterialCommunityIcons name="heart" size={13} color={colors.onBrandPrimary} />
                 <Text style={[styles.matchTagText, { color: colors.onBrandPrimary }]}>Matched</Text>
               </View>
@@ -128,6 +140,7 @@ const styles = StyleSheet.create({
   photoWrap: { width: "100%", height: 460 },
   photo: { width: "100%", height: "100%" },
   backBtn: { position: "absolute", left: spacing.lg, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
+  manageBtn: { position: "absolute", right: spacing.lg, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
   matchTag: { position: "absolute", right: spacing.lg, flexDirection: "row", alignItems: "center", gap: 4, height: 28, paddingHorizontal: 10, borderRadius: radius.pill },
   matchTagText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   photoInfo: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg },

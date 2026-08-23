@@ -71,6 +71,8 @@ export default function SparkChat() {
     </View>
   );
 
+  const lastMine = [...messages].reverse().find((m) => m.mine);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
@@ -97,6 +99,14 @@ export default function SparkChat() {
             renderItem={renderItem}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            ListFooterComponent={
+              lastMine ? (
+                <View style={styles.receiptRow}>
+                  <MaterialCommunityIcons name={lastMine.seen ? "check-all" : "check"} size={13} color={lastMine.seen ? colors.brand : colors.muted} />
+                  <Text style={[styles.receipt, { color: lastMine.seen ? colors.brand : colors.muted }]}>{lastMine.seen ? "Seen" : "Sent"}</Text>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
               <View style={styles.empty}>
                 <MaterialCommunityIcons name="chat-outline" size={40} color={colors.muted} />
@@ -147,6 +157,8 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: "80%", borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kindTag: { fontFamily: fonts.bodyBold, fontSize: 10.5, color: "#E7CD94", marginBottom: 2, letterSpacing: 0.3 },
   bubbleText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21 },
+  receiptRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, paddingRight: spacing.xs, paddingTop: 4 },
+  receipt: { fontFamily: fonts.bodyMedium, fontSize: 11 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingTop: spacing.xxxl },
   emptyText: { fontFamily: fonts.body, fontSize: 14, textAlign: "center", paddingHorizontal: spacing.xl },
   quickRow: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderTopWidth: 1 },

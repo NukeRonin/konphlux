@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
@@ -32,6 +32,7 @@ const TABS: { key: Seeking; label: string }[] = [
   { key: "woman", label: "Women" },
   { key: "all", label: "Everyone" },
 ];
+const INTERESTS = ["Airships", "Tinkering", "Music", "Books", "Art", "Adventure", "Coffee", "Cats", "Dancing", "Cooking"];
 
 function Card({ spark, colors, front }: { spark: SparkCard; colors: any; front?: boolean }) {
   return (
@@ -61,6 +62,14 @@ export default function SparkingDawn() {
   const [cards, setCards] = useState<SparkCard[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [matched, setMatched] = useState<SparkCard | null>(null);
+  const [picks, setPicks] = useState<SparkCard[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [minAge, setMinAge] = useState(18);
+  const [maxAge, setMaxAge] = useState(60);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [draftMin, setDraftMin] = useState(18);
+  const [draftMax, setDraftMax] = useState(60);
+  const [draftInterests, setDraftInterests] = useState<string[]>([]);
 
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
@@ -68,18 +77,33 @@ export default function SparkingDawn() {
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      setCards(await api.datingDiscover(seeking));
+      const filters = {
+        minAge: minAge > 18 ? minAge : undefined,
+        maxAge: maxAge < 60 ? maxAge : undefined,
+        interests: interests.length ? interests : undefined,
+      };
+      setCards(await api.datingDiscover(seeking, filters));
       tx.value = 0;
       ty.value = 0;
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, [seeking, tx, ty]);
+  }, [seeking, minAge, maxAge, interests, tx, ty]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    api.datingDailyPicks().then(setPicks).catch(() => {});
+  }, []);
+
+  const openFilters = () => { setDraftMin(minAge); setDraftMax(maxAge); setDraftInterests(interests); setFilterOpen(true); };
+  const applyFilters = () => { setMinAge(draftMin); setMaxAge(Math.max(draftMin, draftMax)); setInterests(draftInterests); setFilterOpen(false); };
+  const resetFilters = () => { setDraftMin(18); setDraftMax(60); setDraftInterests([]); };
+  const toggleDraftInterest = (i: string) => setDraftInterests((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
+  const filterCount = (minAge > 18 ? 1 : 0) + (maxAge < 60 ? 1 : 0) + interests.length;
 
   const commit = useCallback(
     async (action: "like" | "pass", card: SparkCard) => {
@@ -155,6 +179,10 @@ export default function SparkingDawn() {
         <Pressable testID="edit-dating-profile" onPress={() => router.push("/sparking-dawn/profile")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="account-cog" size={19} color={colors.brand} />
         </Pressable>
+        <Pressable testID="open-filters" onPress={openFilters} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: filterCount ? colors.brand : colors.border }]}>
+          <MaterialCommunityIcons name="tune-variant" size={19} color={colors.brand} />
+          {filterCount ? <View style={[styles.filterDot, { backgroundColor: colors.brand }]}><Text style={styles.filterDotText}>{filterCount}</Text></View> : null}
+        </Pressable>
         <Pressable testID="view-liked" onPress={() => router.push("/sparking-dawn/likes")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="cards-heart-outline" size={19} color={colors.brand} />
         </Pressable>
@@ -176,6 +204,21 @@ export default function SparkingDawn() {
           </Pressable>
         ))}
       </View>
+
+      {/* Daily picks */}
+      {picks.length ? (
+        <View style={styles.picksWrap}>
+          <Text style={[styles.picksTitle, { color: colors.onSurface }]}>✨ Today&apos;s Picks</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.picksRow}>
+            {picks.map((p) => (
+              <Pressable key={p.id} testID={`pick-${p.id}`} onPress={() => router.push(`/sparking-dawn/spark/${p.id}`)} style={styles.pick}>
+                <Image source={{ uri: p.photo }} style={[styles.pickPhoto, { borderColor: colors.brandSecondary }]} contentFit="cover" />
+                <Text numberOfLines={1} style={[styles.pickName, { color: colors.muted }]}>{p.display_name.split(" ")[0]}{p.age ? ` ${p.age}` : ""}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {status === "loading" ? (
         <Loading label="Finding kindred sparks…" />
@@ -235,6 +278,45 @@ export default function SparkingDawn() {
           </View>
         </View>
       ) : null}
+
+      {/* Filters */}
+      <Modal visible={filterOpen} transparent animationType="slide" onRequestClose={() => setFilterOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setFilterOpen(false)}>
+          <Pressable style={[styles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.lg }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHead}>
+              <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>Filters</Text>
+              <Pressable onPress={resetFilters} testID="filters-reset"><Text style={[styles.sheetReset, { color: colors.brand }]}>Reset</Text></Pressable>
+            </View>
+
+            <Text style={[styles.filterLabel, { color: colors.onSurface }]}>Age range: {draftMin} – {draftMax}</Text>
+            <View style={styles.ageRow}>
+              <Text style={[styles.ageCap, { color: colors.muted }]}>Min</Text>
+              <Pressable testID="min-minus" onPress={() => setDraftMin((v) => Math.max(18, v - 1))} style={[styles.stepBtn, { borderColor: colors.border }]}><MaterialCommunityIcons name="minus" size={20} color={colors.onSurface} /></Pressable>
+              <Text style={[styles.ageVal, { color: colors.onSurface }]}>{draftMin}</Text>
+              <Pressable testID="min-plus" onPress={() => setDraftMin((v) => Math.min(draftMax, v + 1))} style={[styles.stepBtn, { borderColor: colors.border }]}><MaterialCommunityIcons name="plus" size={20} color={colors.onSurface} /></Pressable>
+            </View>
+            <View style={styles.ageRow}>
+              <Text style={[styles.ageCap, { color: colors.muted }]}>Max</Text>
+              <Pressable testID="max-minus" onPress={() => setDraftMax((v) => Math.max(draftMin, v - 1))} style={[styles.stepBtn, { borderColor: colors.border }]}><MaterialCommunityIcons name="minus" size={20} color={colors.onSurface} /></Pressable>
+              <Text style={[styles.ageVal, { color: colors.onSurface }]}>{draftMax}</Text>
+              <Pressable testID="max-plus" onPress={() => setDraftMax((v) => Math.min(80, v + 1))} style={[styles.stepBtn, { borderColor: colors.border }]}><MaterialCommunityIcons name="plus" size={20} color={colors.onSurface} /></Pressable>
+            </View>
+
+            <Text style={[styles.filterLabel, { color: colors.onSurface, marginTop: spacing.lg }]}>Interests</Text>
+            <View style={styles.intWrap}>
+              {INTERESTS.map((i) => {
+                const on = draftInterests.includes(i);
+                return (
+                  <Pressable key={i} testID={`interest-${i}`} onPress={() => toggleDraftInterest(i)} style={[styles.intChip, { backgroundColor: on ? colors.brand : colors.surfaceSecondary, borderColor: on ? colors.brand : colors.border }]}>
+                    <Text style={[styles.intText, { color: on ? colors.onBrandPrimary : colors.onSurface }]}>{i}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <ForgeButton label="Apply filters" fullWidth size="lg" onPress={applyFilters} testID="filters-apply" style={{ marginTop: spacing.xl }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -252,6 +334,27 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
   iconBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  filterDot: { position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: "center", justifyContent: "center" },
+  filterDotText: { color: "#fff", fontFamily: fonts.bodyBold, fontSize: 10 },
+  picksWrap: { paddingTop: spacing.sm },
+  picksTitle: { fontFamily: fonts.displaySemi, fontSize: 15, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  picksRow: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  pick: { alignItems: "center", width: 64 },
+  pickPhoto: { width: 60, height: 60, borderRadius: 30, borderWidth: 2 },
+  pickName: { fontFamily: fonts.bodyMedium, fontSize: 11, marginTop: 4 },
+  sheetBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
+  sheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  sheetTitle: { fontFamily: fonts.display, fontSize: 22 },
+  sheetReset: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  filterLabel: { fontFamily: fonts.bodyBold, fontSize: 14, marginBottom: spacing.sm },
+  ageRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm },
+  ageCap: { fontFamily: fonts.bodyMedium, fontSize: 13, width: 34 },
+  ageVal: { fontFamily: fonts.display, fontSize: 22, minWidth: 40, textAlign: "center" },
+  stepBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  intWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  intChip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  intText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   tabs: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   tab: { flex: 1, height: 38, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   tabText: { fontFamily: fonts.bodyBold, fontSize: 13 },

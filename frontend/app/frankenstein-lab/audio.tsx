@@ -1,11 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, fileUrl } from "@/src/api/client";
+import { AudioPreview } from "@/src/components/AudioPreview";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -65,15 +66,33 @@ export default function AudioStudio() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [audioStatus, setAudioStatus] = useState<"idle" | "rendering" | "ready" | "failed">("idle");
+  const [audioUrl, setAudioUrl] = useState("");
+  const audioJob = useRef<string | null>(null);
 
-  const switchMode = (m: Mode) => { setMode(m); setResult(null); setOpts({}); setError(""); setSaved(false); };
+  const switchMode = (m: Mode) => { setMode(m); setResult(null); setOpts({}); setError(""); setSaved(false); setAudioStatus("idle"); setAudioUrl(""); audioJob.current = null; };
   const setOpt = (k: "genre" | "mood" | "duration", v: string) => setOpts((o) => ({ ...o, [k]: o[k] === v ? undefined : v }));
+
+  // Poll the fal.ai audio job until a real playable file is ready.
+  useEffect(() => {
+    if (audioStatus !== "rendering" || !audioJob.current) return;
+    let alive = true;
+    const t = setInterval(async () => {
+      try {
+        const s = await api.frankAudioStatus(audioJob.current!);
+        if (!alive) return;
+        if (s.status === "ready" && s.output_url) { setAudioUrl(s.output_url); setAudioStatus("ready"); }
+        else if (s.status === "failed") { setAudioStatus("failed"); }
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => { alive = false; clearInterval(t); };
+  }, [audioStatus]);
 
   const saveToVault = async () => {
     if (!result || saving || saved) return;
     setSaving(true);
     try {
-      await api.frankVaultSave({ kind: mode, prompt: prompt.trim(), image_path: result.image_path, concept: result.concept });
+      await api.frankVaultSave({ kind: mode, prompt: prompt.trim(), image_path: result.image_path, concept: result.concept, media_url: audioUrl });
       setSaved(true);
     } catch {
       setError("Couldn't save to your Vault. Try again.");
@@ -88,14 +107,35 @@ export default function AudioStudio() {
     setError("");
     setResult(null);
     setSaved(false);
+    setAudioStatus("idle");
+    setAudioUrl("");
+    audioJob.current = null;
     try {
+      // 1) Fast concept + cover for context.
       const res = await api.frankAudio({ kind: mode, prompt: prompt.trim(), genre: opts.genre, mood: opts.mood, duration: opts.duration });
       setResult({ concept: res.concept, image_path: res.image_path });
+      // 2) Kick off the REAL audio render on fal.ai.
+      try {
+        const job = await api.frankAudioRender({ kind: mode, prompt: prompt.trim(), genre: opts.genre, mood: opts.mood, duration: opts.duration });
+        audioJob.current = job.job_id;
+        setAudioStatus("rendering");
+      } catch {
+        setAudioStatus("failed");
+      }
     } catch {
       setError("The lab's aether coils overloaded. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryAudio = async () => {
+    setAudioStatus("idle"); setAudioUrl(""); audioJob.current = null;
+    try {
+      const job = await api.frankAudioRender({ kind: mode, prompt: prompt.trim(), genre: opts.genre, mood: opts.mood, duration: opts.duration });
+      audioJob.current = job.job_id;
+      setAudioStatus("rendering");
+    } catch { setAudioStatus("failed"); }
   };
 
   const accent = mode === "music" ? "music-clef-treble" : "waveform";
@@ -133,8 +173,8 @@ export default function AudioStudio() {
             <MaterialCommunityIcons name={accent} size={20} color={colors.brand} />
             <Text style={[styles.introText, { color: colors.muted }]}>
               {mode === "music"
-                ? "Describe a piece of music. GenoTune drafts a full Music Concept and cover art."
-                : "Describe a sound effect. GenoFX drafts a detailed SFX blueprint and a visual."}
+                ? "Describe a piece of music. GenoTune generates a real, playable track (plus a concept & cover art)."
+                : "Describe a sound effect. GenoFX generates a real, playable sound (plus a blueprint & visual)."}
             </Text>
           </View>
 
@@ -173,7 +213,7 @@ export default function AudioStudio() {
             </View>
           ))}
 
-          <ForgeButton label={mode === "music" ? "Compose Music Concept" : "Design SFX Blueprint"} fullWidth size="lg" loading={loading} disabled={prompt.trim().length < 1} onPress={generate} testID="audio-generate" style={{ marginTop: spacing.lg }} icon={<MaterialCommunityIcons name={accent} size={18} color={colors.onBrandPrimary} />} />
+          <ForgeButton label={mode === "music" ? "Generate Music" : "Generate Sound Effect"} fullWidth size="lg" loading={loading} disabled={prompt.trim().length < 1} onPress={generate} testID="audio-generate" style={{ marginTop: spacing.lg }} icon={<MaterialCommunityIcons name={accent} size={18} color={colors.onBrandPrimary} />} />
 
           {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
 
@@ -182,16 +222,29 @@ export default function AudioStudio() {
               {result.image_path ? (
                 <Image source={{ uri: fileUrl(result.image_path) }} style={styles.visual} contentFit="cover" transition={250} />
               ) : null}
+
+              {audioStatus === "rendering" ? (
+                <View style={[styles.comingSoon, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+                  <ActivityIndicator color={colors.brand} />
+                  <Text style={[styles.comingSoonText, { color: colors.onSurface }]}>Generating your real {mode === "music" ? "track" : "sound effect"}… this takes a few seconds.</Text>
+                </View>
+              ) : audioStatus === "ready" && audioUrl ? (
+                <View style={{ marginTop: spacing.lg }}>
+                  <AudioPreview uri={audioUrl} title={mode === "music" ? "Your generated track" : "Your generated sound effect"} />
+                </View>
+              ) : audioStatus === "failed" ? (
+                <View style={{ marginTop: spacing.md }}>
+                  <Text style={[styles.error, { color: colors.error }]}>Audio generation didn&apos;t complete.</Text>
+                  <ForgeButton label="Try audio again" variant="outline" fullWidth onPress={retryAudio} testID="audio-retry" style={{ marginTop: spacing.sm }} />
+                </View>
+              ) : null}
+
               {parseSections(result.concept).map((sec, i) => (
                 <View key={i} style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   {sec.key ? <Text style={[styles.sectionKey, { color: colors.brand }]}>{sec.key}</Text> : null}
                   <Text style={[styles.sectionBody, { color: colors.onSurface }]}>{sec.body}</Text>
                 </View>
               ))}
-              <View style={[styles.comingSoon, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
-                <MaterialCommunityIcons name="headphones" size={18} color={colors.brand} />
-                <Text style={[styles.comingSoonText, { color: colors.onSurface }]}>Playable audio is coming soon — we&apos;ll render the real sound from this blueprint once the audio engine is connected.</Text>
-              </View>
               <ForgeButton
                 label={saved ? "Saved to Vault" : "Save to Vault"}
                 fullWidth

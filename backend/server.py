@@ -22,6 +22,7 @@ from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 import fal_client
+import hashlib
 from email_service import send_order_receipt, send_contact_message, send_contact_confirmation
 from storage_service import put_object, get_object, init_storage, APP_NAME
 
@@ -309,6 +310,7 @@ class FrankVaultBody(BaseModel):
     prompt: str = Field(default="", max_length=600)
     image_path: str = Field(default="", max_length=600)
     concept: str = Field(default="", max_length=8000)
+    media_url: str = Field(default="", max_length=1000)
     title: str = Field(default="", max_length=120)
 
 
@@ -2075,26 +2077,79 @@ async def dating_preferences(body: DatingPrefsBody, user: dict = Depends(require
 
 
 @api_router.get("/dating/discover")
-async def dating_discover(user: dict = Depends(require_user), seeking: str = "all"):
+async def dating_discover(user: dict = Depends(require_user), seeking: str = "all",
+                          min_age: int = 0, max_age: int = 0, interests: str = ""):
     swiped = {s["target_id"] for s in await db.dating_swipes.find({"user_id": user["id"]}, {"_id": 0, "target_id": 1}).to_list(5000)}
     my_matches = await db.dating_matches.find({"users": user["id"]}, {"_id": 0}).to_list(2000)
     matched_ids = set()
     for m in my_matches:
         matched_ids.update(u for u in m["users"] if u != user["id"])
-    exclude = swiped | matched_ids | {user["id"]}
+    blocked = {b["blocked_id"] for b in await db.dating_blocks.find({"user_id": user["id"]}, {"_id": 0, "blocked_id": 1}).to_list(2000)}
+    exclude = swiped | matched_ids | blocked | {user["id"]}
     # Only surface profiles the owner has kept visible.
     query: dict = {"active": True, "visible": {"$ne": False}, "user_id": {"$nin": list(exclude)}}
     if seeking in ("man", "woman", "nonbinary"):
         query["gender"] = seeking
     else:
-        # Honour the viewer's own "interested in" preferences.
         me = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0, "seeking": 1})
         prefs = [s for s in (me or {}).get("seeking", []) if s in ("man", "woman", "nonbinary")]
         if prefs:
             query["gender"] = {"$in": prefs}
+    # Age range filter (only applies to profiles that have an age).
+    if min_age or max_age:
+        age_q: dict = {}
+        if min_age:
+            age_q["$gte"] = int(min_age)
+        if max_age:
+            age_q["$lte"] = int(max_age)
+        query["age"] = age_q
     docs = await db.dating_profiles.find(query, {"_id": 0}).to_list(200)
+    # Loose interest matching against bio/tagline/interests (keeps results even if sparse).
+    terms = [t.strip().lower() for t in interests.split(",") if t.strip()]
+    if terms:
+        def _matches(d: dict) -> bool:
+            hay = " ".join([d.get("bio", ""), d.get("tagline", ""), " ".join(d.get("interests", []))]).lower()
+            return any(t in hay for t in terms)
+        filtered = [d for d in docs if _matches(d)]
+        if filtered:
+            docs = filtered
     random.shuffle(docs)
     return [_dating_card(d) for d in docs[:30]]
+
+
+@api_router.get("/dating/daily-picks")
+async def dating_daily_picks(user: dict = Depends(require_user)):
+    swiped = {s["target_id"] for s in await db.dating_swipes.find({"user_id": user["id"]}, {"_id": 0, "target_id": 1}).to_list(5000)}
+    matched = {u for m in await db.dating_matches.find({"users": user["id"]}, {"_id": 0}).to_list(2000) for u in m["users"] if u != user["id"]}
+    blocked = {b["blocked_id"] for b in await db.dating_blocks.find({"user_id": user["id"]}, {"_id": 0, "blocked_id": 1}).to_list(2000)}
+    exclude = swiped | matched | blocked | {user["id"]}
+    query: dict = {"active": True, "visible": {"$ne": False}, "user_id": {"$nin": list(exclude)}}
+    me = await db.dating_profiles.find_one({"user_id": user["id"]}, {"_id": 0, "seeking": 1})
+    prefs = [s for s in (me or {}).get("seeking", []) if s in ("man", "woman", "nonbinary")]
+    if prefs:
+        query["gender"] = {"$in": prefs}
+    docs = await db.dating_profiles.find(query, {"_id": 0}).to_list(200)
+    # Deterministic daily selection seeded by date + user so picks are stable through the day.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    docs.sort(key=lambda d: hashlib.md5(f"{today}:{user['id']}:{d['user_id']}".encode()).hexdigest())
+    return [_dating_card(d) for d in docs[:5]]
+
+
+@api_router.post("/dating/unmatch/{other_id}")
+async def dating_unmatch(other_id: str, user: dict = Depends(require_user)):
+    await db.dating_matches.delete_one({"key": _match_key(user["id"], other_id)})
+    return {"unmatched": True}
+
+
+@api_router.post("/dating/block/{other_id}")
+async def dating_block(other_id: str, user: dict = Depends(require_user)):
+    await db.dating_blocks.update_one(
+        {"user_id": user["id"], "blocked_id": other_id},
+        {"$set": {"user_id": user["id"], "blocked_id": other_id, "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    await db.dating_matches.delete_one({"key": _match_key(user["id"], other_id)})
+    return {"blocked": True}
 
 
 @api_router.post("/dating/swipe")
@@ -2192,10 +2247,16 @@ _SPARK_REPLIES = {
 @api_router.get("/dating/thread/{other_id}")
 async def dating_thread(other_id: str, user: dict = Depends(require_user)):
     key = _match_key(user["id"], other_id)
+    # Mark the other person's messages as seen by me (read receipt for them).
+    await db.dating_messages.update_many(
+        {"thread_key": key, "sender_id": other_id, "seen": {"$ne": True}},
+        {"$set": {"seen": True}},
+    )
     msgs = await db.dating_messages.find({"thread_key": key}, {"_id": 0}).to_list(2000)
     msgs.sort(key=lambda m: m.get("created_at", ""))
     for m in msgs:
         m["mine"] = m.get("sender_id") == user["id"]
+        m["seen"] = bool(m.get("seen"))
     profile = await _dating_card_for(other_id)
     return {"profile": profile, "messages": msgs}
 
@@ -2209,18 +2270,23 @@ async def dating_thread_send(other_id: str, body: dict, user: dict = Depends(req
     key = _match_key(user["id"], other_id)
     now = datetime.now(timezone.utc)
     msg = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": user["id"],
-           "body": text[:600], "kind": kind, "created_at": now.isoformat()}
+           "body": text[:600], "kind": kind, "seen": False, "created_at": now.isoformat()}
     await db.dating_messages.insert_one(dict(msg))
     msg.pop("_id", None)
     msg["mine"] = True
 
-    # Seeded sparks reply so the thread feels alive.
+    # Seeded sparks reply so the thread feels alive — and that means they've "seen" your messages.
     reply = None
     target = await db.dating_profiles.find_one({"user_id": other_id})
     if target and target.get("seed"):
+        await db.dating_messages.update_many(
+            {"thread_key": key, "sender_id": user["id"], "seen": {"$ne": True}},
+            {"$set": {"seen": True}},
+        )
+        msg["seen"] = True
         pool = _SPARK_REPLIES.get(kind, _SPARK_REPLIES["message"])
         reply = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": other_id,
-                 "body": random.choice(pool), "kind": "message",
+                 "body": random.choice(pool), "kind": "message", "seen": False,
                  "created_at": (now + timedelta(seconds=1)).isoformat()}
         await db.dating_messages.insert_one(dict(reply))
         reply.pop("_id", None)
@@ -7665,6 +7731,122 @@ async def frankenstein_visual(body: FrankVisualBody, user: dict = Depends(requir
     return {"kind": body.kind, "image_path": image_path}
 
 
+# ----- Frankenstein Lab: Real fal.ai audio (GenoTune/GenoFX) + animation (GenoGIF) -----
+GENOTUNE_MODEL = "CassetteAI/music-generator"
+GENOFX_MODEL = "CassetteAI/sound-effects-generator"
+
+
+def _extract_audio_url(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    for key in ("audio_file", "audio", "audio_url"):
+        v = result.get(key)
+        if isinstance(v, dict):
+            return v.get("url", "")
+        if isinstance(v, str):
+            return v
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            return v[0].get("url", "")
+    return ""
+
+
+async def _fal_start_job(model: str, arguments: dict, user_id: str, media_kind: str) -> str:
+    handler = await fal_client.submit_async(model, arguments=arguments)
+    job_id = uuid.uuid4().hex[:12]
+    await db.fal_jobs.insert_one({
+        "job_id": job_id, "user_id": user_id, "model": model,
+        "request_id": handler.request_id, "media_kind": media_kind,
+        "status": "rendering", "output_url": "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return job_id
+
+
+async def _fal_poll_job(job_id: str, user_id: str, extractor) -> dict:
+    job = await db.fal_jobs.find_one({"job_id": job_id, "user_id": user_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "rendering":
+        return {"status": job["status"], "output_url": job.get("output_url", "")}
+    try:
+        st = await fal_client.status_async(job["model"], job["request_id"], with_logs=False)
+        if isinstance(st, fal_client.Completed):
+            result = await fal_client.result_async(job["model"], job["request_id"])
+            url = extractor(result)
+            new_status = "ready" if url else "failed"
+            await db.fal_jobs.update_one({"job_id": job_id}, {"$set": {"status": new_status, "output_url": url}})
+            return {"status": new_status, "output_url": url}
+        return {"status": "rendering", "output_url": ""}
+    except Exception:  # noqa: BLE001
+        logger.exception("fal job poll failed")
+        await db.fal_jobs.update_one({"job_id": job_id}, {"$set": {"status": "failed"}})
+        return {"status": "failed", "output_url": ""}
+
+
+def _audio_seconds(kind: str, label: str | None) -> int:
+    label = (label or "").lower()
+    if kind == "music":
+        if "30" in label:
+            return 30
+        if "2-3" in label or "2–3" in label:
+            return 150
+        return 60
+    # sfx
+    if "one-shot" in label or "1-2" in label or "1–2" in label:
+        return 3
+    if "loop" in label:
+        return 10
+    return 5
+
+
+@api_router.post("/frankenstein/audio/render")
+async def frankenstein_audio_render(body: FrankAudioBody, user: dict = Depends(require_user)):
+    if not FAL_KEY:
+        raise HTTPException(status_code=503, detail="Audio generation isn't configured yet.")
+    is_music = body.kind == "music"
+    model = GENOTUNE_MODEL if is_music else GENOFX_MODEL
+    parts = [body.prompt.strip()]
+    if is_music and body.genre:
+        parts.append(body.genre)
+    if body.mood:
+        parts.append(body.mood)
+    prompt = ", ".join([p for p in parts if p])[:600]
+    duration = _audio_seconds(body.kind, body.duration)
+    try:
+        job_id = await _fal_start_job(model, {"prompt": prompt, "duration": duration}, user["id"], "audio")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Frankenstein audio render submit failed")
+        raise HTTPException(status_code=502, detail="Couldn't start audio generation. Try again.") from e
+    return {"job_id": job_id, "status": "rendering"}
+
+
+@api_router.get("/frankenstein/audio/render-status/{job_id}")
+async def frankenstein_audio_render_status(job_id: str, user: dict = Depends(require_user)):
+    return await _fal_poll_job(job_id, user["id"], _extract_audio_url)
+
+
+@api_router.post("/frankenstein/gif/render")
+async def frankenstein_gif_render(body: FrankVisualBody, user: dict = Depends(require_user)):
+    if not FAL_KEY:
+        raise HTTPException(status_code=503, detail="Animation generation isn't configured yet.")
+    prompt = (
+        f"{body.prompt.strip()}. Short seamless looping animation, smooth motion, "
+        f"expressive, bold colors, steampunk aesthetic."
+    )[:1000]
+    args = {"prompt": prompt, "duration": "5", "aspect_ratio": "1:1"}
+    try:
+        job_id = await _fal_start_job(PS_T2V_MODEL, args, user["id"], "gif")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Frankenstein gif render submit failed")
+        raise HTTPException(status_code=502, detail="Couldn't start animation. Try again.") from e
+    return {"job_id": job_id, "status": "rendering"}
+
+
+@api_router.get("/frankenstein/gif/render-status/{job_id}")
+async def frankenstein_gif_render_status(job_id: str, user: dict = Depends(require_user)):
+    return await _fal_poll_job(job_id, user["id"], _extract_video_url)
+
+
 @api_router.post("/frankenstein/vault", status_code=201)
 async def frankenstein_vault_save(body: FrankVaultBody, user: dict = Depends(require_user)):
     doc = {
@@ -7674,6 +7856,7 @@ async def frankenstein_vault_save(body: FrankVaultBody, user: dict = Depends(req
         "prompt": body.prompt.strip(),
         "image_path": body.image_path,
         "concept": body.concept.strip(),
+        "media_url": body.media_url.strip() if getattr(body, "media_url", "") else "",
         "title": body.title.strip() or (body.prompt.strip()[:60] or body.kind.upper()),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

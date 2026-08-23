@@ -1,13 +1,14 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, fileUrl } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
+import { VideoPlayer } from "@/src/components/VideoPlayer";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -17,7 +18,7 @@ type Kind = "pic" | "logo" | "gif" | "meme";
 const TYPES: { key: Kind; label: string; icon: IconName; hint: string; ph: string }[] = [
   { key: "pic", label: "GenoPic", icon: "image", hint: "High-quality AI images", ph: "e.g. A brass owl perched on a gaslamp at dusk" },
   { key: "logo", label: "GenoLogo", icon: "shield-star", hint: "Clean iconic logos", ph: "e.g. Logo for 'Aether Coffee', a cozy steampunk café" },
-  { key: "gif", label: "GenoGIF", icon: "animation-play", hint: "Keyframe (animation soon)", ph: "e.g. A cat piloting a tiny airship, waving" },
+  { key: "gif", label: "GenoGIF", icon: "animation-play", hint: "Real looping animation", ph: "e.g. A cat piloting a tiny airship, waving" },
   { key: "meme", label: "GenoMeme", icon: "emoticon-lol", hint: "Shareable meme art", ph: "e.g. When the boiler finally works after 3 hours" },
 ];
 
@@ -34,17 +35,46 @@ export default function VisualStudio() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [gifStatus, setGifStatus] = useState<"idle" | "rendering" | "ready" | "failed">("idle");
+  const [gifUrl, setGifUrl] = useState("");
+  const gifJob = useRef<string | null>(null);
 
   const meta = TYPES.find((t) => t.key === kind)!;
 
-  const switchKind = (k: Kind) => { setKind(k); setImagePath(""); setSaved(false); setError(""); };
+  const switchKind = (k: Kind) => { setKind(k); setImagePath(""); setSaved(false); setError(""); setGifStatus("idle"); setGifUrl(""); gifJob.current = null; };
+
+  // Poll the fal.ai animation job for GenoGIF.
+  useEffect(() => {
+    if (gifStatus !== "rendering" || !gifJob.current) return;
+    let alive = true;
+    const t = setInterval(async () => {
+      try {
+        const s = await api.frankGifStatus(gifJob.current!);
+        if (!alive) return;
+        if (s.status === "ready" && s.output_url) { setGifUrl(s.output_url); setGifStatus("ready"); }
+        else if (s.status === "failed") { setGifStatus("failed"); }
+      } catch { /* keep polling */ }
+    }, 4000);
+    return () => { alive = false; clearInterval(t); };
+  }, [gifStatus]);
 
   const generate = async () => {
     if (prompt.trim().length < 1 || loading) return;
     setLoading(true); setError(""); setImagePath(""); setSaved(false);
+    setGifStatus("idle"); setGifUrl(""); gifJob.current = null;
     try {
       const res = await api.frankVisual({ kind, prompt: prompt.trim() });
       setImagePath(res.image_path);
+      // GenoGIF: also render a real looping animation on fal.ai.
+      if (kind === "gif") {
+        try {
+          const job = await api.frankGifRender(prompt.trim());
+          gifJob.current = job.job_id;
+          setGifStatus("rendering");
+        } catch {
+          setGifStatus("failed");
+        }
+      }
     } catch {
       setError("The image forge sputtered. Please try again.");
     } finally {
@@ -56,7 +86,7 @@ export default function VisualStudio() {
     if (!imagePath || saving || saved) return;
     setSaving(true);
     try {
-      await api.frankVaultSave({ kind, prompt: prompt.trim(), image_path: imagePath });
+      await api.frankVaultSave({ kind, prompt: prompt.trim(), image_path: imagePath, media_url: gifUrl });
       // Also surface it in the app-wide Vault organization hub, tagged by category.
       const vaultCat = kind === "logo" ? "Logos" : kind === "gif" ? "GIFs" : kind === "meme" ? "Memes" : "Artwork";
       await api.vaultSave({ source: "frankenstein", ref_id: imagePath, title: prompt.trim() || `Frankenstein ${kind}`,
@@ -105,7 +135,7 @@ export default function VisualStudio() {
           {(kind === "gif" || kind === "meme") ? (
             <View style={[styles.note, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
               <MaterialCommunityIcons name="information-outline" size={16} color={colors.brand} />
-              <Text style={[styles.noteText, { color: colors.onSurface }]}>{kind === "gif" ? "For now we generate a still keyframe — full animation is coming soon." : "For now we generate the meme art — caption tools are coming soon."}</Text>
+              <Text style={[styles.noteText, { color: colors.onSurface }]}>{kind === "gif" ? "GenoGIF generates a real looping animation (a short video) — takes a couple of minutes." : "For now we generate the meme art — caption tools are coming soon."}</Text>
             </View>
           ) : null}
 
@@ -115,6 +145,20 @@ export default function VisualStudio() {
 
           {imagePath ? (
             <>
+              {kind === "gif" ? (
+                gifStatus === "ready" && gifUrl ? (
+                  <View style={{ marginTop: spacing.lg }}>
+                    <VideoPlayer uri={gifUrl} loop style={{ aspectRatio: 1 }} />
+                  </View>
+                ) : gifStatus === "rendering" ? (
+                  <View style={[styles.note, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border, marginTop: spacing.lg }]}>
+                    <ActivityIndicator color={colors.brand} />
+                    <Text style={[styles.noteText, { color: colors.onSurface }]}>Animating your GIF… this can take a couple of minutes. A keyframe preview is shown below.</Text>
+                  </View>
+                ) : gifStatus === "failed" ? (
+                  <Text style={[styles.error, { color: colors.error }]}>Animation didn&apos;t complete — showing the keyframe. You can regenerate.</Text>
+                ) : null
+              ) : null}
               <Image source={{ uri: fileUrl(imagePath) }} style={styles.result} contentFit="cover" transition={250} />
               <ForgeButton
                 label={saved ? "Saved to Vault" : "Save to Vault"}

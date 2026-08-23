@@ -486,3 +486,17 @@ No seeded account — register fresh (see /app/memory/test_credentials.md). Use 
 - **Home District buttons fixed**: `district/[slug].tsx` now renders EVERY feature as a navigable row (universal fallback: mapped route → DISTRICT_HUBS[slug] → /chatmonger/[slug]); added HOME_ACTIONS, STREAMORA_ACTIONS, LIBRARY_ACTIONS maps. No more inert pills / dropped features.
 - **Sparking Dawn**: NEW `spark/[id].tsx` (profile detail with Message/Send Flirt/Send Sex Request; peach 🍑 for women, eggplant 🍆 for men), NEW `chat/[id].tsx` (message thread w/ seeded auto-replies + quick Flirt/Sex Request), NEW `likes.tsx` (Liked Profiles w/ matched/pending badges). Swipe card info button + matches items now open profile detail. Header gains a Liked Profiles button. Routes registered in _layout.
 - Backend: GET /dating/profile/{id}, GET /dating/likes, GET+POST /dating/thread/{id} (dating_messages collection, seeded sparks auto-reply per kind). Verified via agent smoke (auto-replies, match, likes, gender). Lint clean, iOS bundle 1979 modules OK. Screenshots + testing-agent skipped per user request; awaiting user Preview verification.
+
+## Real fal.ai generation (GenoTune/GenoFX/GenoGIF) + Sparking Dawn v2 (2026-06)
+### Real AI generation (fal.ai)
+- **GenoTune** (music): `CassetteAI/music-generator` (note the CAPITALIZED model id — lowercase hangs). **GenoFX** (sfx): `CassetteAI/sound-effects-generator`. Args {prompt, duration:int}; output `audio_file.url` (WAV). NEW backend: POST /frankenstein/audio/render + GET /frankenstein/audio/render-status/{job_id}. Generic fal job system in `fal_jobs` collection (_fal_start_job/_fal_poll_job).
+- **GenoGIF**: real looping animation via existing kling model (PS_T2V_MODEL, aspect 1:1). NEW: POST /frankenstein/gif/render + status. Plays via VideoPlayer(loop) over the keyframe.
+- **GenoVid (PictureShow)**: already real (kling text/image-to-video, projects render + poll) — left as-is.
+- Frontend: NEW `src/components/AudioPreview.tsx` (expo-audio play/pause+progress). audio.tsx Generate now fetches concept + kicks real audio render, polls, plays. visual.tsx GenoGIF renders + shows looping video. Removed all "coming soon" placeholders. VideoPlayer gained `loop` prop. `media_url` added to FrankVaultBody/frankVaultSave.
+- Verified via agent smoke: GenoFX + GenoTune produced real WAVs (HEAD 200). GenoGIF/GenoVid reuse the proven kling pipeline (not re-billed to test). FAL_KEY present.
+### Sparking Dawn v2
+- **Spark Filters**: discover accepts min_age/max_age + interests (loose match); index has a Filters sheet (age steppers + interest chips) with active-count badge.
+- **Daily Picks**: GET /dating/daily-picks (deterministic per date+user, hashlib), horizontal row on index → profile detail.
+- **Read Receipts**: dating_messages gain `seen`; thread GET marks other's msgs seen; seeded reply marks my msgs seen; chat shows Sent/Seen footer under last of my messages.
+- **Unmatch/Block**: POST /dating/unmatch/{id}, POST /dating/block/{id} (dating_blocks excluded from discover + daily-picks); profile detail "…" menu offers Unmatch (if matched) + Block.
+- Verified via agent smoke: daily-picks=5, age filter, block, unmatch. Lint clean; iOS bundle 1980 modules. Screenshots + testing-agent skipped per user request; awaiting Preview verification.
