@@ -1,10 +1,11 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, FriendCard } from "@/src/api/client";
+import { api, fileUrl, FriendActivity, FriendCard } from "@/src/api/client";
 import { AvatarInitials } from "@/src/components/AvatarInitials";
 import { Eyebrow } from "@/src/components/BrassText";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -12,18 +13,40 @@ import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 type Rel = FriendCard & { relation?: string };
 
+const VERB_ICON: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  created: "flask-round-bottom", published: "school", saved: "safe-square",
+};
+
+function timeAgo(iso: string): string {
+  if (!iso) return "";
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(d / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 export default function Friends() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<"people" | "activity">("people");
   const [data, setData] = useState<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>({ friends: [], incoming: [], outgoing: [] });
+  const [feed, setFeed] = useState<FriendActivity[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Rel[]>([]);
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => { try { setData(await api.friends()); } catch { /* ignore */ } }, []);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const loadFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try { setFeed((await api.friendsFeed()).activity); } catch { /* ignore */ } finally { setFeedLoading(false); }
+  }, []);
+  useFocusEffect(useCallback(() => { load(); loadFeed(); }, [load, loadFeed]));
 
   const search = async (text: string) => {
     setQ(text);
@@ -65,6 +88,43 @@ export default function Friends() {
         </View>
       </View>
 
+      <View style={styles.tabRow}>
+        {(["people", "activity"] as const).map((tk) => (
+          <Pressable key={tk} testID={`friends-tab-${tk}`} onPress={() => setTab(tk)} style={[styles.tabBtn, { borderBottomColor: tab === tk ? colors.brand : "transparent" }]}>
+            <MaterialCommunityIcons name={tk === "people" ? "account-group" : "pulse"} size={17} color={tab === tk ? colors.brand : colors.muted} />
+            <Text style={[styles.tabLabel, { color: tab === tk ? colors.brand : colors.muted }]}>{tk === "people" ? "People" : "Activity"}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === "activity" ? (
+        <FlatList
+          data={feed}
+          keyExtractor={(a) => a.id}
+          contentContainerStyle={{ paddingVertical: spacing.sm, paddingBottom: insets.bottom + spacing.xl }}
+          renderItem={({ item }) => {
+            const img = item.image_path ? fileUrl(item.image_path) : item.image_url;
+            return (
+              <Pressable testID={`feed-${item.id}`} onPress={() => item.route && router.push(item.route as any)} style={[styles.feedRow, { borderBottomColor: colors.border }]}>
+                <View style={[styles.feedIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                  <MaterialCommunityIcons name={VERB_ICON[item.verb] ?? "star"} size={18} color={colors.brand} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.feedText, { color: colors.onSurface }]}>
+                    <Text style={{ fontFamily: fonts.bodyBold }}>{item.actor}</Text>
+                    {` ${item.verb} ${item.what}`}
+                  </Text>
+                  {item.title ? <Text numberOfLines={1} style={[styles.feedTitle, { color: colors.muted }]}>{item.title}</Text> : null}
+                  <Text style={[styles.feedTime, { color: colors.muted }]}>{timeAgo(item.created_at)}</Text>
+                </View>
+                {img ? <Image source={{ uri: img }} style={styles.feedThumb} contentFit="cover" transition={200} /> : null}
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={<Text style={[styles.empty, { color: colors.muted }]}>{feedLoading ? "Loading…" : "No friend activity yet. Add friends to see what they create and save."}</Text>}
+        />
+      ) : (
+      <>
       <View style={[styles.searchBar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
         <MaterialCommunityIcons name="magnify" size={20} color={colors.muted} />
         <TextInput testID="friend-search" value={q} onChangeText={search} placeholder="Search by name or handle…" placeholderTextColor={colors.muted} style={[styles.searchInput, { color: colors.onSurface }]} autoCapitalize="none" />
@@ -104,6 +164,8 @@ export default function Friends() {
           ListEmptyComponent={<Text style={[styles.empty, { color: colors.muted }]}>No friends yet. Search above to add some.</Text>}
         />
       )}
+      </>
+      )}
     </View>
   );
 }
@@ -112,6 +174,15 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
+  tabRow: { flexDirection: "row", paddingHorizontal: spacing.lg, gap: spacing.xl },
+  tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.md, borderBottomWidth: 2 },
+  tabLabel: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  feedRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1 },
+  feedIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  feedText: { fontFamily: fonts.body, fontSize: 14.5, lineHeight: 20 },
+  feedTitle: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: 2 },
+  feedTime: { fontFamily: fonts.body, fontSize: 11.5, marginTop: 3 },
+  feedThumb: { width: 48, height: 48, borderRadius: radius.sm },
   searchBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, margin: spacing.lg, marginBottom: spacing.sm, height: 46, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
   section: { fontFamily: fonts.displaySemi, fontSize: 15, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },

@@ -350,6 +350,11 @@ class BBRepairBody(BaseModel):
     problem: str = Field(min_length=3, max_length=1200)
 
 
+class BBReviewBody(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    text: str = Field(default="", max_length=1500)
+
+
 # ---- PictureShow ----
 class PSVideoCreate(BaseModel):
     title: str = Field(min_length=2, max_length=140)
@@ -1801,6 +1806,13 @@ async def seed():
         await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)
     for bid, st in RETRO_STATUS.items():
         await db.retro_businesses.update_one({"id": bid}, {"$set": dict(st)})
+        # For temporary closures, stamp an absolute reopen timestamp once so the
+        # Reopening Alerts sweep can fire when that date passes.
+        if st.get("status") == "temporary_closure":
+            existing = await db.retro_businesses.find_one({"id": bid}, {"_id": 0, "reopen_at": 1})
+            if existing is not None and not existing.get("reopen_at"):
+                reopen = datetime.now(timezone.utc) + timedelta(days=int(st.get("status_days", 0) or 0))
+                await db.retro_businesses.update_one({"id": bid}, {"$set": {"reopen_at": reopen.isoformat()}})
     for bid, insp in RETRO_INSPECTIONS.items():
         await db.retro_businesses.update_one({"id": bid}, {"$set": {"inspection": dict(insp)}})
     for lst in RETRO_LISTINGS:
@@ -3802,6 +3814,100 @@ async def friends_remove(other_id: str, user: dict = Depends(require_user)):
     return {"removed": True}
 
 
+async def _friend_ids(uid: str) -> list[str]:
+    reqs = await db.friend_requests.find(
+        {"status": "accepted", "$or": [{"from": uid}, {"to": uid}]}, {"_id": 0}).to_list(3000)
+    return [r["to"] if r["from"] == uid else r["from"] for r in reqs]
+
+
+@api_router.get("/friends/feed")
+async def friends_feed(user: dict = Depends(require_user)):
+    """Activity feed of what the user's friends have recently created and saved."""
+    uid = user["id"]
+    fids = await _friend_ids(uid)
+    if not fids:
+        return {"activity": []}
+    users = await db.users.find({"id": {"$in": fids}}, {"_id": 0, "id": 1, "display_name": 1}).to_list(3000)
+    names = {u["id"]: u.get("display_name", "A friend") for u in users}
+    activity: list[dict] = []
+
+    # Created — Frankenstein Lab creations.
+    _kind_label = {"pic": "an image", "logo": "a logo", "gif": "a GIF", "meme": "a meme",
+                   "music": "a track", "sfx": "a sound effect"}
+    for it in await db.frank_vault.find({"user_id": {"$in": fids}}, {"_id": 0}).to_list(300):
+        activity.append({
+            "id": f"fv-{it['id']}", "actor": names.get(it["user_id"], "A friend"),
+            "verb": "created", "what": _kind_label.get(it.get("kind", ""), "a creation"),
+            "title": it.get("title", "") or it.get("prompt", ""),
+            "image_path": it.get("image_path", ""), "image_url": it.get("media_url", "") if not it.get("image_path") else "",
+            "route": "/frankenstein-lab/vault", "created_at": it.get("created_at", ""),
+        })
+    # Created — BrainBoost courses.
+    for c in await db.bb_courses.find({"user_id": {"$in": fids}, "user_created": True}, {"_id": 0}).to_list(200):
+        activity.append({
+            "id": f"bc-{c['id']}", "actor": names.get(c["user_id"], "A friend"),
+            "verb": "published", "what": "a course",
+            "title": c.get("title", ""), "image_path": "", "image_url": "",
+            "route": f"/brainboost/course/{c['id']}", "created_at": c.get("created_at", ""),
+        })
+    # Saved — Vault items.
+    for v in await db.vault_items.find({"user_id": {"$in": fids}}, {"_id": 0}).to_list(400):
+        activity.append({
+            "id": f"vi-{v.get('id','')}", "actor": names.get(v["user_id"], "A friend"),
+            "verb": "saved", "what": "to their Vault",
+            "title": v.get("title", ""), "image_path": "", "image_url": v.get("image_url", ""),
+            "route": v.get("route", "") or "/vault", "created_at": v.get("created_at", ""),
+        })
+
+    activity.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+    return {"activity": activity[:60]}
+
+
+# ----- BrainBoost course reviews -----
+async def _bb_course_rating(course_id: str) -> dict:
+    reviews = await db.bb_reviews.find({"course_id": course_id}, {"_id": 0}).to_list(2000)
+    if not reviews:
+        return {"avg": 0.0, "count": 0}
+    return {"avg": round(sum(r["rating"] for r in reviews) / len(reviews), 1), "count": len(reviews)}
+
+
+@api_router.get("/brainboost/courses/{course_id}/reviews")
+async def brainboost_course_reviews(course_id: str, user: dict = Depends(require_user)):
+    course = await db.bb_courses.find_one({"id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    reviews = await db.bb_reviews.find({"course_id": course_id}, {"_id": 0}).to_list(2000)
+    reviews.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    mine = any(r["user_id"] == user["id"] for r in reviews)
+    is_author = course.get("user_id") == user["id"]
+    rating = await _bb_course_rating(course_id)
+    return {"reviews": reviews, **rating, "can_review": (not mine and not is_author), "is_author": is_author}
+
+
+@api_router.post("/brainboost/courses/{course_id}/reviews", status_code=201)
+async def brainboost_add_review(course_id: str, body: BBReviewBody, user: dict = Depends(require_user)):
+    course = await db.bb_courses.find_one({"id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if course.get("user_id") == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't review your own course.")
+    if await db.bb_reviews.find_one({"course_id": course_id, "user_id": user["id"]}):
+        raise HTTPException(status_code=409, detail="You've already reviewed this course.")
+    doc = {
+        "id": uuid.uuid4().hex[:12], "course_id": course_id, "user_id": user["id"],
+        "author": user["display_name"], "rating": body.rating, "text": body.text.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.bb_reviews.insert_one(dict(doc))
+    doc.pop("_id", None)
+    # Notify the course author (if a user-created course).
+    if course.get("user_created") and course.get("user_id"):
+        await _notify(course["user_id"], "bb_review", course_id,
+                      "New course review",
+                      f"{user['display_name']} rated your course \u201c{course.get('title','')}\u201d {body.rating}\u2605.")
+    return doc
+
+
 
 @api_router.get("/brainboost/courses/{course_id}")
 async def brainboost_course_detail(course_id: str, user: dict = Depends(require_user)):
@@ -3809,6 +3915,7 @@ async def brainboost_course_detail(course_id: str, user: dict = Depends(require_
     if not doc:
         raise HTTPException(status_code=404, detail="Course not found")
     doc["completed"] = await _bb_completed(user["id"], course_id)
+    doc["rating"] = await _bb_course_rating(course_id)
     return doc
 
 
@@ -3944,6 +4051,7 @@ def _ps_video_card(v: dict, channels: dict) -> dict:
 
 @api_router.get("/pictureshow")
 async def pictureshow_hub(user: dict = Depends(require_user)):
+    await _archive_stale_streams()
     channels = await _ps_channels_map()
     videos = await db.ps_videos.find({}, {"_id": 0}).to_list(500)
     videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
@@ -4264,6 +4372,40 @@ async def pictureshow_playlist_add(playlist_id: str, body: PSPlaylistAdd, user: 
 
 
 # ----- Streamora (live branch) -----
+async def _archive_stale_streams() -> None:
+    """Background rule: any live stream older than 60 minutes is auto-archived
+    and moved into the main PictureShow district as a recorded video."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=60)
+    streams = await db.ps_streams.find({"status": "live"}, {"_id": 0}).to_list(500)
+    for s in streams:
+        started = s.get("started_at", "")
+        if not started:
+            continue
+        try:
+            st = datetime.fromisoformat(started)
+        except ValueError:
+            continue
+        if st.tzinfo is None:
+            st = st.replace(tzinfo=timezone.utc)
+        if st > cutoff or s.get("archived_video_id"):
+            continue
+        vid = uuid.uuid4().hex[:10]
+        await db.ps_videos.insert_one({
+            "id": vid, "title": s.get("title", "Live replay"),
+            "channel_id": s.get("channel_id", ""),
+            "category": s.get("category", "Live Recordings"),
+            "thumbnail": s.get("thumbnail", ""),
+            "video_url": s.get("video_url", "") or f"{_V}BigBuckBunny.mp4",
+            "description": "Archived from a Streamora live broadcast.",
+            "duration": "1:00:00", "views": int(s.get("viewers", 0)), "likes": 0,
+            "user_id": s.get("user_id", "seed"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "from_stream": True,
+        })
+        # Move the stream out of "live" — it becomes a recent replay + a PictureShow video.
+        await db.ps_streams.update_one({"id": s["id"]}, {"$set": {"status": "recent", "archived_video_id": vid}})
+
+
 def _ps_stream_card(s: dict, channels: dict) -> dict:
     ch = channels.get(s.get("channel_id"), {})
     return {
@@ -4278,6 +4420,7 @@ def _ps_stream_card(s: dict, channels: dict) -> dict:
 
 @api_router.get("/pictureshow/streamora")
 async def streamora_hub(user: dict = Depends(require_user)):
+    await _archive_stale_streams()
     channels = await _ps_channels_map()
     streams = await db.ps_streams.find({}, {"_id": 0}).to_list(500)
     follows = {f["channel_id"] for f in await db.ps_follows.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)}
@@ -4328,6 +4471,7 @@ async def streamora_golive(body: PSGoLiveBody, user: dict = Depends(require_user
         "status": "live" if is_now else "upcoming",
         "viewers": 1 if is_now else 0,
         "scheduled_at": "" if is_now else body.when,
+        "started_at": datetime.now(timezone.utc).isoformat() if is_now else "",
         "user_id": user["id"],
     }
     await db.ps_streams.insert_one(dict(doc))
@@ -5688,6 +5832,7 @@ async def retro_nearby(lat: float, lng: float, user: dict = Depends(require_user
 async def retro_status(user: dict = Depends(require_user)):
     """Real-time business status hub: opening soon, recently opened,
     health inspection updates and temporary closures."""
+    await _sweep_reopenings()
     now = datetime.now(timezone.utc)
     docs = await db.retro_businesses.find({}, {"_id": 0}).to_list(1000)
 
@@ -5730,6 +5875,39 @@ async def retro_status(user: dict = Depends(require_user)):
 
 
 # ----- Retrospections: Save Favorite Places (personal bookmarks) -----
+async def _sweep_reopenings() -> None:
+    """Reopening Alerts: when a temporarily-closed business's reopen date passes,
+    flip it back to open and notify (in-app) every user who favourited it."""
+    now = datetime.now(timezone.utc)
+    docs = await db.retro_businesses.find({"status": "temporary_closure"}, {"_id": 0}).to_list(1000)
+    for b in docs:
+        ra = b.get("reopen_at")
+        if not ra:
+            continue
+        try:
+            when = datetime.fromisoformat(ra)
+        except (ValueError, TypeError):
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        if when > now:
+            continue
+        favs = await db.retro_favorites.find({"business_id": b["id"]}, {"_id": 0, "user_id": 1}).to_list(5000)
+        notified = set(b.get("reopen_notified", []))
+        for f in favs:
+            u = f["user_id"]
+            if u in notified:
+                continue
+            await _notify(u, "retro_reopen", b["id"],
+                          f"{b['name']} has reopened",
+                          f"Good news — {b['name']} is open again after being temporarily closed. Pay them a visit!")
+            notified.add(u)
+        await db.retro_businesses.update_one(
+            {"id": b["id"]},
+            {"$set": {"status": "open", "status_note": "", "reopen_notified": list(notified)},
+             "$unset": {"reopen_at": "", "status_days": ""}})
+
+
 async def _retro_fav_ids(user_id: str) -> set:
     favs = await db.retro_favorites.find({"user_id": user_id}, {"_id": 0, "business_id": 1}).to_list(1000)
     return {f["business_id"] for f in favs}

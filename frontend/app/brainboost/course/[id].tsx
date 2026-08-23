@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, BBCourse } from "@/src/api/client";
+import { api, BBCourse, BBReview } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -21,6 +21,31 @@ export default function CourseDetail() {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [open, setOpen] = useState<number | null>(0);
   const [completed, setCompleted] = useState<number[]>([]);
+  const [reviews, setReviews] = useState<BBReview[]>([]);
+  const [avg, setAvg] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [canReview, setCanReview] = useState(false);
+  const [myRating, setMyRating] = useState(0);
+  const [myText, setMyText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadReviews = useCallback(async () => {
+    if (!id) return;
+    try {
+      const r = await api.bbCourseReviews(id);
+      setReviews(r.reviews); setAvg(r.avg); setReviewCount(r.count); setCanReview(r.can_review);
+    } catch { /* ignore */ }
+  }, [id]);
+
+  const submitReview = async () => {
+    if (!id || myRating < 1 || submitting) return;
+    setSubmitting(true);
+    try {
+      await api.bbAddReview(id, myRating, myText.trim());
+      setMyRating(0); setMyText("");
+      await loadReviews();
+    } catch { /* ignore */ } finally { setSubmitting(false); }
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -30,10 +55,11 @@ export default function CourseDetail() {
       setCourse(res);
       setCompleted(res.completed);
       setStatus("ready");
+      loadReviews();
     } catch {
       setStatus("error");
     }
-  }, [id]);
+  }, [id, loadReviews]);
 
   useEffect(() => {
     load();
@@ -113,6 +139,67 @@ export default function CourseDetail() {
               </View>
             );
           })}
+
+          {/* Reviews */}
+          <View style={styles.reviewHead}>
+            <Text style={[styles.sectionTitle, { color: colors.onSurface, marginTop: 0 }]}>Reviews</Text>
+            {reviewCount > 0 ? (
+              <View style={styles.avgPill}>
+                <MaterialCommunityIcons name="star" size={16} color="#E0A500" />
+                <Text style={[styles.avgText, { color: colors.onSurface }]}>{avg.toFixed(1)}</Text>
+                <Text style={[styles.avgCount, { color: colors.muted }]}>({reviewCount})</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {canReview ? (
+            <View style={[styles.rateBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <Text style={[styles.rateLabel, { color: colors.onSurface }]}>Rate this course</Text>
+              <View style={styles.starRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Pressable key={n} testID={`rate-star-${n}`} onPress={() => setMyRating(n)} hitSlop={6}>
+                    <MaterialCommunityIcons name={n <= myRating ? "star" : "star-outline"} size={30} color={n <= myRating ? "#E0A500" : colors.muted} />
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                testID="review-text"
+                value={myText}
+                onChangeText={setMyText}
+                placeholder="Share a few words (optional)…"
+                placeholderTextColor={colors.muted}
+                multiline
+                maxLength={1500}
+                style={[styles.reviewInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.onSurface }]}
+              />
+              <Pressable
+                testID="review-submit"
+                onPress={submitReview}
+                disabled={myRating < 1 || submitting}
+                style={[styles.submitBtn, { backgroundColor: myRating < 1 ? colors.surfaceTertiary : colors.brand }]}
+              >
+                <Text style={[styles.submitText, { color: myRating < 1 ? colors.muted : colors.onBrandPrimary }]}>{submitting ? "Posting…" : "Post review"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {reviews.length === 0 ? (
+            <Text style={[styles.noReviews, { color: colors.muted }]}>No reviews yet.{canReview ? " Be the first!" : ""}</Text>
+          ) : (
+            reviews.map((r) => (
+              <View key={r.id} style={[styles.reviewCard, { borderBottomColor: colors.border }]}>
+                <View style={styles.reviewCardHead}>
+                  <Text style={[styles.reviewAuthor, { color: colors.onSurface }]}>{r.author}</Text>
+                  <View style={{ flexDirection: "row" }}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <MaterialCommunityIcons key={n} name={n <= r.rating ? "star" : "star-outline"} size={14} color={n <= r.rating ? "#E0A500" : colors.muted} />
+                    ))}
+                  </View>
+                </View>
+                {r.text ? <Text style={[styles.reviewText, { color: colors.muted }]}>{r.text}</Text> : null}
+              </View>
+            ))
+          )}
         </ScrollView>
       )}
     </View>
@@ -139,4 +226,19 @@ const styles = StyleSheet.create({
   lessonText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 22 },
   doneBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, borderRadius: radius.sm, borderWidth: 1.5 },
   doneText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  reviewHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xl, marginBottom: spacing.md },
+  avgPill: { flexDirection: "row", alignItems: "center", gap: 4 },
+  avgText: { fontFamily: fonts.displaySemi, fontSize: 16 },
+  avgCount: { fontFamily: fonts.body, fontSize: 13 },
+  rateBox: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: spacing.sm, marginBottom: spacing.md },
+  rateLabel: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  starRow: { flexDirection: "row", gap: spacing.xs },
+  reviewInput: { minHeight: 60, borderRadius: radius.sm, borderWidth: 1, padding: spacing.md, fontFamily: fonts.body, fontSize: 14, textAlignVertical: "top" },
+  submitBtn: { height: 44, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
+  submitText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  noReviews: { fontFamily: fonts.body, fontSize: 14, paddingVertical: spacing.md },
+  reviewCard: { paddingVertical: spacing.md, borderBottomWidth: 1, gap: 4 },
+  reviewCardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  reviewAuthor: { fontFamily: fonts.displaySemi, fontSize: 14 },
+  reviewText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
 });

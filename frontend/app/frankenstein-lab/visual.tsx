@@ -41,9 +41,11 @@ export default function VisualStudio() {
   const [gifUrl, setGifUrl] = useState("");
   const gifJob = useRef<string | null>(null);
   const shotRef = useRef<View>(null);
+  const [watermarkOn, setWatermarkOn] = useState(true);
 
   const shareVisual = async () => {
     if (kind === "gif" && gifUrl) { downloadAndShare(gifUrl, `${(prompt.trim() || kind)}.mp4`); return; }
+    if (!watermarkOn) { downloadAndShare(fileUrl(imagePath), `${(prompt.trim() || kind)}.png`); return; }
     try {
       const uri = await captureRef(shotRef, { format: "png", quality: 1 });
       await shareLocalUri(uri);
@@ -175,11 +177,25 @@ export default function VisualStudio() {
               ) : null}
               <View ref={shotRef} collapsable={false} style={styles.shotWrap}>
                 <Image source={{ uri: fileUrl(imagePath) }} style={styles.result} contentFit="cover" transition={250} />
-                <View style={styles.watermark}>
-                  <MaterialCommunityIcons name="cog" size={13} color="#fff" />
-                  <Text style={styles.watermarkText}>Konphlux</Text>
-                </View>
+                {watermarkOn ? (
+                  <View style={styles.watermark}>
+                    <MaterialCommunityIcons name="cog" size={13} color="#fff" />
+                    <Text style={styles.watermarkText}>Konphlux</Text>
+                  </View>
+                ) : null}
               </View>
+              {kind !== "gif" ? (
+                <Pressable testID="visual-watermark-toggle" onPress={() => setWatermarkOn((w) => !w)} style={[styles.wmRow, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+                  <MaterialCommunityIcons name={watermarkOn ? "watermark" : "watermark"} size={18} color={colors.brand} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.wmTitle, { color: colors.onSurface }]}>Konphlux watermark</Text>
+                    <Text style={[styles.wmHint, { color: colors.muted }]}>{watermarkOn ? "Shared art will carry the watermark" : "Shared art will have no watermark"}</Text>
+                  </View>
+                  <View style={[styles.wmSwitch, { backgroundColor: watermarkOn ? colors.brand : colors.surfaceTertiary }]}>
+                    <View style={[styles.wmKnob, { alignSelf: watermarkOn ? "flex-end" : "flex-start" }]} />
+                  </View>
+                </Pressable>
+              ) : null}
               <ForgeButton
                 label={saved ? "Saved to Vault" : "Save to Vault"}
                 fullWidth
@@ -235,4 +251,9 @@ const styles = StyleSheet.create({
   shotWrap: { position: "relative" },
   watermark: { position: "absolute", right: 12, bottom: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   watermarkText: { color: "#fff", fontFamily: fonts.displaySemi, fontSize: 12, letterSpacing: 0.3 },
+  wmRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginTop: spacing.md },
+  wmTitle: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  wmHint: { fontFamily: fonts.body, fontSize: 11.5, marginTop: 1 },
+  wmSwitch: { width: 44, height: 26, borderRadius: 13, padding: 3, justifyContent: "center" },
+  wmKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" },
 });

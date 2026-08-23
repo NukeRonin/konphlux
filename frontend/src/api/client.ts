@@ -379,7 +379,9 @@ export type BBCourseCard = {
   lesson_count: number;
 };
 export type BBLesson = { title: string; body: string };
-export type BBCourse = BBCourseCard & { lessons: BBLesson[]; completed: number[] };
+export type BBCourse = BBCourseCard & { lessons: BBLesson[]; completed: number[]; rating?: { avg: number; count: number }; user_created?: boolean };
+export type BBReview = { id: string; course_id: string; user_id: string; author: string; rating: number; text: string; created_at: string };
+export type BBReviewsResponse = { reviews: BBReview[]; avg: number; count: number; can_review: boolean; is_author: boolean };
 export type BBHub = {
   fact_of_day: string;
   categories: string[];
@@ -770,6 +772,7 @@ export type VaultItem = {
 
 export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
 export type FriendCard = { id: string; display_name: string; handle: string; avatar: string };
+export type FriendActivity = { id: string; actor: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string };
 
 export type WPBooking = {
   id: string;
@@ -1005,6 +1008,9 @@ export const api = {
       `/brainboost/courses${category ? `?category=${encodeURIComponent(category)}` : ""}`,
     ),
   bbCourse: (id: string) => request<BBCourse>(`/brainboost/courses/${id}`),
+  bbCourseReviews: (id: string) => request<BBReviewsResponse>(`/brainboost/courses/${id}/reviews`),
+  bbAddReview: (id: string, rating: number, text: string) =>
+    request<BBReview>(`/brainboost/courses/${id}/reviews`, { method: "POST", body: JSON.stringify({ rating, text }) }),
   bbCreateCourse: (body: { title: string; category: string; level: string; summary: string; icon?: string; lessons: { title: string; body: string }[] }) =>
     request<{ id: string }>("/brainboost/courses", { method: "POST", body: JSON.stringify(body) }),
   bbProgress: (id: string, lesson_index: number, completed: boolean) =>
@@ -1322,6 +1328,7 @@ export const api = {
   vaultItems: (q = "", collection = "", category = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}&category=${encodeURIComponent(category)}`),
   vaultToggleFavorite: (id: string) => request<{ is_favorite: boolean }>(`/vault/items/${id}/favorite`, { method: "POST" }),
   friends: () => request<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>("/friends"),
+  friendsFeed: () => request<{ activity: FriendActivity[] }>("/friends/feed"),
   friendsSearch: (q: string) => request<(FriendCard & { relation: string })[]>(`/friends/search?q=${encodeURIComponent(q)}`),
   friendRequest: (id: string) => request<{ status: string }>(`/friends/request/${id}`, { method: "POST" }),
   friendAccept: (id: string) => request<{ status: string }>(`/friends/accept/${id}`, { method: "POST" }),
