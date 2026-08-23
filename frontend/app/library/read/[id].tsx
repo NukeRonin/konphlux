@@ -16,6 +16,7 @@ export default function EbookReader() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { p: jumpParam } = useLocalSearchParams<{ p?: string }>();
   const [book, setBook] = useState<LibraryBook | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [page, setPage] = useState(0);
@@ -31,7 +32,8 @@ export default function EbookReader() {
       const [b, marks] = await Promise.all([api.libraryGetEbook(id!), api.libraryBookmarks(id!)]);
       setBook(b);
       setBookmarks(marks);
-      setPage(Math.min(b.progress_page ?? 0, (b.content?.length ?? 1) - 1));
+      const start = jumpParam != null ? parseInt(jumpParam, 10) : (b.progress_page ?? 0);
+      setPage(Math.min(Math.max(0, start || 0), (b.content?.length ?? 1) - 1));
       setStatus("ready");
     } catch { setStatus("error"); }
   }, [id]);
@@ -52,6 +54,7 @@ export default function EbookReader() {
     setPage(p);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { api.libraryProgress(id!, p).catch(() => {}); }, 400);
+    if (book?.content?.length && p >= book.content.length - 1) api.libraryListen(id!, 0, true).catch(() => {});
   };
 
   const total = book?.content?.length ?? 1;

@@ -11,19 +11,77 @@ import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
+type Stats = { hours_this_month: number; minutes_this_month: number; total_hours: number; books_finished_this_month: number; books_finished_total: number };
+type AllMark = { id: string; book_id: string; page: number; note: string; created_at: string; book_title: string; book_cover: string; book_format: string };
+
 export default function Library() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [books, setBooks] = useState<LibraryBook[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [marks, setMarks] = useState<AllMark[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
-    try { setStatus("loading"); setBooks(await api.libraryEbooks()); setStatus("ready"); }
-    catch { setStatus("error"); }
+    try {
+      setStatus("loading");
+      const [b, s, m] = await Promise.all([
+        api.libraryEbooks(),
+        api.libraryStats().catch(() => null),
+        api.libraryAllBookmarks().catch(() => []),
+      ]);
+      setBooks(b); setStats(s); setMarks(m);
+      setStatus("ready");
+    } catch { setStatus("error"); }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const openMark = (m: AllMark) => {
+    if (m.book_format === "Audio Book") router.push(`/library/audio/${m.book_id}`);
+    else router.push(`/library/read/${m.book_id}?p=${m.page}`);
+  };
+
+  const listenLabel = stats
+    ? (stats.hours_this_month >= 1 ? `${stats.hours_this_month}h` : `${stats.minutes_this_month}m`)
+    : "0m";
+
+  const Header = () => (
+    <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+      <View style={[styles.statsCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <View style={styles.statBox}>
+          <MaterialCommunityIcons name="headphones" size={20} color={colors.brand} />
+          <Text style={[styles.statNum, { color: colors.onSurface }]}>{listenLabel}</Text>
+          <Text style={[styles.statLbl, { color: colors.muted }]}>Listened this month</Text>
+        </View>
+        <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+        <View style={styles.statBox}>
+          <MaterialCommunityIcons name="book-check-outline" size={20} color={colors.brand} />
+          <Text style={[styles.statNum, { color: colors.onSurface }]}>{stats?.books_finished_this_month ?? 0}</Text>
+          <Text style={[styles.statLbl, { color: colors.muted }]}>Finished this month</Text>
+        </View>
+      </View>
+
+      {marks.length ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Your bookmarks</Text>
+          {marks.map((m) => (
+            <Pressable key={m.id} testID={`sync-mark-${m.id}`} onPress={() => openMark(m)} style={[styles.markRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="bookmark" size={18} color={colors.brand} />
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={[styles.markTitle, { color: colors.onSurface }]}>{m.book_title}</Text>
+                <Text numberOfLines={1} style={[styles.markSub, { color: colors.muted }]}>Page {m.page + 1}{m.note ? ` · ${m.note}` : ""}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {books.length ? <Text style={[styles.sectionTitle, { color: colors.onSurface, marginTop: marks.length ? spacing.sm : 0 }]}>Your books</Text> : null}
+    </View>
+  );
 
   const remove = (b: LibraryBook) => {
     Alert.alert(b.title, "Remove this eBook from your Library?", [
@@ -54,6 +112,7 @@ export default function Library() {
         columnWrapperStyle={{ gap: spacing.md }}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={status === "ready" ? <Header /> : null}
         renderItem={({ item }) => (
           <Pressable testID={`lib-book-${item.id}`} onPress={() => router.push(item.format === "Audio Book" ? `/library/audio/${item.id}` : `/library/read/${item.id}`)} onLongPress={() => remove(item)} delayLongPress={280} style={[styles.book, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             {item.cover_url ? <Image source={{ uri: item.cover_url }} style={styles.cover} contentFit="cover" transition={180} /> : (
@@ -92,4 +151,13 @@ const styles = StyleSheet.create({
   fmtText: { fontFamily: fonts.bodyBold, fontSize: 10 },
   title: { fontFamily: fonts.displaySemi, fontSize: 14, lineHeight: 18, marginTop: 3 },
   author: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
+  statsCard: { flexDirection: "row", alignItems: "center", borderRadius: radius.md, borderWidth: 1, paddingVertical: spacing.md },
+  statBox: { flex: 1, alignItems: "center", gap: 3 },
+  statDivider: { width: 1, height: 44 },
+  statNum: { fontFamily: fonts.display, fontSize: 22 },
+  statLbl: { fontFamily: fonts.body, fontSize: 11.5, textAlign: "center" },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 17 },
+  markRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  markTitle: { fontFamily: fonts.displaySemi, fontSize: 14 },
+  markSub: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
 });

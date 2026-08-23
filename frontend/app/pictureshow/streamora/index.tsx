@@ -123,6 +123,38 @@ export default function StreamoraHub() {
           </View>
           {data.live.length ? data.live.map(streamCard) : <Text style={[styles.empty, { color: colors.muted }]}>No one is live right now. Be the first — tap “Go live”.</Text>}
 
+          {/* Your live reactions (recap for streams you host) */}
+          {data.your_streams.length ? (
+            <>
+              <View style={[styles.sectionHead, { marginTop: spacing.xl }]}>
+                <MaterialCommunityIcons name="party-popper" size={18} color={colors.brand} />
+                <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Your live reactions</Text>
+              </View>
+              {data.your_streams.map((s) => (
+                <View key={s.id} testID={`recap-${s.id}`} style={[styles.recapCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={[styles.recapTitle, { color: colors.onSurface }]}>{s.title}</Text>
+                    <Text style={[styles.recapMeta, { color: colors.muted }]}>
+                      {s.status === "live" ? "Live now" : s.status === "upcoming" ? "Upcoming" : "Recent"} · {s.total_reactions} {s.total_reactions === 1 ? "cheer" : "cheers"}
+                    </Text>
+                  </View>
+                  {s.total_reactions > 0 ? (
+                    <View style={styles.recapTop}>
+                      {s.top.map((t) => (
+                        <View key={t.emoji} style={styles.recapTopItem}>
+                          <Text style={{ fontSize: 18 }}>{t.emoji}</Text>
+                          <Text style={[styles.recapTopCount, { color: colors.muted }]}>{t.count}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={[styles.recapMeta, { color: colors.muted }]}>No cheers yet</Text>
+                  )}
+                </View>
+              ))}
+            </>
+          ) : null}
+
           {/* Upcoming */}
           <Text style={[styles.sectionTitle, { color: colors.onSurface, marginTop: spacing.xl, marginBottom: spacing.md }]}>Upcoming streams</Text>
           {data.upcoming.length ? data.upcoming.map(streamCard) : <Text style={[styles.empty, { color: colors.muted }]}>Nothing scheduled yet.</Text>}
@@ -174,4 +206,10 @@ const styles = StyleSheet.create({
   clipThumbWrap: { width: 130, height: 200, borderRadius: radius.md, overflow: "hidden", position: "relative" },
   clipPlay: { position: "absolute", top: "50%", left: "50%", marginLeft: -16, marginTop: -16, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
   clipTitle: { fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 16 },
+  recapCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, marginBottom: spacing.sm },
+  recapTitle: { fontFamily: fonts.displaySemi, fontSize: 15 },
+  recapMeta: { fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
+  recapTop: { flexDirection: "row", gap: spacing.md },
+  recapTopItem: { alignItems: "center" },
+  recapTopCount: { fontFamily: fonts.bodyBold, fontSize: 11, marginTop: 1 },
 });

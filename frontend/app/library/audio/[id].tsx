@@ -32,6 +32,9 @@ export default function AudioBookPlayer() {
   const st = useAudioPlayerStatus(player);
   const seekedRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stRef = useRef(st);
+  const completedRef = useRef(false);
+  stRef.current = st;
 
   const load = useCallback(async () => {
     try { setStatus("loading"); setBook(await api.libraryGetEbook(id!)); setStatus("ready"); }
@@ -49,18 +52,24 @@ export default function AudioBookPlayer() {
     }
   }, [book, st.isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist position every few seconds and on unmount.
+  // Persist position + listening time every few seconds and on unmount.
   useEffect(() => {
     if (!id) return;
     saveTimer.current = setInterval(() => {
-      if (st.currentTime > 0) api.libraryAudioProgress(id, st.currentTime).catch(() => {});
+      const s = stRef.current;
+      if (s.currentTime > 0) api.libraryAudioProgress(id, s.currentTime).catch(() => {});
+      if (s.playing) {
+        const done = !completedRef.current && s.duration > 0 && s.currentTime / s.duration >= 0.98;
+        if (done) completedRef.current = true;
+        api.libraryListen(id, 5, done).catch(() => {});
+      }
     }, 5000);
     return () => {
       if (saveTimer.current) clearInterval(saveTimer.current);
-      if (st.currentTime > 0) api.libraryAudioProgress(id, st.currentTime).catch(() => {});
+      if (stRef.current.currentTime > 0) api.libraryAudioProgress(id, stRef.current.currentTime).catch(() => {});
       player.pause();
     };
-  }, [id, st.currentTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (status === "loading") return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><Loading label="Loading audiobook…" /></View>;
   if (status === "error" || !book) return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><ErrorState onRetry={load} /></View>;

@@ -5,8 +5,9 @@ import { FlatList, Pressable, Share, StyleSheet, Text, TextInput, View } from "r
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, StreamChatMsg } from "@/src/api/client";
+import { api, StreamChatMsg, PartyParticipant } from "@/src/api/client";
 import { VideoPlayer } from "@/src/components/VideoPlayer";
+import { AvatarInitials } from "@/src/components/AvatarInitials";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -24,10 +25,11 @@ export default function WatchParty() {
   const [text, setText] = useState("");
   const [syncPos, setSyncPos] = useState<number | undefined>(undefined);
   const [copied, setCopied] = useState(false);
+  const [participants, setParticipants] = useState<PartyParticipant[]>([]);
   const listRef = useRef<FlatList>(null);
 
   const load = useCallback(async () => {
-    try { setStatus("loading"); setParty(await api.partyState(code!)); setStatus("ready"); }
+    try { const p = await api.partyState(code!); setParty(p); setParticipants(p.participants ?? []); setStatus("ready"); }
     catch { setStatus("error"); }
   }, [code]);
 
@@ -35,18 +37,22 @@ export default function WatchParty() {
 
   const isHost = party?.is_host;
 
-  // Guests poll the host's position; the shared chat polls for everyone.
+  // Heartbeat presence + shared chat for everyone; guests also poll the host's position.
   useEffect(() => {
     if (!code) return;
-    const t = setInterval(async () => {
+    const beat = async () => {
       try {
+        const pres = await api.partyPresence(code);
+        setParticipants(pres.participants ?? []);
         setMessages(await api.partyChat(code));
         if (!isHost) {
           const p = await api.partyState(code);
           setSyncPos(p.position);
         }
       } catch { /* ignore */ }
-    }, 4000);
+    };
+    beat();
+    const t = setInterval(beat, 4000);
     return () => clearInterval(t);
   }, [code, isHost]);
 
@@ -93,6 +99,20 @@ export default function WatchParty() {
         </Pressable>
       </View>
 
+      <View style={[styles.presence, { borderBottomColor: colors.border }]}>
+        <View style={styles.avatarRow}>
+          {participants.slice(0, 6).map((p, i) => (
+            <View key={p.user_id} style={[styles.avatarWrap, { marginLeft: i === 0 ? 0 : -10, borderColor: colors.surface }]}>
+              <AvatarInitials name={p.name} size={30} />
+              {p.is_host ? <View style={[styles.hostDot, { backgroundColor: colors.brand, borderColor: colors.surface }]}><MaterialCommunityIcons name="crown" size={8} color={colors.onBrandPrimary} /></View> : null}
+            </View>
+          ))}
+        </View>
+        <Text style={[styles.presenceText, { color: colors.muted }]} testID="party-presence">
+          {participants.length > 0 ? `${participants.length} ${participants.length === 1 ? "person" : "people"} watching` : "Waiting for others…"}
+        </Text>
+      </View>
+
       <View style={[styles.chat, { borderTopColor: colors.border }]}>
         <FlatList
           ref={listRef}
@@ -131,6 +151,11 @@ const styles = StyleSheet.create({
   host: { fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
   codeChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
   codeText: { fontFamily: fonts.bodyBold, fontSize: 13, letterSpacing: 1 },
+  presence: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
+  avatarRow: { flexDirection: "row", alignItems: "center" },
+  avatarWrap: { borderRadius: 17, borderWidth: 2, position: "relative" },
+  hostDot: { position: "absolute", bottom: -2, right: -2, width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  presenceText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   chat: { flex: 1, borderTopWidth: 1 },
   msgRow: { flexDirection: "row", flexWrap: "wrap" },
   msgAuthor: { fontFamily: fonts.bodyBold, fontSize: 13.5 },

@@ -52,15 +52,21 @@ export default function StreamWatch() {
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList>(null);
   const [cheers, setCheers] = useState<{ id: string; emoji: string }[]>([]);
+  const [recap, setRecap] = useState<{ total: number; top: { emoji: string; count: number }[] }>({ total: 0, top: [] });
 
   const cheer = (emoji: string) => {
     const cid = Math.random().toString(36).slice(2);
     setCheers((c) => [...c, { id: cid, emoji }]);
+    if (id) {
+      setRecap((r) => ({ total: r.total + 1, top: r.top }));
+      api.streamoraReact(id, emoji).catch(() => {});
+    }
   };
 
   const loadChat = useCallback(async () => {
     if (!showChat) return;
     try { setMessages(await api.streamoraChat(id!)); } catch { /* ignore */ }
+    try { setRecap(await api.streamoraReactions(id!)); } catch { /* ignore */ }
   }, [id, showChat]);
 
   useEffect(() => { loadChat(); }, [loadChat]);
@@ -135,6 +141,12 @@ export default function StreamWatch() {
               <Text style={{ fontSize: 20 }}>{e}</Text>
             </Pressable>
           ))}
+          {recap.total > 0 ? (
+            <View style={[styles.recapChip, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} testID="cheer-recap">
+              <Text style={styles.recapEmoji}>{recap.top.slice(0, 3).map((t) => t.emoji).join("")}</Text>
+              <Text style={[styles.recapCount, { color: colors.onSurface }]}>{recap.total}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -201,6 +213,9 @@ const styles = StyleSheet.create({
   cheerBar: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   cheerFloat: { position: "absolute", bottom: 40, left: 0, right: 0, alignItems: "center", height: 0 },
   cheerBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  recapChip: { flexDirection: "row", alignItems: "center", gap: 4, height: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, marginLeft: "auto" },
+  recapEmoji: { fontSize: 15 },
+  recapCount: { fontFamily: fonts.bodyBold, fontSize: 14 },
   schedCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   schedText: { fontFamily: fonts.bodyMedium, fontSize: 14 },
   chat: { flex: 1, borderTopWidth: 1 },

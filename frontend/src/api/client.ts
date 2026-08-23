@@ -421,12 +421,14 @@ export type PSStream = {
   channel_avatar: string;
 };
 export type StreamChatMsg = { id: string; stream_id: string; user_id: string; author: string; body: string; created_at: string };
+export type PartyParticipant = { user_id: string; name: string; is_host: boolean };
 export type PSStreamoraHub = {
   live: PSStream[];
   upcoming: PSStream[];
   recent: PSStream[];
   clips: (PSVideoCard & { video_url: string })[];
   followed: { id: string; name: string; avatar: string }[];
+  your_streams: { id: string; title: string; status: string; thumbnail: string; viewers: number; total_reactions: number; top: { emoji: string; count: number }[] }[];
 };
 
 // Chatterbox
@@ -1017,6 +1019,10 @@ export const api = {
   streamoraChat: (streamId: string) => request<StreamChatMsg[]>(`/pictureshow/streamora/${streamId}/chat`),
   streamoraChatPost: (streamId: string, body: string) =>
     request<StreamChatMsg>(`/pictureshow/streamora/${streamId}/chat`, { method: "POST", body: JSON.stringify({ body }) }),
+  streamoraReact: (streamId: string, emoji: string) =>
+    request<{ ok: boolean }>(`/pictureshow/streamora/${streamId}/react`, { method: "POST", body: JSON.stringify({ emoji }) }),
+  streamoraReactions: (streamId: string) =>
+    request<{ total: number; top: { emoji: string; count: number }[] }>(`/pictureshow/streamora/${streamId}/reactions`),
   psAiConcept: (body: { prompt: string; kind: "video" | "animation"; style?: string }) =>
     request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/concept", { method: "POST", body: JSON.stringify(body) }),
   psAiSuite: (body: PSSuiteConfig) =>
@@ -1230,8 +1236,12 @@ export const api = {
   libraryBookmarks: (id: string) => request<{ id: string; page: number; note: string; created_at: string }[]>(`/library/ebooks/${id}/bookmarks`),
   libraryAddBookmark: (id: string, page: number, note?: string) => request<{ added: boolean }>(`/library/ebooks/${id}/bookmarks`, { method: "POST", body: JSON.stringify({ page, note }) }),
   libraryDeleteBookmark: (id: string, bmId: string) => request<{ deleted: boolean }>(`/library/ebooks/${id}/bookmarks/${bmId}`, { method: "DELETE" }),
+  libraryAllBookmarks: () => request<{ id: string; book_id: string; page: number; note: string; created_at: string; book_title: string; book_cover: string; book_format: string }[]>("/library/bookmarks"),
+  libraryListen: (id: string, delta: number, completed?: boolean) => request<{ ok: boolean }>(`/library/ebooks/${id}/listen`, { method: "POST", body: JSON.stringify({ delta, completed: !!completed }) }),
+  libraryStats: () => request<{ hours_this_month: number; minutes_this_month: number; total_hours: number; books_finished_this_month: number; books_finished_total: number }>("/library/stats"),
   partyCreate: (video_id: string) => request<{ code: string; video_url: string; video_title: string; host_id: string; host_name: string; position: number; playing: boolean; is_host?: boolean }>(`/pictureshow/party`, { method: "POST", body: JSON.stringify({ video_id }) }),
-  partyState: (code: string) => request<{ code: string; video_id: string; video_url: string; video_title: string; host_id: string; host_name: string; position: number; playing: boolean; is_host: boolean }>(`/pictureshow/party/${code}`),
+  partyState: (code: string) => request<{ code: string; video_id: string; video_url: string; video_title: string; host_id: string; host_name: string; position: number; playing: boolean; is_host: boolean; participants: PartyParticipant[] }>(`/pictureshow/party/${code}`),
+  partyPresence: (code: string) => request<{ participants: PartyParticipant[] }>(`/pictureshow/party/${code}/presence`, { method: "POST" }),
   partySync: (code: string, position: number, playing: boolean) => request<{ ok: boolean }>(`/pictureshow/party/${code}/sync`, { method: "POST", body: JSON.stringify({ position, playing }) }),
   partyChat: (code: string) => request<StreamChatMsg[]>(`/pictureshow/party/${code}/chat`),
   partyChatPost: (code: string, body: string) => request<StreamChatMsg>(`/pictureshow/party/${code}/chat`, { method: "POST", body: JSON.stringify({ body }) }),

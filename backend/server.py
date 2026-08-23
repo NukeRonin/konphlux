@@ -3722,7 +3722,26 @@ async def party_state(code: str, user: dict = Depends(require_user)):
     if not p:
         raise HTTPException(status_code=404, detail="Party not found")
     p["is_host"] = p["host_id"] == user["id"]
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=15)).isoformat()
+    rows = await db.party_presence.find({"code": code.upper(), "last_seen": {"$gte": cutoff}}, {"_id": 0}).to_list(100)
+    rows.sort(key=lambda r: (r.get("user_id") != p["host_id"], r.get("last_seen", "")))
+    p["participants"] = [{"user_id": r["user_id"], "name": r["name"], "is_host": r["user_id"] == p["host_id"]} for r in rows]
     return p
+
+
+@api_router.post("/pictureshow/party/{code}/presence")
+async def party_presence(code: str, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    await db.party_presence.update_one(
+        {"code": code.upper(), "user_id": user["id"]},
+        {"$set": {"code": code.upper(), "user_id": user["id"], "name": user["display_name"], "last_seen": now}},
+        upsert=True,
+    )
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=15)).isoformat()
+    p = await db.watch_parties.find_one({"code": code.upper()}, {"_id": 0}) or {}
+    rows = await db.party_presence.find({"code": code.upper(), "last_seen": {"$gte": cutoff}}, {"_id": 0}).to_list(100)
+    rows.sort(key=lambda r: (r.get("user_id") != p.get("host_id"), r.get("last_seen", "")))
+    return {"participants": [{"user_id": r["user_id"], "name": r["name"], "is_host": r["user_id"] == p.get("host_id")} for r in rows]}
 
 
 @api_router.post("/pictureshow/party/{code}/sync")
@@ -3973,10 +3992,21 @@ async def streamora_hub(user: dict = Depends(require_user)):
         {"id": c["id"], "name": c["name"], "avatar": c["avatar"]}
         for cid, c in channels.items() if cid in follows
     ]
+    your_streams = []
+    for s in streams:
+        if s.get("user_id") == user["id"]:
+            recap = await _stream_reaction_recap(s["id"], top_n=4)
+            your_streams.append({
+                "id": s["id"], "title": s.get("title", ""), "status": s.get("status", ""),
+                "thumbnail": s.get("thumbnail", ""), "viewers": int(s.get("viewers", 0)),
+                "total_reactions": recap["total"], "top": recap["top"],
+            })
+    your_streams.sort(key=lambda x: ({"live": 0, "upcoming": 1, "recent": 2}.get(x["status"], 3), -x["total_reactions"]))
     return {
         "live": live, "upcoming": upcoming, "recent": recent,
         "clips": [{**_ps_video_card(c, channels), "video_url": c.get("video_url", "")} for c in clips],
         "followed": followed,
+        "your_streams": your_streams,
     }
 
 
@@ -4056,6 +4086,32 @@ async def streamora_chat_post(stream_id: str, body: dict, user: dict = Depends(r
     await db.stream_chat.insert_one(dict(msg))
     msg.pop("_id", None)
     return msg
+
+
+@api_router.post("/pictureshow/streamora/{stream_id}/react", status_code=201)
+async def streamora_react(stream_id: str, body: dict, user: dict = Depends(require_user)):
+    emoji = (body.get("emoji") or "").strip()[:8]
+    if not emoji:
+        raise HTTPException(status_code=400, detail="No emoji")
+    await db.stream_reactions.insert_one({
+        "id": uuid.uuid4().hex[:12], "stream_id": stream_id, "user_id": user["id"],
+        "emoji": emoji, "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"ok": True}
+
+
+async def _stream_reaction_recap(stream_id: str, top_n: int = 6) -> dict:
+    rows = await db.stream_reactions.find({"stream_id": stream_id}, {"_id": 0}).to_list(5000)
+    counts: dict = {}
+    for r in rows:
+        counts[r["emoji"]] = counts.get(r["emoji"], 0) + 1
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
+    return {"total": len(rows), "top": [{"emoji": e, "count": c} for e, c in top]}
+
+
+@api_router.get("/pictureshow/streamora/{stream_id}/reactions")
+async def streamora_reactions(stream_id: str, user: dict = Depends(require_user)):
+    return await _stream_reaction_recap(stream_id)
 
 
 # ----- AI Video Concept Studio (Nano Banana poster + written storyboard) -----
@@ -6722,6 +6778,55 @@ async def library_add_bookmark(item_id: str, body: dict, user: dict = Depends(re
 async def library_delete_bookmark(item_id: str, bm_id: str, user: dict = Depends(require_user)):
     await db.book_bookmarks.delete_one({"id": bm_id, "user_id": user["id"], "book_id": item_id})
     return {"deleted": True}
+
+
+@api_router.get("/library/bookmarks")
+async def library_all_bookmarks(user: dict = Depends(require_user)):
+    rows = await db.book_bookmarks.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
+    books = {b["id"]: b for b in await db.library_items.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)}
+    out = []
+    for r in rows:
+        b = books.get(r["book_id"])
+        if not b:
+            continue
+        out.append({**r, "book_title": b.get("title", ""), "book_cover": b.get("cover_url", ""),
+                    "book_format": b.get("format", "eBook")})
+    out.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return out
+
+
+@api_router.post("/library/ebooks/{item_id}/listen")
+async def library_listen(item_id: str, body: dict, user: dict = Depends(require_user)):
+    delta = max(0.0, min(3600.0, float(body.get("delta", 0) or 0)))
+    completed = bool(body.get("completed", False))
+    now = datetime.now(timezone.utc)
+    if delta > 0:
+        await db.listen_events.insert_one({
+            "user_id": user["id"], "book_id": item_id, "seconds": delta,
+            "month": now.strftime("%Y-%m"), "created_at": now.isoformat(),
+        })
+    if completed:
+        await db.library_items.update_one(
+            {"id": item_id, "user_id": user["id"]},
+            {"$set": {"finished_at": now.isoformat(), "finished_month": now.strftime("%Y-%m")}})
+    return {"ok": True}
+
+
+@api_router.get("/library/stats")
+async def library_stats(user: dict = Depends(require_user)):
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    ev = await db.listen_events.find({"user_id": user["id"]}, {"_id": 0}).to_list(20000)
+    month_secs = sum(float(e.get("seconds", 0) or 0) for e in ev if e.get("month") == month)
+    total_secs = sum(float(e.get("seconds", 0) or 0) for e in ev)
+    finished_month = await db.library_items.count_documents({"user_id": user["id"], "finished_month": month})
+    total_finished = await db.library_items.count_documents({"user_id": user["id"], "finished_at": {"$exists": True}})
+    return {
+        "hours_this_month": round(month_secs / 3600, 1),
+        "minutes_this_month": int(month_secs / 60),
+        "total_hours": round(total_secs / 3600, 1),
+        "books_finished_this_month": int(finished_month),
+        "books_finished_total": int(total_finished),
+    }
 
 
 async def _add_ebooks_from_order(order: dict) -> None:
