@@ -323,6 +323,20 @@ class BBProgressBody(BaseModel):
     completed: bool = True
 
 
+class BBLessonBody(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    body: str = Field(min_length=1, max_length=6000)
+
+
+class BBCourseBody(BaseModel):
+    title: str = Field(min_length=2, max_length=160)
+    category: str = Field(default="Trades & Crafts", max_length=60)
+    level: str = Field(default="Beginner", max_length=30)
+    summary: str = Field(default="", max_length=300)
+    icon: str = Field(default="school", max_length=40)
+    lessons: list[BBLessonBody] = Field(default_factory=list, max_length=30)
+
+
 class BBQuizSubmit(BaseModel):
     answers: list[int] = Field(default_factory=list)
 
@@ -705,9 +719,11 @@ class VaultItemBody(BaseModel):
     ref_id: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=160)
     image_url: str = Field(default="", max_length=600)
+    media_url: str = Field(default="", max_length=1000)
+    media_type: str = Field(default="", pattern="^(audio|video|)$")
     subtitle: str = Field(default="", max_length=160)
     route: str = Field(default="", max_length=200)
-    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
+    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Images|TV Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
     collection_id: str | None = Field(default=None, max_length=40)
@@ -716,7 +732,7 @@ class VaultItemBody(BaseModel):
 class VaultUpdateBody(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     image_url: str = Field(default="", max_length=600)
-    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
+    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Images|TV Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
 
@@ -785,7 +801,7 @@ DISTRICTS = [
      "tagline": "Every discussion in Konphlux ends up here.",
      "description": "Communities, threads, votes and awards. Discussions started anywhere on the site are routed to the Roundtable.",
      "chatmonger": {"name": "Odyn", "role": "Table Marshal", "greeting": "Pull up a chair. The floor is yours."},
-     "features": ["Create Community", "Browse Communities", "Recently Visited", "Joined Communities", "Discussion threads", "Discussions I Started", "Site-wide discussion routing"]},
+     "features": ["Create Community", "Browse Communities", "Recently Visited", "Joined Communities", "Discussion threads", "Discussions I Started"]},
     {"slug": "chatterbox", "name": "Chatterbox", "icon": "chat-processing",
      "tagline": "Every conversation, one inbox.",
      "description": "Private messages, group chats and calls. Conversations begun anywhere on the site continue here.",
@@ -966,6 +982,8 @@ RETRO_STATUS = {
     "rb-9": {"status": "temporary_closure", "status_days": 3, "status_note": "Brief staff holiday — back soon."},
     "rb-3": {"status": "recently_opened", "status_days": -5, "status_note": "Now open on Rivet Street."},
     "rb-8": {"status": "recently_opened", "status_days": -12, "status_note": "New flagship store."},
+    "rb-4": {"status": "closing_soon", "status_days": 14, "status_note": "Final fortnight — everything must go."},
+    "rb-6": {"status": "closing_soon", "status_days": 5, "status_note": "Closing for good next week. Last orders soon."},
 }
 
 # Health inspection updates (days_ago in the past).
@@ -2257,20 +2275,43 @@ async def dating_thread(other_id: str, user: dict = Depends(require_user)):
     for m in msgs:
         m["mine"] = m.get("sender_id") == user["id"]
         m["seen"] = bool(m.get("seen"))
+        m["media_url"] = m.get("media_url", "")
     profile = await _dating_card_for(other_id)
     return {"profile": profile, "messages": msgs}
 
 
+@api_router.post("/dating/voice-upload", status_code=201)
+async def dating_voice_upload(user: dict = Depends(require_user), file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Voice note too large (max 15MB).")
+    content_type = file.content_type or "audio/m4a"
+    ext = {"audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/wav": "wav",
+           "audio/x-wav": "wav", "audio/aac": "aac", "audio/ogg": "ogg", "audio/webm": "webm"}.get(content_type, "m4a")
+    path = f"{APP_NAME}/dating-voice/{user['id']}/{uuid.uuid4().hex}.{ext}"
+    try:
+        await run_in_threadpool(put_object, path, data, content_type)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Dating voice upload failed")
+        raise HTTPException(status_code=502, detail="Couldn't store the voice note. Try again.") from e
+    return {"path": path}
+
+
 @api_router.post("/dating/thread/{other_id}", status_code=201)
 async def dating_thread_send(other_id: str, body: dict, user: dict = Depends(require_user)):
+    kind = body.get("kind") if body.get("kind") in ("message", "flirt", "sex_request", "voice") else "message"
+    media_url = (body.get("media_url") or "").strip()[:1000]
     text = (body.get("body") or "").strip()
-    kind = body.get("kind") if body.get("kind") in ("message", "flirt", "sex_request") else "message"
-    if not text:
+    if kind == "voice":
+        if not media_url:
+            raise HTTPException(status_code=400, detail="No voice note.")
+        text = text or "🎤 Voice note"
+    elif not text:
         raise HTTPException(status_code=400, detail="Say something first.")
     key = _match_key(user["id"], other_id)
     now = datetime.now(timezone.utc)
     msg = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": user["id"],
-           "body": text[:600], "kind": kind, "seen": False, "created_at": now.isoformat()}
+           "body": text[:600], "kind": kind, "media_url": media_url, "seen": False, "created_at": now.isoformat()}
     await db.dating_messages.insert_one(dict(msg))
     msg.pop("_id", None)
     msg["mine"] = True
@@ -2286,7 +2327,7 @@ async def dating_thread_send(other_id: str, body: dict, user: dict = Depends(req
         msg["seen"] = True
         pool = _SPARK_REPLIES.get(kind, _SPARK_REPLIES["message"])
         reply = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": other_id,
-                 "body": random.choice(pool), "kind": "message", "seen": False,
+                 "body": random.choice(pool), "kind": "message", "media_url": "", "seen": False,
                  "created_at": (now + timedelta(seconds=1)).isoformat()}
         await db.dating_messages.insert_one(dict(reply))
         reply.pop("_id", None)
@@ -3648,6 +3689,118 @@ async def brainboost_courses(user: dict = Depends(require_user), category: str |
         query["category"] = category
     docs = await db.bb_courses.find(query, {"_id": 0}).to_list(300)
     return {"courses": [_bb_course_card(c) for c in docs], "categories": BB_CATEGORIES}
+
+
+@api_router.post("/brainboost/courses", status_code=201)
+async def brainboost_create_course(body: BBCourseBody, user: dict = Depends(require_user)):
+    if not body.lessons:
+        raise HTTPException(status_code=400, detail="Add at least one lesson.")
+    doc = {
+        "id": uuid.uuid4().hex[:12],
+        "title": body.title.strip(), "category": body.category.strip() or "Trades & Crafts",
+        "level": body.level.strip() or "Beginner", "summary": body.summary.strip(),
+        "icon": body.icon.strip() or "school",
+        "lessons": [{"title": l.title.strip(), "body": l.body.strip()} for l in body.lessons],
+        "user_id": user["id"], "author": user["display_name"], "user_created": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.bb_courses.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+def _friend_public(u: dict) -> dict:
+    return {"id": u.get("id", ""), "display_name": u.get("display_name", ""),
+            "handle": u.get("handle", ""), "avatar": u.get("avatar", "")}
+
+
+@api_router.get("/friends")
+async def friends_list(user: dict = Depends(require_user)):
+    uid = user["id"]
+    reqs = await db.friend_requests.find({"$or": [{"from": uid}, {"to": uid}]}, {"_id": 0}).to_list(3000)
+    friend_ids, incoming, outgoing = set(), [], []
+    for r in reqs:
+        if r["status"] == "accepted":
+            friend_ids.add(r["to"] if r["from"] == uid else r["from"])
+        elif r["status"] == "pending":
+            if r["to"] == uid:
+                incoming.append(r["from"])
+            elif r["from"] == uid:
+                outgoing.append(r["to"])
+
+    async def cards(ids):
+        out = []
+        for i in ids:
+            u = await db.users.find_one({"id": i}, {"_id": 0})
+            if u:
+                out.append(_friend_public(u))
+        return out
+    return {"friends": await cards(friend_ids), "incoming": await cards(incoming), "outgoing": await cards(outgoing)}
+
+
+@api_router.get("/friends/search")
+async def friends_search(q: str = "", user: dict = Depends(require_user)):
+    term = q.strip()
+    if len(term) < 1:
+        return []
+    uid = user["id"]
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    rows = await db.users.find({"$or": [{"display_name": rx}, {"handle": rx}, {"email": rx}]}, {"_id": 0}).to_list(40)
+    reqs = await db.friend_requests.find({"$or": [{"from": uid}, {"to": uid}]}, {"_id": 0}).to_list(3000)
+    rel = {}
+    for r in reqs:
+        other = r["to"] if r["from"] == uid else r["from"]
+        rel[other] = "friends" if r["status"] == "accepted" else ("outgoing" if r["from"] == uid else "incoming")
+    out = []
+    for u in rows:
+        if u["id"] == uid:
+            continue
+        c = _friend_public(u)
+        c["relation"] = rel.get(u["id"], "none")
+        out.append(c)
+    return out
+
+
+@api_router.post("/friends/request/{other_id}", status_code=201)
+async def friends_request(other_id: str, user: dict = Depends(require_user)):
+    uid = user["id"]
+    if other_id == uid:
+        raise HTTPException(status_code=400, detail="You can't friend yourself.")
+    if not await db.users.find_one({"id": other_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = await db.friend_requests.find_one({"$or": [
+        {"from": uid, "to": other_id}, {"from": other_id, "to": uid}]}, {"_id": 0})
+    if existing:
+        if existing["status"] == "pending" and existing["from"] == other_id:
+            await db.friend_requests.update_one({"from": other_id, "to": uid}, {"$set": {"status": "accepted"}})
+            return {"status": "accepted"}
+        return {"status": existing["status"]}
+    await db.friend_requests.insert_one({"from": uid, "to": other_id, "status": "pending",
+                                         "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"status": "pending"}
+
+
+@api_router.post("/friends/accept/{other_id}")
+async def friends_accept(other_id: str, user: dict = Depends(require_user)):
+    res = await db.friend_requests.update_one({"from": other_id, "to": user["id"], "status": "pending"},
+                                              {"$set": {"status": "accepted"}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="No pending request")
+    return {"status": "accepted"}
+
+
+@api_router.post("/friends/decline/{other_id}")
+async def friends_decline(other_id: str, user: dict = Depends(require_user)):
+    await db.friend_requests.delete_one({"from": other_id, "to": user["id"], "status": "pending"})
+    return {"status": "declined"}
+
+
+@api_router.delete("/friends/{other_id}")
+async def friends_remove(other_id: str, user: dict = Depends(require_user)):
+    await db.friend_requests.delete_many({"$or": [
+        {"from": user["id"], "to": other_id}, {"from": other_id, "to": user["id"]}]})
+    return {"removed": True}
+
 
 
 @api_router.get("/brainboost/courses/{course_id}")
@@ -5542,7 +5695,7 @@ async def retro_status(user: dict = Depends(require_user)):
         return {"id": b["id"], "name": b["name"], "category": b["category"],
                 "address": b.get("address", ""), "image": b.get("image", "")}
 
-    opening_soon, recently_opened, closures, inspections = [], [], [], []
+    opening_soon, recently_opened, closures, closing_soon, inspections = [], [], [], [], []
     for b in docs:
         st = b.get("status", "open")
         days = int(b.get("status_days", 0) or 0)
@@ -5556,6 +5709,9 @@ async def retro_status(user: dict = Depends(require_user)):
         elif st == "temporary_closure":
             item = _base(b); item["date"] = (now + timedelta(days=days)).isoformat() if days else None; item["days"] = days; item["note"] = note
             closures.append(item)
+        elif st == "closing_soon":
+            item = _base(b); item["date"] = (now + timedelta(days=days)).isoformat() if days else None; item["days"] = days; item["note"] = note
+            closing_soon.append(item)
         insp = b.get("inspection")
         if insp:
             item = _base(b)
@@ -5567,9 +5723,10 @@ async def retro_status(user: dict = Depends(require_user)):
     opening_soon.sort(key=lambda x: x["days"])
     recently_opened.sort(key=lambda x: x["days"], reverse=True)  # most recent first (days negative)
     closures.sort(key=lambda x: (x["days"] is None, x["days"] or 0))
+    closing_soon.sort(key=lambda x: (x["days"] is None, x["days"] or 0))
     inspections.sort(key=lambda x: x["date"], reverse=True)
     return {"opening_soon": opening_soon, "recently_opened": recently_opened,
-            "closures": closures, "inspections": inspections}
+            "closures": closures, "closing_soon": closing_soon, "inspections": inspections}
 
 
 # ----- Retrospections: Save Favorite Places (personal bookmarks) -----
@@ -7385,7 +7542,9 @@ def _vault_public(v: dict) -> dict:
         "id": v["id"], "source": v.get("source", "other"), "ref_id": v.get("ref_id", ""),
         "title": v.get("title", ""), "subtitle": v.get("subtitle", ""),
         "image_url": v.get("image_url", ""), "route": v.get("route", ""),
+        "media_url": v.get("media_url", ""), "media_type": v.get("media_type", ""),
         "category": v.get("category", ""), "text": v.get("text", ""), "notes": v.get("notes", ""),
+        "is_favorite": bool(v.get("favorite")),
         "collection_id": v.get("collection_id"), "created_at": v.get("created_at", ""),
     }
 
@@ -7409,7 +7568,18 @@ async def vault_list_items(q: str = "", collection: str = "", category: str = ""
         term = q.strip().lower()
         rows = [r for r in rows if term in r.get("title", "").lower() or term in r.get("subtitle", "").lower() or term in r.get("text", "").lower()]
     rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    rows.sort(key=lambda r: 0 if r.get("favorite") else 1)
     return [_vault_public(r) for r in rows]
+
+
+@api_router.post("/vault/items/{item_id}/favorite")
+async def vault_toggle_favorite(item_id: str, user: dict = Depends(require_user)):
+    v = await db.vault_items.find_one({"id": item_id, "user_id": user["id"]}, {"_id": 0, "favorite": 1})
+    if not v:
+        raise HTTPException(status_code=404, detail="Item not found")
+    new_fav = not bool(v.get("favorite"))
+    await db.vault_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": {"favorite": new_fav}})
+    return {"is_favorite": new_fav}
 
 
 @api_router.get("/vault/saved-check")
@@ -7426,6 +7596,7 @@ async def vault_save_item(body: VaultItemBody, user: dict = Depends(require_user
     item = {
         "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": body.source, "ref_id": body.ref_id,
         "title": body.title.strip(), "subtitle": body.subtitle.strip(), "image_url": body.image_url.strip(),
+        "media_url": body.media_url.strip(), "media_type": body.media_type,
         "route": body.route.strip(), "category": body.category, "text": body.text.strip(), "notes": body.notes.strip(),
         "collection_id": body.collection_id, "seeded": False,
         "created_at": datetime.now(timezone.utc).isoformat(),

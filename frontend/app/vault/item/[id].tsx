@@ -6,9 +6,12 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, VaultCollection, VaultItem } from "@/src/api/client";
+import { AudioPreview } from "@/src/components/AudioPreview";
+import { VideoPlayer } from "@/src/components/VideoPlayer";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { downloadAndShare } from "@/src/utils/mediaDownload";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 // Contextual deep-links for Knowledge & Travel items.
@@ -85,6 +88,9 @@ export default function VaultItemDetail() {
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} testID="vi-back"><MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} /></Pressable>
         <View style={styles.topActions}>
+          {item.media_url ? (
+            <Pressable onPress={() => downloadAndShare(item.media_url, `${item.title || "creation"}.${item.media_type === "video" ? "mp4" : "wav"}`)} hitSlop={10} testID="vi-download"><MaterialCommunityIcons name="download" size={21} color={colors.onSurface} /></Pressable>
+          ) : null}
           <Pressable onPress={addToBoard} hitSlop={10} testID="vi-add-board"><MaterialCommunityIcons name="folder-plus-outline" size={21} color={colors.onSurface} /></Pressable>
           {editable ? (
             <Pressable onPress={() => router.push(`/vault/add?id=${item.id}`)} hitSlop={10} testID="vi-edit"><MaterialCommunityIcons name="pencil-outline" size={21} color={colors.onSurface} /></Pressable>
@@ -95,6 +101,12 @@ export default function VaultItemDetail() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xl }} showsVerticalScrollIndicator={false}>
         {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.hero} contentFit="cover" transition={180} /> : null}
+        {item.media_url && item.media_type === "video" ? (
+          <View style={{ marginTop: spacing.md }}><VideoPlayer uri={item.media_url} loop style={{ aspectRatio: 1 }} /></View>
+        ) : null}
+        {item.media_url && item.media_type === "audio" ? (
+          <View style={{ marginTop: spacing.md }}><AudioPreview uri={item.media_url} title={item.title} /></View>
+        ) : null}
         <View style={[styles.badgeRow, { marginTop: item.image_url ? spacing.lg : 0 }]}>
           {item.category ? (
             <View style={[styles.catBadge, { backgroundColor: colors.surfaceTertiary }]}>

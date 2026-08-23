@@ -11,6 +11,8 @@ import { ForgeButton } from "@/src/components/ForgeButton";
 import { VideoPlayer } from "@/src/components/VideoPlayer";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { downloadAndShare, shareLocalUri } from "@/src/utils/mediaDownload";
+import { captureRef } from "react-native-view-shot";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 type Kind = "pic" | "logo" | "gif" | "meme";
@@ -38,6 +40,17 @@ export default function VisualStudio() {
   const [gifStatus, setGifStatus] = useState<"idle" | "rendering" | "ready" | "failed">("idle");
   const [gifUrl, setGifUrl] = useState("");
   const gifJob = useRef<string | null>(null);
+  const shotRef = useRef<View>(null);
+
+  const shareVisual = async () => {
+    if (kind === "gif" && gifUrl) { downloadAndShare(gifUrl, `${(prompt.trim() || kind)}.mp4`); return; }
+    try {
+      const uri = await captureRef(shotRef, { format: "png", quality: 1 });
+      await shareLocalUri(uri);
+    } catch {
+      downloadAndShare(fileUrl(imagePath), `${(prompt.trim() || kind)}.png`);
+    }
+  };
 
   const meta = TYPES.find((t) => t.key === kind)!;
 
@@ -88,9 +101,10 @@ export default function VisualStudio() {
     try {
       await api.frankVaultSave({ kind, prompt: prompt.trim(), image_path: imagePath, media_url: gifUrl });
       // Also surface it in the app-wide Vault organization hub, tagged by category.
-      const vaultCat = kind === "logo" ? "Logos" : kind === "gif" ? "GIFs" : kind === "meme" ? "Memes" : "Artwork";
+      const vaultCat = kind === "logo" ? "Logos" : kind === "gif" ? "GIFs" : kind === "meme" ? "Memes" : "Images";
       await api.vaultSave({ source: "frankenstein", ref_id: imagePath, title: prompt.trim() || `Frankenstein ${kind}`,
-        image_url: fileUrl(imagePath), subtitle: `Frankenstein Lab · ${meta.label}`, category: vaultCat, route: "/frankenstein-lab/visual" }).catch(() => {});
+        image_url: fileUrl(imagePath), media_url: kind === "gif" ? gifUrl : "", media_type: kind === "gif" && gifUrl ? "video" : "",
+        subtitle: `Frankenstein Lab · ${meta.label}`, category: vaultCat, route: "/frankenstein-lab/visual" }).catch(() => {});
       setSaved(true);
     } catch {
       setError("Couldn't save to your Vault. Try again.");
@@ -159,7 +173,13 @@ export default function VisualStudio() {
                   <Text style={[styles.error, { color: colors.error }]}>Animation didn&apos;t complete — showing the keyframe. You can regenerate.</Text>
                 ) : null
               ) : null}
-              <Image source={{ uri: fileUrl(imagePath) }} style={styles.result} contentFit="cover" transition={250} />
+              <View ref={shotRef} collapsable={false} style={styles.shotWrap}>
+                <Image source={{ uri: fileUrl(imagePath) }} style={styles.result} contentFit="cover" transition={250} />
+                <View style={styles.watermark}>
+                  <MaterialCommunityIcons name="cog" size={13} color="#fff" />
+                  <Text style={styles.watermarkText}>Konphlux</Text>
+                </View>
+              </View>
               <ForgeButton
                 label={saved ? "Saved to Vault" : "Save to Vault"}
                 fullWidth
@@ -170,6 +190,24 @@ export default function VisualStudio() {
                 testID="visual-save"
                 style={{ marginTop: spacing.md }}
                 icon={<MaterialCommunityIcons name={saved ? "check" : "treasure-chest"} size={18} color={saved ? colors.brand : colors.onBrandPrimary} />}
+              />
+              <ForgeButton
+                label="Download / Share"
+                fullWidth
+                variant="outline"
+                onPress={shareVisual}
+                testID="visual-download"
+                style={{ marginTop: spacing.sm }}
+                icon={<MaterialCommunityIcons name="download" size={18} color={colors.brand} />}
+              />
+              <ForgeButton
+                label="Make another version"
+                fullWidth
+                variant="ghost"
+                onPress={generate}
+                testID="visual-regenerate"
+                style={{ marginTop: spacing.xs }}
+                icon={<MaterialCommunityIcons name="refresh" size={18} color={colors.brand} />}
               />
             </>
           ) : null}
@@ -194,4 +232,7 @@ const styles = StyleSheet.create({
   noteText: { flex: 1, fontFamily: fonts.body, fontSize: 12.5, lineHeight: 18 },
   error: { fontFamily: fonts.bodyBold, fontSize: 13, marginTop: spacing.md, textAlign: "center" },
   result: { width: "100%", height: 300, borderRadius: radius.md, marginTop: spacing.lg },
+  shotWrap: { position: "relative" },
+  watermark: { position: "absolute", right: 12, bottom: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  watermarkText: { color: "#fff", fontFamily: fonts.displaySemi, fontSize: 12, letterSpacing: 0.3 },
 });

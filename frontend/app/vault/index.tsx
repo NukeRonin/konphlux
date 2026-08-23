@@ -50,6 +50,9 @@ export function VaultTile({ item, colors, onPress, onLong }: { item: VaultItem; 
         </View>
         <Text numberOfLines={2} style={[styles.tileTitle, { color: colors.onSurface }]}>{item.title}</Text>
       </View>
+      {item.is_favorite ? (
+        <View style={styles.pinBadge}><MaterialCommunityIcons name="star" size={13} color="#F1C40F" /></View>
+      ) : null}
     </Pressable>
   );
 }
@@ -57,9 +60,16 @@ export function VaultTile({ item, colors, onPress, onLong }: { item: VaultItem; 
 const CATEGORIES: { key: string; icon: IconName }[] = [
   { key: "All", icon: "view-grid-outline" },
   { key: "Jokes", icon: "emoticon-lol-outline" },
-  { key: "GIFs", icon: "animation-play-outline" },
+  { key: "Video Game Cheats", icon: "controller-classic-outline" },
+  { key: "Images", icon: "image-outline" },
+  { key: "TV Recommendations", icon: "television-classic" },
+  { key: "Movie Recommendations", icon: "movie-open-outline" },
+  { key: "Music Recommendations", icon: "music-note-outline" },
+  { key: "Video Game Recommendations", icon: "google-controller" },
   { key: "Logos", icon: "shield-star-outline" },
+  { key: "GIFs", icon: "animation-play-outline" },
   { key: "Memes", icon: "emoticon-happy-outline" },
+  { key: "Sound Effects", icon: "waveform" },
   { key: "Artwork", icon: "palette-outline" },
   { key: "Quotes", icon: "format-quote-close" },
   { key: "Recipes", icon: "silverware-fork-knife" },
@@ -117,6 +127,7 @@ export default function VaultHub() {
 
   const itemActions = (item: VaultItem) => {
     const buttons: any[] = [];
+    buttons.push({ text: item.is_favorite ? "★ Unpin favourite" : "☆ Pin to top", onPress: async () => { try { await api.vaultToggleFavorite(item.id); load(); } catch { /* ignore */ } } });
     if (collections.length) {
       buttons.push({ text: "Add to a collection…", onPress: () => moveMenu(item) });
     }
@@ -286,6 +297,7 @@ const styles = StyleSheet.create({
   masonry: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg },
   col: { flex: 1, gap: spacing.md },
   tile: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  pinBadge: { position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
   tileImg: { width: "100%" },
   tileBody: { padding: spacing.sm, gap: 3 },
   sourceRow: { flexDirection: "row", alignItems: "center", gap: 4 },

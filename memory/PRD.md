@@ -500,3 +500,25 @@ No seeded account — register fresh (see /app/memory/test_credentials.md). Use 
 - **Read Receipts**: dating_messages gain `seen`; thread GET marks other's msgs seen; seeded reply marks my msgs seen; chat shows Sent/Seen footer under last of my messages.
 - **Unmatch/Block**: POST /dating/unmatch/{id}, POST /dating/block/{id} (dating_blocks excluded from discover + daily-picks); profile detail "…" menu offers Unmatch (if matched) + Block.
 - Verified via agent smoke: daily-picks=5, age filter, block, unmatch. Lint clean; iOS bundle 1980 modules. Screenshots + testing-agent skipped per user request; awaiting Preview verification.
+
+## Vault categories + media + Icebreakers/Voice Notes/Download/Regenerate (2026-06)
+### Vault
+- Added categories (frontend index + add, backend VaultItemBody/VaultUpdateBody regex): Video Game Cheats, Images, TV/Movie/Music/Video Game Recommendations, Sound Effects (Jokes/Logos/GIFs/Memes already existed).
+- VaultItem gains `media_url` + `media_type` (audio|video). Vault item detail plays audio (AudioPreview) / video (VideoPlayer loop) and has a Download/Share button (expo-file-system + expo-sharing via `src/utils/mediaDownload.ts`).
+- Frankenstein → Vault: visual Save now maps pic→Images, logo→Logos, gif→GIFs (+video media_url), meme→Memes; audio Save pushes music→"Music Recommendations", sfx→"Sound Effects" with audio media_url. All playable/downloadable from Vault.
+### AI result actions
+- Frankenstein audio + visual results now have "Download / Share" (downloadAndShare) and "Make another version" (regenerate) buttons.
+### Sparking Dawn chat
+- **Icebreakers**: canned witty steampunk openers shown as tappable chips when the thread is empty (fills input).
+- **Voice Notes**: mic button records via expo-audio (useAudioRecorder), permission-gated w/ Open Settings fallback; uploads to object storage (POST /dating/voice-upload) and sends kind="voice" + media_url; voice bubbles play via AudioPreview. dating_messages gained media_url; kind "voice" supported; seeded sparks reply.
+- Verified via agent smoke: vault media save + new categories + list; dating voice message + thread media. Lint clean; iOS bundle 1985 modules. Mic permission already in app.json. Screenshots + testing-agent skipped per user request.
+
+## Retrospections status + Friends + BrainBoost upload + Roundtable cleanup + Vault fav/search + voice trim + watermark (2026-06)
+- **Retrospections status**: added `closing_soon` status (backend RETRO_STATUS rb-4/rb-6, endpoint field). status.tsx tabs: renamed "Closures"→"Temporary Closures" + new "Closing Soon" tab.
+- **Friends**: backend friend_requests collection + endpoints (GET /friends, /friends/search, POST request/accept/decline, DELETE). New `app/friends/index.tsx` (search users, incoming requests accept/ignore, friends list w/ remove). Entry card on Profile tab. Route registered.
+- **BrainBoost upload courses**: POST /brainboost/courses (BBCourseBody, user_created). New `app/brainboost/new-course.tsx` (title/category/level/summary + dynamic lessons). "Upload" button on courses header. Route registered.
+- **Roundtable**: removed "Site-wide discussion routing" from Roundtable district features (backend).
+- **Vault**: search bar already existed; added Favorites — POST /vault/items/{id}/favorite toggle, favorites sort to top, star badge on tiles, "Pin to top/Unpin" in long-press menu. VaultItem.is_favorite.
+- **Trim Voice Notes**: chat mic now stops→preview (AudioPreview) with Send / Re-record before uploading.
+- **Share Sheet Art**: Frankenstein visual images now render a "⚙ Konphlux" watermark; Download/Share captures the watermarked view via captureRef (react-native-view-shot) + shareLocalUri; GIFs fall back to downloadAndShare.
+- Verified via agent smoke: friends request/accept/list, bb course create+list, closing_soon=2. Lint clean; iOS bundle 1989 modules. Screenshots + testing-agent skipped per user request.

@@ -128,6 +128,18 @@ export default function ProfileScreen() {
             </LinearGradient>
           </Pressable>
 
+          {/* Friends */}
+          <Pressable testID="friends-card" onPress={() => router.push("/friends")} style={[styles.friendsCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={styles.menuIconWrap}>
+              <MaterialCommunityIcons name="account-group" size={20} color={colors.brand} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuLabel, { color: colors.onSurface }]}>Friends</Text>
+              <Text style={[styles.menuSub, { color: colors.muted }]}>Find people and manage requests</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={colors.muted} />
+          </Pressable>
+
           {/* Appearance toggle */}
           <Panel style={styles.appearance}>
             <View style={styles.appearanceRow}>
@@ -237,6 +249,7 @@ const styles = StyleSheet.create({
   balanceValue: { fontFamily: fonts.display, fontSize: 26, marginTop: 2 },
 
   appearance: { marginTop: spacing.lg },
+  friendsCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.lg, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   appearanceRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
 
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },

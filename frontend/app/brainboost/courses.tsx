@@ -51,6 +51,10 @@ export default function BrainBoostCourses() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Courses</Text>
           <Eyebrow>Ten minutes a day</Eyebrow>
         </View>
+        <Pressable onPress={() => router.push("/brainboost/new-course")} hitSlop={10} testID="upload-course-btn" style={[styles.uploadBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="plus" size={18} color={colors.brand} />
+          <Text style={[styles.uploadText, { color: colors.brand }]}>Upload</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -99,6 +103,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 22 },
+  uploadBtn: { flexDirection: "row", alignItems: "center", gap: 4, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  uploadText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   catRow: { gap: spacing.sm, paddingBottom: spacing.md },
   catChip: { height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center", flexShrink: 0 },

@@ -96,7 +96,24 @@ export async function uploadAudio(uri: string, isWeb: boolean, mimeType = "audio
   return (data as { path: string }).path;
 }
 
-export type Chatmonger = { name: string; role: string; greeting: string };
+export async function uploadDatingVoice(uri: string, isWeb: boolean, mimeType = "audio/m4a", name = `voice_${Date.now()}.m4a`): Promise<string> {
+  const form = new FormData();
+  if (isWeb) {
+    const blob = await (await fetch(uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri, name, type: mimeType } as any);
+  }
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}/api/dating/voice-upload`, { method: "POST", headers, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = (data as any)?.detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${res.status})`, res.status);
+  }
+  return (data as { path: string }).path;
+}
 
 export type District = {
   slug: string;
@@ -235,7 +252,7 @@ export type SparkCard = {
   liked?: boolean;
   matched?: boolean;
 };
-export type SparkMessage = { id: string; sender_id: string; body: string; kind: string; created_at: string; mine: boolean; seen?: boolean };
+export type SparkMessage = { id: string; sender_id: string; body: string; kind: string; media_url?: string; created_at: string; mine: boolean; seen?: boolean };
 
 export type BazaarResponse = { categories: string[]; listings: Listing[] };
 
@@ -590,7 +607,7 @@ export type Contract = { id: string; offer_id: string; conversation_id: string; 
 
 export type RetroReview = { id: string; business_id: string; user_id: string; author_name: string; rating: number; text: string; created_at: string };
 export type RetroStatusItem = { id: string; name: string; category: string; address: string; image: string; date?: string | null; days?: number; note?: string; grade?: string; score?: number };
-export type RetroStatus = { opening_soon: RetroStatusItem[]; recently_opened: RetroStatusItem[]; closures: RetroStatusItem[]; inspections: RetroStatusItem[] };
+export type RetroStatus = { opening_soon: RetroStatusItem[]; recently_opened: RetroStatusItem[]; closures: RetroStatusItem[]; closing_soon: RetroStatusItem[]; inspections: RetroStatusItem[] };
 export type RetroBusiness = {
   id: string; name: string; category: string; address: string; description: string; image: string;
   lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
@@ -740,15 +757,19 @@ export type VaultItem = {
   title: string;
   subtitle: string;
   image_url: string;
+  media_url: string;
+  media_type: string;
   route: string;
   category: string;
   text: string;
   notes: string;
+  is_favorite?: boolean;
   collection_id: string | null;
   created_at: string;
 };
 
 export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
+export type FriendCard = { id: string; display_name: string; handle: string; avatar: string };
 
 export type WPBooking = {
   id: string;
@@ -974,8 +995,8 @@ export const api = {
   datingProfile: (id: string) => request<SparkCard>(`/dating/profile/${id}`),
   datingLikes: () => request<SparkCard[]>("/dating/likes"),
   datingThread: (id: string) => request<{ profile: SparkCard; messages: SparkMessage[] }>(`/dating/thread/${id}`),
-  datingThreadSend: (id: string, body: string, kind: "message" | "flirt" | "sex_request") =>
-    request<{ message: SparkMessage; reply: SparkMessage | null }>(`/dating/thread/${id}`, { method: "POST", body: JSON.stringify({ body, kind }) }),
+  datingThreadSend: (id: string, body: string, kind: "message" | "flirt" | "sex_request" | "voice", mediaUrl?: string) =>
+    request<{ message: SparkMessage; reply: SparkMessage | null }>(`/dating/thread/${id}`, { method: "POST", body: JSON.stringify({ body, kind, media_url: mediaUrl || "" }) }),
 
   // BrainBoost (learning district)
   bbHub: () => request<BBHub>("/brainboost"),
@@ -984,6 +1005,8 @@ export const api = {
       `/brainboost/courses${category ? `?category=${encodeURIComponent(category)}` : ""}`,
     ),
   bbCourse: (id: string) => request<BBCourse>(`/brainboost/courses/${id}`),
+  bbCreateCourse: (body: { title: string; category: string; level: string; summary: string; icon?: string; lessons: { title: string; body: string }[] }) =>
+    request<{ id: string }>("/brainboost/courses", { method: "POST", body: JSON.stringify(body) }),
   bbProgress: (id: string, lesson_index: number, completed: boolean) =>
     request<{ course_id: string; completed: number[]; total: number }>(`/brainboost/courses/${id}/progress`, {
       method: "POST",
@@ -1297,8 +1320,15 @@ export const api = {
 
   // ---- Vault (visual organization hub) ----
   vaultItems: (q = "", collection = "", category = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}&category=${encodeURIComponent(category)}`),
+  vaultToggleFavorite: (id: string) => request<{ is_favorite: boolean }>(`/vault/items/${id}/favorite`, { method: "POST" }),
+  friends: () => request<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>("/friends"),
+  friendsSearch: (q: string) => request<(FriendCard & { relation: string })[]>(`/friends/search?q=${encodeURIComponent(q)}`),
+  friendRequest: (id: string) => request<{ status: string }>(`/friends/request/${id}`, { method: "POST" }),
+  friendAccept: (id: string) => request<{ status: string }>(`/friends/accept/${id}`, { method: "POST" }),
+  friendDecline: (id: string) => request<{ status: string }>(`/friends/decline/${id}`, { method: "POST" }),
+  friendRemove: (id: string) => request<{ removed: boolean }>(`/friends/${id}`, { method: "DELETE" }),
   vaultSavedCheck: (source: string, refId: string) => request<{ saved: boolean; id: string | null }>(`/vault/saved-check?source=${encodeURIComponent(source)}&ref_id=${encodeURIComponent(refId)}`),
-  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; category?: string; text?: string; notes?: string; collection_id?: string | null }) =>
+  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; media_url?: string; media_type?: string; subtitle?: string; route?: string; category?: string; text?: string; notes?: string; collection_id?: string | null }) =>
     request<{ saved: boolean; item: VaultItem }>("/vault/items", { method: "POST", body: JSON.stringify(body) }),
   vaultGetItem: (id: string) => request<VaultItem>(`/vault/items/${id}`),
   vaultUpdateItem: (id: string, body: { title: string; image_url?: string; category?: string; text?: string; notes?: string }) =>

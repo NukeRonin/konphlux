@@ -11,6 +11,7 @@ import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { downloadAndShare } from "@/src/utils/mediaDownload";
 
 type Mode = "music" | "sfx";
 
@@ -93,6 +94,16 @@ export default function AudioStudio() {
     setSaving(true);
     try {
       await api.frankVaultSave({ kind: mode, prompt: prompt.trim(), image_path: result.image_path, concept: result.concept, media_url: audioUrl });
+      const vaultCat = mode === "music" ? "Music Recommendations" : "Sound Effects";
+      await api.vaultSave({
+        source: "frankenstein",
+        ref_id: audioUrl || result.image_path || `${mode}-${Date.now()}`,
+        title: prompt.trim() || (mode === "music" ? "Generated track" : "Generated sound effect"),
+        image_url: result.image_path ? fileUrl(result.image_path) : "",
+        media_url: audioUrl, media_type: audioUrl ? "audio" : "",
+        subtitle: `Frankenstein Lab · ${mode === "music" ? "GenoTune" : "GenoFX"}`,
+        category: vaultCat, route: "/frankenstein-lab/audio",
+      }).catch(() => {});
       setSaved(true);
     } catch {
       setError("Couldn't save to your Vault. Try again.");
@@ -231,6 +242,8 @@ export default function AudioStudio() {
               ) : audioStatus === "ready" && audioUrl ? (
                 <View style={{ marginTop: spacing.lg }}>
                   <AudioPreview uri={audioUrl} title={mode === "music" ? "Your generated track" : "Your generated sound effect"} />
+                  <ForgeButton label="Download / Share" variant="outline" fullWidth onPress={() => downloadAndShare(audioUrl, `${(prompt.trim() || mode) }.wav`)} testID="audio-download" style={{ marginTop: spacing.sm }} icon={<MaterialCommunityIcons name="download" size={18} color={colors.brand} />} />
+                  <ForgeButton label="Make another version" variant="ghost" fullWidth onPress={retryAudio} testID="audio-regenerate" style={{ marginTop: spacing.xs }} icon={<MaterialCommunityIcons name="refresh" size={18} color={colors.brand} />} />
                 </View>
               ) : audioStatus === "failed" ? (
                 <View style={{ marginTop: spacing.md }}>

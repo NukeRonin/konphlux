@@ -16,7 +16,8 @@ const TABS: { key: string; label: string; icon: keyof typeof MaterialCommunityIc
   { key: "opening", label: "Opening Soon", icon: "storefront-outline", color: "#3182CE" },
   { key: "recent", label: "Recently Opened", icon: "storefront-check-outline", color: "#38A169" },
   { key: "health", label: "Health", icon: "clipboard-pulse-outline", color: "#805AD5" },
-  { key: "closures", label: "Closures", icon: "store-off-outline", color: "#DD6B20" },
+  { key: "closures", label: "Temporary Closures", icon: "store-clock-outline", color: "#DD6B20" },
+  { key: "closing", label: "Closing Soon", icon: "store-off-outline", color: "#E53E3E" },
 ];
 
 function daysPhrase(days?: number, future = true) {
@@ -59,6 +60,7 @@ export default function BusinessStatus() {
     if (kind === "opening") meta = `Opens ${daysPhrase(it.days, true)}`;
     else if (kind === "recent") meta = `Opened ${daysPhrase(it.days, false)}`;
     else if (kind === "closures") meta = it.days ? `Reopens ${daysPhrase(it.days, true)}` : "Temporarily closed";
+    else if (kind === "closing") meta = it.days ? `Closing ${daysPhrase(it.days, true)}` : "Closing soon";
     else if (kind === "health") {
       let ago = "";
       try { const d = Math.round((Date.now() - new Date(it.date || "").getTime()) / 86400000); ago = daysPhrase(-d, false); } catch { ago = ""; }
@@ -98,6 +100,7 @@ export default function BusinessStatus() {
     if (active === "opening") return { items: data.opening_soon, kind: "opening", empty: "No new businesses opening soon right now." };
     if (active === "recent") return { items: data.recently_opened, kind: "recent", empty: "No businesses opened recently." };
     if (active === "health") return { items: data.inspections, kind: "health", empty: "No health inspection updates yet." };
+    if (active === "closing") return { items: data.closing_soon, kind: "closing", empty: "No businesses closing soon. Good news!" };
     return { items: data.closures, kind: "closures", empty: "No temporary closures reported. All open!" };
   };
   const { items, kind, empty } = listFor();

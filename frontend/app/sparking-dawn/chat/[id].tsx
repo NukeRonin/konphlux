@@ -1,12 +1,14 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from "expo-audio";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, SparkCard, SparkMessage } from "@/src/api/client";
+import { api, fileUrl, SparkCard, SparkMessage, uploadDatingVoice } from "@/src/api/client";
+import { AudioPreview } from "@/src/components/AudioPreview";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -19,6 +21,13 @@ function sexEmoji(gender: string | null): string {
 
 const FLIRT_LINE = "Is it warm in here, or is that just the spark between us? 😏";
 const SEX_LINE = "I can't stop thinking about you. Care to make some heat together tonight? 🔥";
+const ICEBREAKERS = [
+  "If we split a hot-air balloon, are you a window or aisle person? 🎈",
+  "Quick — describe your soul as a steampunk gadget. ⚙️",
+  "Two truths and a lie about your last adventure. Go. ✨",
+  "You're clearly trouble. What's your best terrible pun?",
+  "Copperpot cocoa or aether-fizz spritz — pick your poison? ☕",
+];
 
 export default function SparkChat() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,6 +39,10 @@ export default function SparkChat() {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [pendingVoice, setPendingVoice] = useState<string | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const listRef = useRef<FlatList>(null);
 
   const load = useCallback(async () => {
@@ -59,6 +72,49 @@ export default function SparkChat() {
     } catch { /* ignore */ } finally { setBusy(false); }
   };
 
+  const startRecording = async () => {
+    if (busy || uploading || !id) return;
+    const perm = await AudioModule.requestRecordingPermissionsAsync();
+    if (!perm.granted) {
+      if (!perm.canAskAgain) {
+        Alert.alert("Microphone needed", "Enable microphone access in Settings to send voice notes.", [
+          { text: "Not now", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ]);
+      }
+      return;
+    }
+    try {
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      recorder.record();
+      setRecording(true);
+    } catch { setRecording(false); }
+  };
+
+  const stopAndSend = async () => {
+    if (!recording) return;
+    setRecording(false);
+    try {
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (uri) setPendingVoice(uri); // preview before sending
+    } catch { /* ignore */ }
+  };
+
+  const sendVoice = async () => {
+    if (!pendingVoice || !id) return;
+    setUploading(true);
+    try {
+      const path = await uploadDatingVoice(pendingVoice, Platform.OS === "web");
+      const url = fileUrl(path);
+      const res = await api.datingThreadSend(id, "🎤 Voice note", "voice", url);
+      setMessages((prev) => [...prev, res.message, ...(res.reply ? [res.reply] : [])]);
+      setPendingVoice(null);
+    } catch { /* ignore */ } finally { setUploading(false); }
+  };
+
+  const discardVoice = () => setPendingVoice(null);
+
   const renderItem = ({ item }: { item: SparkMessage }) => (
     <View style={[styles.bubbleRow, { justifyContent: item.mine ? "flex-end" : "flex-start" }]}>
       <View style={[styles.bubble, item.mine
@@ -66,7 +122,14 @@ export default function SparkChat() {
         : { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderTopLeftRadius: 4 }]}
       >
         {item.kind === "sex_request" ? <Text style={styles.kindTag}>{sexEmoji(profile?.gender ?? null)} Request</Text> : item.kind === "flirt" ? <Text style={styles.kindTag}>😏 Flirt</Text> : null}
-        <Text style={[styles.bubbleText, { color: item.mine ? colors.onBrandPrimary : colors.onSurface }]}>{item.body}</Text>
+        {item.kind === "voice" && item.media_url ? (
+          <View style={{ minWidth: 200 }}>
+            <Text style={[styles.kindTag, { marginBottom: 4 }]}>🎤 Voice note</Text>
+            <AudioPreview uri={item.media_url} />
+          </View>
+        ) : (
+          <Text style={[styles.bubbleText, { color: item.mine ? colors.onBrandPrimary : colors.onSurface }]}>{item.body}</Text>
+        )}
       </View>
     </View>
   );
@@ -115,6 +178,39 @@ export default function SparkChat() {
             }
           />
           <KeyboardStickyView>
+            {pendingVoice ? (
+              <View style={[styles.previewBar, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.previewLabel, { color: colors.muted }]}>Preview your voice note</Text>
+                  <AudioPreview uri={pendingVoice} />
+                </View>
+                <View style={{ gap: spacing.sm }}>
+                  <Pressable testID="voice-send" disabled={uploading} onPress={sendVoice} style={[styles.vSend, { backgroundColor: colors.brand }]}>
+                    {uploading ? <ActivityIndicator size="small" color={colors.onBrandPrimary} /> : <MaterialCommunityIcons name="send" size={18} color={colors.onBrandPrimary} />}
+                  </Pressable>
+                  <Pressable testID="voice-rerecord" disabled={uploading} onPress={discardVoice} style={[styles.vRedo, { borderColor: colors.border }]}>
+                    <MaterialCommunityIcons name="microphone-outline" size={18} color={colors.muted} />
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+            {messages.length === 0 ? (
+              <View style={[styles.iceWrap, { borderTopColor: colors.border }]}>
+                <Text style={[styles.iceTitle, { color: colors.muted }]}>💡 Icebreakers — tap to use</Text>
+                <FlatList
+                  horizontal
+                  data={ICEBREAKERS}
+                  keyExtractor={(m) => m}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}
+                  renderItem={({ item }) => (
+                    <Pressable testID="icebreaker" onPress={() => setText(item)} style={[styles.iceChip, { backgroundColor: colors.surfaceSecondary, borderColor: colors.brandSecondary }]}>
+                      <Text style={[styles.iceText, { color: colors.onSurface }]}>{item}</Text>
+                    </Pressable>
+                  )}
+                />
+              </View>
+            ) : null}
             <View style={[styles.quickRow, { borderTopColor: colors.border }]}>
               <Pressable testID="chat-flirt" disabled={busy} onPress={() => send(FLIRT_LINE, "flirt")} style={[styles.quickBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.brandSecondary }]}>
                 <Text style={styles.quickEmoji}>😏</Text>
@@ -126,12 +222,21 @@ export default function SparkChat() {
               </Pressable>
             </View>
             <View style={[styles.inputBar, { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.sm }]}>
+              <Pressable
+                testID="chat-mic"
+                disabled={uploading}
+                onPress={recording ? stopAndSend : startRecording}
+                style={[styles.micBtn, { backgroundColor: recording ? "#C0392B" : colors.surfaceSecondary, borderColor: recording ? "#C0392B" : colors.border }]}
+              >
+                {uploading ? <ActivityIndicator size="small" color={colors.brand} /> : <MaterialCommunityIcons name={recording ? "stop" : "microphone"} size={20} color={recording ? "#fff" : colors.brand} />}
+              </Pressable>
               <TextInput
                 testID="chat-input"
                 value={text}
                 onChangeText={setText}
-                placeholder="Write a message…"
+                placeholder={recording ? "Recording… tap stop to send" : "Write a message…"}
                 placeholderTextColor={colors.muted}
+                editable={!recording}
                 style={[styles.input, { color: colors.onSurface, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
                 multiline
               />
@@ -162,6 +267,15 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingTop: spacing.xxxl },
   emptyText: { fontFamily: fonts.body, fontSize: 14, textAlign: "center", paddingHorizontal: spacing.xl },
   quickRow: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderTopWidth: 1 },
+  iceWrap: { paddingTop: spacing.sm, paddingBottom: spacing.xs, borderTopWidth: 1 },
+  iceTitle: { fontFamily: fonts.bodyBold, fontSize: 11.5, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  iceChip: { maxWidth: 240, borderRadius: radius.pill, borderWidth: 1.5, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  iceText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  micBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  previewBar: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderTopWidth: 1 },
+  previewLabel: { fontFamily: fonts.bodyBold, fontSize: 11.5, marginBottom: 6 },
+  vSend: { width: 44, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  vRedo: { width: 44, height: 40, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   quickBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, borderRadius: radius.pill, borderWidth: 1.5 },
   quickEmoji: { fontSize: 16 },
   quickText: { fontFamily: fonts.bodyBold, fontSize: 13 },
