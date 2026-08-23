@@ -6814,19 +6814,51 @@ async def library_listen(item_id: str, body: dict, user: dict = Depends(require_
 
 @api_router.get("/library/stats")
 async def library_stats(user: dict = Depends(require_user)):
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    now = datetime.now(timezone.utc)
+    month = now.strftime("%Y-%m")
     ev = await db.listen_events.find({"user_id": user["id"]}, {"_id": 0}).to_list(20000)
     month_secs = sum(float(e.get("seconds", 0) or 0) for e in ev if e.get("month") == month)
     total_secs = sum(float(e.get("seconds", 0) or 0) for e in ev)
     finished_month = await db.library_items.count_documents({"user_id": user["id"], "finished_month": month})
     total_finished = await db.library_items.count_documents({"user_id": user["id"], "finished_at": {"$exists": True}})
+
+    # Daily listening streak: consecutive days (ending today or yesterday) with any activity.
+    days = set()
+    for e in ev:
+        ca = e.get("created_at", "")
+        if ca:
+            days.add(ca[:10])
+    streak = 0
+    listened_today = now.strftime("%Y-%m-%d") in days
+    cursor = now.date() if listened_today else (now.date() - timedelta(days=1))
+    while cursor.strftime("%Y-%m-%d") in days:
+        streak += 1
+        cursor = cursor - timedelta(days=1)
+
+    goal_doc = await db.library_goals.find_one({"user_id": user["id"]}, {"_id": 0})
+    goal = int(goal_doc.get("monthly_goal", 0)) if goal_doc else 0
+
     return {
         "hours_this_month": round(month_secs / 3600, 1),
         "minutes_this_month": int(month_secs / 60),
         "total_hours": round(total_secs / 3600, 1),
         "books_finished_this_month": int(finished_month),
         "books_finished_total": int(total_finished),
+        "streak_days": streak,
+        "listened_today": listened_today,
+        "monthly_goal": goal,
     }
+
+
+@api_router.post("/library/goal")
+async def library_set_goal(body: dict, user: dict = Depends(require_user)):
+    goal = max(0, min(999, int(body.get("goal", 0) or 0)))
+    await db.library_goals.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"user_id": user["id"], "monthly_goal": goal}},
+        upsert=True,
+    )
+    return {"monthly_goal": goal}
 
 
 async def _add_ebooks_from_order(order: dict) -> None:

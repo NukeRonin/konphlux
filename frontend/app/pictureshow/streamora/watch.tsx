@@ -7,12 +7,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, StreamChatMsg } from "@/src/api/client";
 import { VideoPlayer } from "@/src/components/VideoPlayer";
+import { ConfettiBurst } from "@/src/components/ConfettiBurst";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 const LIVE = "#C0392B";
 const CHEERS = ["❤️", "🔥", "👏", "😂", "😮", "⚙️"];
+const MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+const lastMilestone = (n: number) => MILESTONES.filter((m) => m <= n).pop() ?? 0;
 
 function FloatingCheer({ emoji, onDone }: { emoji: string; onDone: () => void }) {
   const y = useRef(new Animated.Value(0)).current;
@@ -53,6 +56,24 @@ export default function StreamWatch() {
   const listRef = useRef<FlatList>(null);
   const [cheers, setCheers] = useState<{ id: string; emoji: string }[]>([]);
   const [recap, setRecap] = useState<{ total: number; top: { emoji: string; count: number }[] }>({ total: 0, top: [] });
+  const [confetti, setConfetti] = useState(false);
+  const [milestoneLabel, setMilestoneLabel] = useState<number | null>(null);
+  const milestoneRef = useRef<number | null>(null);
+
+  // Celebrate when the show crosses a cheer milestone (skips pre-existing totals on first load).
+  useEffect(() => {
+    const reached = lastMilestone(recap.total);
+    if (milestoneRef.current === null) {
+      milestoneRef.current = reached; // baseline on first load — no celebration
+      return;
+    }
+    if (reached > milestoneRef.current) {
+      milestoneRef.current = reached;
+      setConfetti(true);
+      setMilestoneLabel(reached);
+      setTimeout(() => setMilestoneLabel(null), 3200);
+    }
+  }, [recap.total]);
 
   const cheer = (emoji: string) => {
     const cid = Math.random().toString(36).slice(2);
@@ -192,6 +213,14 @@ export default function StreamWatch() {
           </KeyboardStickyView>
         </View>
       ) : null}
+
+      {milestoneLabel != null ? (
+        <View style={styles.milestoneToast} pointerEvents="none">
+          <Text style={styles.milestoneEmoji}>🎉</Text>
+          <Text style={styles.milestoneText}>{milestoneLabel} cheers! The crowd loves your show</Text>
+        </View>
+      ) : null}
+      {confetti ? <ConfettiBurst onDone={() => setConfetti(false)} /> : null}
     </View>
   );
 }
@@ -216,6 +245,9 @@ const styles = StyleSheet.create({
   recapChip: { flexDirection: "row", alignItems: "center", gap: 4, height: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, marginLeft: "auto" },
   recapEmoji: { fontSize: 15 },
   recapCount: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  milestoneToast: { position: "absolute", top: "42%", left: spacing.xl, right: spacing.xl, backgroundColor: "rgba(0,0,0,0.82)", borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, alignItems: "center", gap: 4, zIndex: 20 },
+  milestoneEmoji: { fontSize: 30 },
+  milestoneText: { color: "#fff", fontFamily: fonts.bodyBold, fontSize: 15, textAlign: "center" },
   schedCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   schedText: { fontFamily: fonts.bodyMedium, fontSize: 14 },
   chat: { flex: 1, borderTopWidth: 1 },
