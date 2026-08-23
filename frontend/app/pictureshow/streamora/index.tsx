@@ -42,7 +42,8 @@ export default function StreamoraHub() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const watch = (s: PSStream) => {
-    router.push({ pathname: "/pictureshow/streamora/watch", params: { url: s.video_url, title: s.title, channel: s.channel_name, status: s.status, when: s.scheduled_at } });
+    const following = (data?.followed ?? []).some((c) => c.id === s.channel_id);
+    router.push({ pathname: "/pictureshow/streamora/watch", params: { id: s.id, url: s.video_url, title: s.title, channel: s.channel_name, channelId: s.channel_id, status: s.status, when: s.scheduled_at, following: following ? "1" : "0" } });
   };
 
   const streamCard = (s: PSStream) => (
@@ -81,7 +82,7 @@ export default function StreamoraHub() {
   );
 
   const clipCard = (c: PSVideoCard & { video_url: string }) => (
-    <Pressable key={c.id} testID={`streamora-clip-${c.id}`} onPress={() => router.push({ pathname: "/pictureshow/streamora/watch", params: { url: c.video_url, title: c.title, channel: c.channel_name, status: "recent", when: "" } })} style={styles.clipCard}>
+    <Pressable key={c.id} testID={`streamora-clip-${c.id}`} onPress={() => router.push({ pathname: "/pictureshow/streamora/watch", params: { id: c.id, url: c.video_url, title: c.title, channel: c.channel_name, status: "recent", when: "" } })} style={styles.clipCard}>
       <View style={styles.clipThumbWrap}>
         <Image source={{ uri: c.thumbnail }} style={styles.thumb} contentFit="cover" />
         <View style={styles.clipPlay}><MaterialCommunityIcons name="play" size={16} color="#fff" /></View>

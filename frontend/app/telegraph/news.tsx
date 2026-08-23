@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, NewsCluster } from "@/src/api/client";
+import { api, NewsCluster, NewsDigest } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -135,6 +135,7 @@ export default function TelegraphNews() {
   const [topic, setTopic] = useState("top");
   const [clusters, setClusters] = useState<NewsCluster[]>([]);
   const [configured, setConfigured] = useState(true);
+  const [digest, setDigest] = useState<NewsDigest | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
@@ -143,6 +144,7 @@ export default function TelegraphNews() {
       const res = await api.tgNews(topic);
       setConfigured(res.configured);
       setClusters(res.clusters);
+      if (topic === "following") { try { setDigest(await api.tgNewsDigest()); } catch { setDigest(null); } }
       setStatus("ready");
     } catch { setStatus("error"); }
   }, [topic]);
@@ -187,6 +189,31 @@ export default function TelegraphNews() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => <StoryCard cluster={item} />}
+          ListHeaderComponent={
+            topic === "following" && digest ? (
+              <View style={[styles.digest, { backgroundColor: colors.surfaceSecondary, borderColor: colors.brand }]}>
+                <View style={styles.digestHead}>
+                  <MaterialCommunityIcons name="calendar-text" size={18} color={colors.brand} />
+                  <Text style={[styles.digestTitle, { color: colors.onSurface }]}>Your Daily Digest</Text>
+                </View>
+                <Text style={[styles.digestSub, { color: colors.muted }]}>
+                  {digest.following_count === 0
+                    ? "Follow a story to get a daily summary of new coverage here."
+                    : digest.total_new > 0
+                      ? `${digest.total_new} new outlet(s) weighed in on the stories you follow.`
+                      : "You're all caught up — no new coverage since your last digest."}
+                </Text>
+                {digest.stories.filter((s) => s.new_outlets.length > 0).slice(0, 4).map((s) => (
+                  <View key={s.story_key} style={styles.digestRow}>
+                    <MaterialCommunityIcons name="circle-medium" size={16} color={colors.brand} />
+                    <Text numberOfLines={2} style={[styles.digestStory, { color: colors.onSurface }]}>
+                      <Text style={{ fontFamily: fonts.bodyBold }}>+{s.new_outlets.length} </Text>{s.headline}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null
+          }
           ListEmptyComponent={<EmptyState icon="newspaper-variant-outline" title="No stories right now" subtitle="Try another topic or check back shortly." />}
         />
       )}
@@ -224,4 +251,10 @@ const styles = StyleSheet.create({
   biasText: { fontFamily: fonts.bodyBold, fontSize: 12, color: "#fff" },
   srcName: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
   srcTitle: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, marginTop: 1 },
+  digest: { borderRadius: radius.md, borderWidth: 1.5, padding: spacing.md, gap: 6, marginBottom: spacing.md },
+  digestHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  digestTitle: { fontFamily: fonts.displaySemi, fontSize: 16 },
+  digestSub: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
+  digestRow: { flexDirection: "row", alignItems: "flex-start", gap: 2, marginTop: 2 },
+  digestStory: { flex: 1, fontFamily: fonts.body, fontSize: 13.5, lineHeight: 18 },
 });

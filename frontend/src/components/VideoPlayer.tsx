@@ -1,13 +1,29 @@
 import { useVideoPlayer, VideoView } from "expo-video";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { radius } from "@/src/theme/tokens";
 
-export function VideoPlayer({ uri, style }: { uri: string; style?: any }) {
+export function VideoPlayer({ uri, style, onProgress }: { uri: string; style?: any; onProgress?: (position: number, duration: number) => void }) {
   const player = useVideoPlayer(uri || null, (p) => {
     p.loop = false;
   });
+  const cbRef = useRef(onProgress);
+  cbRef.current = onProgress;
+
+  // Report playback position periodically and on unmount so "Continue Watching" works.
+  useEffect(() => {
+    if (!onProgress) return;
+    const report = () => {
+      try {
+        const pos = player.currentTime ?? 0;
+        const dur = player.duration ?? 0;
+        if (dur > 0) cbRef.current?.(pos, dur);
+      } catch { /* ignore */ }
+    };
+    const t = setInterval(report, 5000);
+    return () => { report(); clearInterval(t); };
+  }, [player, onProgress]);
 
   return (
     <View style={[styles.wrap, style]}>

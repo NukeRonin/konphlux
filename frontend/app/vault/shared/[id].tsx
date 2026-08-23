@@ -17,14 +17,14 @@ export default function SharedBoard() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [items, setItems] = useState<VaultItem[]>([]);
-  const [meta, setMeta] = useState<{ board_name: string; owner_name: string } | null>(null);
+  const [meta, setMeta] = useState<{ board_name: string; owner_name: string; collection_id: string } | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
     try {
       setStatus("loading");
       const res = await api.vaultSharedDetail(id!);
-      setItems(res.items); setMeta({ board_name: res.board_name, owner_name: res.owner_name }); setStatus("ready");
+      setItems(res.items); setMeta({ board_name: res.board_name, owner_name: res.owner_name, collection_id: res.collection_id }); setStatus("ready");
     } catch { setStatus("error"); }
   }, [id]);
 
@@ -46,8 +46,13 @@ export default function SharedBoard() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.onSurface }]}>{meta?.board_name || "Shared board"}</Text>
-          <Eyebrow>Shared by {meta?.owner_name || "a friend"} · view only</Eyebrow>
+          <Eyebrow>Shared by {meta?.owner_name || "a friend"} · you can add items</Eyebrow>
         </View>
+        {meta?.collection_id ? (
+          <Pressable onPress={() => router.push(`/vault/board-chat/${meta.collection_id}?name=${encodeURIComponent(meta.board_name)}`)} hitSlop={10} testID="vs-chat">
+            <MaterialCommunityIcons name="chat-outline" size={22} color={colors.brand} />
+          </Pressable>
+        ) : null}
       </View>
 
       {status === "loading" ? <Loading label="Opening the board…" /> :

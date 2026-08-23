@@ -3384,6 +3384,7 @@ async def _fulfill_paid_order(session_id: str, buyer: dict | None = None):
                   "paid_at": order.get("paid_at") or datetime.now(timezone.utc).isoformat()}},
     )
     await db.carts.update_one({"user_id": order["user_id"]}, {"$set": {"items": []}})
+    await _add_ebooks_from_order(order)
     if not order.get("email_sent"):
         user = buyer or await db.users.find_one({"id": order["user_id"]})
         if user and user.get("email"):
@@ -3662,6 +3663,40 @@ async def pictureshow_hub(user: dict = Depends(require_user)):
     }
 
 
+@api_router.post("/pictureshow/videos/{video_id}/progress")
+async def pictureshow_progress(video_id: str, body: dict, user: dict = Depends(require_user)):
+    v = await db.ps_videos.find_one({"id": video_id}, {"_id": 0, "id": 1})
+    if not v:
+        raise HTTPException(status_code=404, detail="Video not found")
+    position = max(0.0, float(body.get("position", 0)))
+    duration = max(0.0, float(body.get("duration", 0)))
+    done = duration > 0 and position >= 0.92 * duration
+    await db.ps_progress.update_one(
+        {"user_id": user["id"], "video_id": video_id},
+        {"$set": {"position": position, "duration": duration, "done": done,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True, "done": done}
+
+
+@api_router.get("/pictureshow/continue")
+async def pictureshow_continue(user: dict = Depends(require_user)):
+    rows = await db.ps_progress.find({"user_id": user["id"], "done": {"$ne": True}}, {"_id": 0}).to_list(200)
+    rows = [r for r in rows if r.get("position", 0) > 3 and r.get("duration", 0) > 0]
+    rows.sort(key=lambda r: r.get("updated_at", ""), reverse=True)
+    channels = await _ps_channels_map()
+    out = []
+    for r in rows[:12]:
+        v = await db.ps_videos.find_one({"id": r["video_id"]}, {"_id": 0})
+        if not v:
+            continue
+        card = _ps_video_card(v, channels)
+        card["progress"] = min(0.98, r["position"] / r["duration"]) if r["duration"] else 0
+        out.append(card)
+    return {"videos": out}
+
+
 @api_router.get("/pictureshow/videos")
 async def pictureshow_videos(user: dict = Depends(require_user), category: str | None = None, sort: str = "recent"):
     query: dict = {}
@@ -3921,6 +3956,44 @@ async def streamora_follow(channel_id: str, user: dict = Depends(require_user)):
         await db.ps_follows.insert_one({"user_id": user["id"], "channel_id": channel_id})
         following = True
     return {"following": following}
+
+
+_STREAM_CHAT_SEED = [
+    ("GearheadGwen", "this is incredible 🔧"),
+    ("BoilerBoy", "greetings from the Copper District!"),
+    ("AetherAda", "how did you wire that valve??"),
+    ("SprocketSam", "first! 🎉"),
+]
+
+
+@api_router.get("/pictureshow/streamora/{stream_id}/chat")
+async def streamora_chat(stream_id: str, user: dict = Depends(require_user)):
+    if await db.stream_chat.count_documents({"stream_id": stream_id}) == 0:
+        now = datetime.now(timezone.utc)
+        for i, (name, body) in enumerate(_STREAM_CHAT_SEED):
+            await db.stream_chat.insert_one({
+                "id": uuid.uuid4().hex[:12], "stream_id": stream_id, "user_id": "seed",
+                "author": name, "body": body,
+                "created_at": (now - timedelta(minutes=len(_STREAM_CHAT_SEED) - i)).isoformat(),
+            })
+    msgs = await db.stream_chat.find({"stream_id": stream_id}, {"_id": 0}).to_list(500)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    return msgs[-200:]
+
+
+@api_router.post("/pictureshow/streamora/{stream_id}/chat", status_code=201)
+async def streamora_chat_post(stream_id: str, body: dict, user: dict = Depends(require_user)):
+    text = (body.get("body") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message")
+    msg = {
+        "id": uuid.uuid4().hex[:12], "stream_id": stream_id, "user_id": user["id"],
+        "author": user["display_name"], "body": text[:400],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.stream_chat.insert_one(dict(msg))
+    msg.pop("_id", None)
+    return msg
 
 
 # ----- AI Video Concept Studio (Nano Banana poster + written storyboard) -----
@@ -6496,8 +6569,36 @@ async def _library_seed_if_empty(user_id: str) -> None:
     for i, b in enumerate(LIBRARY_SEED):
         await db.library_items.insert_one({
             "id": uuid.uuid4().hex[:12], "user_id": user_id, **b,
-            "downloaded_at": (now - timedelta(days=i)).isoformat(),
+            "downloaded_at": (now - timedelta(days=i)).isoformat(), "progress_page": 0,
         })
+
+
+def _ebook_pages(book: dict) -> list[str]:
+    """Deterministic themed reading content so the reader has pages to turn."""
+    title = book.get("title", "This Volume")
+    author = book.get("author", "Anonymous")
+    n = max(6, min(14, (book.get("pages") or 200) // 20))
+    intro = (
+        f"{title}\nby {author}\n\nA Konphlux Library edition. Turn the page to begin — "
+        f"your place is kept automatically, so you can always pick up where you left off."
+    )
+    beats = [
+        "The boiler-lamps hissed their amber welcome as the district stirred to life, brass fittings ticking in the morning damp.",
+        "Nothing in the workshop obeyed the first time; it was the second, patient asking that coaxed the gears to sing.",
+        "She weighed the aether valve in her palm and understood, at last, why the old wrights spoke to their machines.",
+        "Steam curled along the rafters like a thought half-finished, and somewhere below a chronometer counted down.",
+        "To build is to argue with entropy, he wrote, and to win only briefly — but briefly is enough.",
+        "The city rearranged itself around the invention as rivers rearrange themselves around a stubborn stone.",
+        "Every rivet was a small promise: that this, at least, would hold when the pressure came.",
+        "They tested it at dusk, when the light forgives small failures, and it held — it held.",
+        "What follows is not the ending you expect, but the one the mechanism always intended.",
+        "Close the cover gently. The story keeps, and so does your place in it.",
+    ]
+    pages = [intro]
+    for i in range(n):
+        b = beats[i % len(beats)]
+        pages.append(f"— {i + 1} —\n\n{b}\n\n{b[::-1][:0]}The work continued, and with it the quiet certainty that the next page was worth turning.")
+    return pages
 
 
 @api_router.get("/library/ebooks")
@@ -6506,6 +6607,43 @@ async def library_ebooks(user: dict = Depends(require_user)):
     rows = await db.library_items.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
     rows.sort(key=lambda r: r.get("downloaded_at", ""), reverse=True)
     return rows
+
+
+@api_router.get("/library/ebooks/{item_id}")
+async def library_get_ebook(item_id: str, user: dict = Depends(require_user)):
+    b = await db.library_items.find_one({"id": item_id, "user_id": user["id"]}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Not in your library")
+    b["content"] = _ebook_pages(b)
+    b["progress_page"] = int(b.get("progress_page", 0))
+    return b
+
+
+@api_router.post("/library/ebooks/{item_id}/progress")
+async def library_progress(item_id: str, body: dict, user: dict = Depends(require_user)):
+    page = max(0, int(body.get("page", 0)))
+    res = await db.library_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": {"progress_page": page}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not in your library")
+    return {"ok": True, "page": page}
+
+
+async def _add_ebooks_from_order(order: dict) -> None:
+    """Buy to Library: any eBook / audio book in a paid order lands in the buyer's Library."""
+    for line in order.get("lines", []):
+        listing = await db.bazaar.find_one({"id": line.get("item_id")}, {"_id": 0})
+        if not listing or listing.get("category") not in ("eBooks", "Audio Books"):
+            continue
+        ref = listing["id"]
+        if await db.library_items.find_one({"user_id": order["user_id"], "ref_id": ref}):
+            continue
+        await db.library_items.insert_one({
+            "id": uuid.uuid4().hex[:12], "user_id": order["user_id"], "ref_id": ref,
+            "title": listing["title"].replace(" (eBook)", "").replace(" (Audio Book)", ""),
+            "author": listing.get("seller", ""), "cover_url": listing.get("image", ""),
+            "format": "Audio Book" if listing.get("category") == "Audio Books" else "eBook",
+            "pages": 240, "downloaded_at": datetime.now(timezone.utc).isoformat(), "progress_page": 0,
+        })
 
 
 @api_router.post("/library/ebooks", status_code=201)
@@ -7052,6 +7190,76 @@ async def vault_remove_share(share_id: str, user: dict = Depends(require_user)):
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Shared board not found")
     return {"removed": True}
+
+
+async def _board_participants(coll_id: str) -> tuple[str | None, set]:
+    """Returns (owner_id, {all participant user_ids}) for a board."""
+    coll = await db.vault_collections.find_one({"id": coll_id}, {"_id": 0, "user_id": 1})
+    owner = coll["user_id"] if coll else None
+    recips = {s["recipient_id"] for s in await db.vault_shares.find({"collection_id": coll_id}, {"_id": 0, "recipient_id": 1}).to_list(200)}
+    parts = set(recips)
+    if owner:
+        parts.add(owner)
+    return owner, parts
+
+
+@api_router.get("/vault/collections/{coll_id}/messages")
+async def vault_board_messages(coll_id: str, user: dict = Depends(require_user)):
+    owner, parts = await _board_participants(coll_id)
+    if user["id"] not in parts:
+        raise HTTPException(status_code=403, detail="Not part of this board")
+    msgs = await db.board_messages.find({"collection_id": coll_id}, {"_id": 0}).to_list(1000)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    return {"is_owner": user["id"] == owner, "messages": msgs}
+
+
+@api_router.post("/vault/collections/{coll_id}/messages", status_code=201)
+async def vault_board_post(coll_id: str, body: dict, user: dict = Depends(require_user)):
+    owner, parts = await _board_participants(coll_id)
+    if user["id"] not in parts:
+        raise HTTPException(status_code=403, detail="Not part of this board")
+    text = (body.get("body") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message")
+    msg = {
+        "id": uuid.uuid4().hex[:12], "collection_id": coll_id, "user_id": user["id"],
+        "author": user["display_name"], "body": text[:2000],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.board_messages.insert_one(dict(msg))
+    msg.pop("_id", None)
+    coll = await db.vault_collections.find_one({"id": coll_id}, {"_id": 0, "name": 1})
+    for pid in parts:
+        if pid != user["id"]:
+            await _notify(pid, "board_chat", None, f"{user['display_name']} in \u201c{(coll or {}).get('name', 'a board')}\u201d", text[:120])
+    return msg
+
+
+@api_router.get("/telegraph/news/digest")
+async def tg_news_digest(user: dict = Depends(require_user)):
+    """Once-a-day summary of new coverage on stories the reader follows."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    follows = await db.news_follows.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    stories = []
+    total_new = 0
+    for f in follows:
+        current = set(f.get("source_names", []))
+        seen = set(f.get("digest_seen_sources", []))
+        new = current - seen
+        total_new += len(new)
+        stories.append({
+            "story_key": f["story_key"], "headline": f["headline"],
+            "source_count": len(current), "new_outlets": sorted(new),
+            "coverage": f.get("coverage", {"Left": 0, "Center": 0, "Right": 0}),
+            "image_url": f.get("image_url", ""),
+        })
+        # Snapshot so tomorrow's digest only shows fresh additions.
+        await db.news_follows.update_one(
+            {"user_id": user["id"], "story_key": f["story_key"]},
+            {"$set": {"digest_seen_sources": sorted(current), "digest_date": today}},
+        )
+    stories.sort(key=lambda s: len(s["new_outlets"]), reverse=True)
+    return {"date": today, "following_count": len(follows), "total_new": total_new, "stories": stories}
 
 
 

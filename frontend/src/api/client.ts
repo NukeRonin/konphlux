@@ -216,7 +216,11 @@ export type DatingProfile = {
   visible?: boolean;
 };
 
-export type LibraryBook = { id: string; ref_id: string; title: string; author: string; cover_url: string; format: string; pages: number; downloaded_at: string };
+export type LibraryBook = { id: string; ref_id: string; title: string; author: string; cover_url: string; format: string; pages: number; downloaded_at: string; progress_page?: number; content?: string[] };
+
+export type BoardMessage = { id: string; collection_id: string; user_id: string; author: string; body: string; created_at: string };
+
+export type NewsDigest = { date: string; following_count: number; total_new: number; stories: { story_key: string; headline: string; source_count: number; new_outlets: string[]; coverage: { Left: number; Center: number; Right: number }; image_url: string }[] };
 
 export type SparkCard = {
   id: string;
@@ -416,6 +420,7 @@ export type PSStream = {
   channel_name: string;
   channel_avatar: string;
 };
+export type StreamChatMsg = { id: string; stream_id: string; user_id: string; author: string; body: string; created_at: string };
 export type PSStreamoraHub = {
   live: PSStream[];
   upcoming: PSStream[];
@@ -1002,10 +1007,16 @@ export const api = {
   psPlaylistAdd: (id: string, video_id: string) =>
     request<{ id: string; count: number }>(`/pictureshow/playlists/${id}/add`, { method: "POST", body: JSON.stringify({ video_id }) }),
   streamoraHub: () => request<PSStreamoraHub>("/pictureshow/streamora"),
+  psProgress: (id: string, position: number, duration: number) =>
+    request<{ ok: boolean; done: boolean }>(`/pictureshow/videos/${id}/progress`, { method: "POST", body: JSON.stringify({ position, duration }) }),
+  psContinue: () => request<{ videos: (PSVideoCard & { progress: number })[] }>("/pictureshow/continue"),
   streamoraGoLive: (body: { title: string; category: string; when: string }) =>
     request<PSStream>("/pictureshow/streamora/golive", { method: "POST", body: JSON.stringify(body) }),
   streamoraFollow: (channel_id: string) =>
     request<{ following: boolean }>(`/pictureshow/streamora/${channel_id}/follow`, { method: "POST" }),
+  streamoraChat: (streamId: string) => request<StreamChatMsg[]>(`/pictureshow/streamora/${streamId}/chat`),
+  streamoraChatPost: (streamId: string, body: string) =>
+    request<StreamChatMsg>(`/pictureshow/streamora/${streamId}/chat`, { method: "POST", body: JSON.stringify({ body }) }),
   psAiConcept: (body: { prompt: string; kind: "video" | "animation"; style?: string }) =>
     request<{ kind: string; storyboard: string; poster_path: string }>("/pictureshow/ai/concept", { method: "POST", body: JSON.stringify(body) }),
   psAiSuite: (body: PSSuiteConfig) =>
@@ -1212,6 +1223,8 @@ export const api = {
   tgNewsFollow: (cluster: { headline: string; sources?: string[]; coverage?: any; image_url?: string; url?: string }) =>
     request<{ following: boolean }>("/telegraph/news/follow", { method: "POST", body: JSON.stringify(cluster) }),
   libraryEbooks: () => request<LibraryBook[]>("/library/ebooks"),
+  libraryGetEbook: (id: string) => request<LibraryBook>(`/library/ebooks/${id}`),
+  libraryProgress: (id: string, page: number) => request<{ ok: boolean; page: number }>(`/library/ebooks/${id}/progress`, { method: "POST", body: JSON.stringify({ page }) }),
   libraryAddEbook: (b: { ref_id?: string; title: string; author?: string; cover_url?: string; format?: string; pages?: number }) =>
     request<{ added: boolean; item: LibraryBook }>("/library/ebooks", { method: "POST", body: JSON.stringify(b) }),
   libraryDeleteEbook: (id: string) => request<{ deleted: boolean }>(`/library/ebooks/${id}`, { method: "DELETE" }),
@@ -1250,6 +1263,9 @@ export const api = {
   vaultDeleteCollection: (id: string) => request<{ deleted: boolean }>(`/vault/collections/${id}`, { method: "DELETE" }),
   vaultShareCollection: (id: string, recipient: string) => request<{ shared: boolean; recipient: string }>(`/vault/collections/${id}/share`, { method: "POST", body: JSON.stringify({ recipient }) }),
   vaultShared: () => request<VaultSharedBoard[]>("/vault/shared"),
-  vaultSharedDetail: (shareId: string) => request<{ share_id: string; board_name: string; owner_name: string; items: VaultItem[] }>(`/vault/shared/${shareId}`),
+  vaultSharedDetail: (shareId: string) => request<{ share_id: string; collection_id: string; board_name: string; owner_name: string; items: VaultItem[] }>(`/vault/shared/${shareId}`),
   vaultRemoveShare: (shareId: string) => request<{ removed: boolean }>(`/vault/shared/${shareId}`, { method: "DELETE" }),
+  vaultBoardMessages: (collId: string) => request<{ is_owner: boolean; messages: BoardMessage[] }>(`/vault/collections/${collId}/messages`),
+  vaultBoardPost: (collId: string, body: string) => request<BoardMessage>(`/vault/collections/${collId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+  tgNewsDigest: () => request<NewsDigest>("/telegraph/news/digest"),
 };

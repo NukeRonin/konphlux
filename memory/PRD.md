@@ -443,3 +443,13 @@ No seeded account — register fresh (see /app/memory/test_credentials.md). Use 
 - **Sparking Dawn Privacy (Settings)**: `POST /dating/preferences` (visible + seeking); `visible` on profile; `dating_discover` hides non-visible + honors viewer seeking. Settings section: Make Profile Visible, Interested in Men, Interested in Women.
 - **Library**: removed `library` from `/districts`. `library_items` (seeded 3 eBooks) + `GET/POST/DELETE /library/ebooks`. New `app/library/index.tsx`; entry in profile menu (after Bookmarks) + Settings → `/library`.
 - Verified (agent smoke): districts excludes library; dating prefs persist; library seeds 3; news follow/following/blindspot; collaborative contribution visible to owner + recipient. Lint clean.
+
+## eBook Reader + Buy-to-Library + Board Chat + Digest + Home/Streamora + Continue Watching (2026-06)
+- **eBook Reader**: `GET /library/ebooks/{id}` returns generated `content` pages + `progress_page`; `POST .../progress`. New `app/library/read/[id].tsx` (paged FlatList, progress bar, resumes at saved page). Library tile taps → reader.
+- **Buy to Library**: `_fulfill_paid_order` → `_add_ebooks_from_order` adds any eBook/Audio Book line to buyer's `library_items` (idempotent). (Code path; not runtime-tested without a Stripe purchase.)
+- **Board Chat**: `board_messages`; `GET/POST /vault/collections/{id}/messages` (owner+recipients only, notifies others). New `app/vault/board-chat/[id].tsx`; chat icon on collection + shared screens.
+- **Daily Digest**: `GET /telegraph/news/digest` (per-follow new-outlet diff vs snapshot, resets daily). Digest banner on News → Following tab.
+- **Home functional**: header bell→/notifications, chat→/chatterbox; composer Photo/Video→/compose, Event→/evention; post comment→/compose, share→RN Share; trending items→/roundtable.
+- **Streamora functional + Live Chat**: `stream_chat` collection; `GET/POST /pictureshow/streamora/{id}/chat` (ambient seed). Watch screen rewritten: live chat panel (polls 5s while live), Follow button, passes stream id/channelId/following from hub.
+- **Continue Watching**: `ps_progress`; `POST /pictureshow/videos/{id}/progress` (VideoPlayer reports position every 5s + on unmount), `GET /pictureshow/continue`. Row with resume badge + progress bar at top of PictureShow hub.
+- Verified (agent smoke): reader pages+progress; board chat post/read/owner; digest; stream chat seed+post; continue watching (progress 0.25). Lint clean. Buy-to-Library code-only.

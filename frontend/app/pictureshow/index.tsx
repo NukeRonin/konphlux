@@ -56,12 +56,15 @@ export default function PictureShowHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<PSHub | null>(null);
+  const [cont, setCont] = useState<(PSVideoCard & { progress: number })[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      setData(await api.psHub());
+      const [hub, c] = await Promise.all([api.psHub(), api.psContinue()]);
+      setData(hub);
+      setCont(c.videos);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -131,6 +134,34 @@ export default function PictureShowHub() {
             ))}
           </View>
 
+          {/* Continue Watching */}
+          {cont.length > 0 ? (
+            <>
+              <View style={styles.sectionHead}>
+                <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Continue watching</Text>
+                <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.brand} />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hRow}>
+                {cont.map((v) => (
+                  <Pressable key={v.id} testID={`ps-continue-${v.id}`} onPress={() => router.push(`/pictureshow/video/${v.id}`)} style={[styles.card, { width: 260 }]}>
+                    <View style={styles.thumbWrap}>
+                      <Image source={{ uri: v.thumbnail }} style={styles.thumb} contentFit="cover" transition={200} />
+                      <View style={styles.resumeBadge}><MaterialCommunityIcons name="play" size={12} color="#fff" /><Text style={styles.resumeText}>Resume</Text></View>
+                      <View style={styles.progTrack}><View style={[styles.progFill, { width: `${Math.round(v.progress * 100)}%`, backgroundColor: colors.brand }]} /></View>
+                    </View>
+                    <View style={styles.cardMeta}>
+                      <Image source={{ uri: v.channel_avatar }} style={styles.avatar} contentFit="cover" />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{v.title}</Text>
+                        <Text numberOfLines={1} style={[styles.cardSub, { color: colors.muted }]}>{v.channel_name}</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
+
           {/* Trending */}
           <View style={styles.sectionHead}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Trending in the Theatre</Text>
@@ -194,6 +225,10 @@ const styles = StyleSheet.create({
   gridText: { fontFamily: fonts.bodyBold, fontSize: 10, textAlign: "center" },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, marginTop: spacing.xl, marginBottom: spacing.md },
   sectionTitle: { fontFamily: fonts.display, fontSize: 18 },
+  resumeBadge: { position: "absolute", top: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.75)", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  resumeText: { color: "#fff", fontFamily: fonts.bodyBold, fontSize: 10 },
+  progTrack: { position: "absolute", bottom: 0, left: 0, right: 0, height: 4, backgroundColor: "rgba(255,255,255,0.3)" },
+  progFill: { height: 4 },
   seeAll: { fontFamily: fonts.bodyBold, fontSize: 13 },
   hRow: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: { gap: spacing.sm },

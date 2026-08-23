@@ -75,6 +75,9 @@ export default function VaultCollectionScreen() {
           <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.onSurface }]}>{coll?.name || "Collection"}</Text>
           <Text style={[styles.sub, { color: colors.muted }]}>{items.length} item{items.length !== 1 ? "s" : ""}</Text>
         </View>
+        <Pressable onPress={() => router.push(`/vault/board-chat/${id}?name=${encodeURIComponent(coll?.name || "Board")}`)} hitSlop={10} testID="vc-chat" style={{ marginRight: spacing.md }}>
+          <MaterialCommunityIcons name="chat-outline" size={22} color={colors.brand} />
+        </Pressable>
         <Pressable onPress={() => setShareModal(true)} hitSlop={10} testID="vc-share" style={{ marginRight: spacing.md }}>
           <MaterialCommunityIcons name="account-plus-outline" size={22} color={colors.brand} />
         </Pressable>

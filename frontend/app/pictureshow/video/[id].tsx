@@ -70,7 +70,7 @@ export default function PSVideoDetailScreen() {
         <ErrorState onRetry={load} />
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }} showsVerticalScrollIndicator={false}>
-          <VideoPlayer uri={video.video_url} style={{ borderRadius: 0 }} />
+          <VideoPlayer uri={video.video_url} style={{ borderRadius: 0 }} onProgress={(pos, dur) => { api.psProgress(video.id, pos, dur).catch(() => {}); }} />
 
           <View style={{ padding: spacing.lg }}>
             <Text style={[styles.title, { color: colors.onSurface }]}>{video.title}</Text>

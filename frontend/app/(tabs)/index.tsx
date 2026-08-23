@@ -7,6 +7,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -23,6 +24,8 @@ import { compactNumber, fonts, formatPrice, radius, spacing } from "@/src/theme/
 
 function PostCard({ post, onLike, onSave }: { post: Post; onLike: (id: string) => void; onSave: (id: string) => void }) {
   const { colors } = useTheme();
+  const router = useRouter();
+  const share = async () => { try { await Share.share({ message: `${post.author} on Konphlux:\n\n${post.body}` }); } catch { /* ignore */ } };
   return (
     <Panel style={styles.postCard} testID={`post-${post.id}`}>
       <View style={styles.postHead}>
@@ -60,14 +63,14 @@ function PostCard({ post, onLike, onSave }: { post: Post; onLike: (id: string) =
             {compactNumber(post.likes)}
           </Text>
         </Pressable>
-        <View style={styles.actionBtn}>
+        <Pressable onPress={() => router.push("/compose")} hitSlop={8} style={styles.actionBtn} testID={`comment-${post.id}`}>
           <MaterialCommunityIcons name="comment-outline" size={18} color={colors.muted} />
           <Text style={[styles.actionText, { color: colors.muted }]}>{compactNumber(post.comments)}</Text>
-        </View>
-        <View style={styles.actionBtn}>
+        </Pressable>
+        <Pressable onPress={share} hitSlop={8} style={styles.actionBtn} testID={`share-${post.id}`}>
           <MaterialCommunityIcons name="share-variant" size={18} color={colors.muted} />
           <Text style={[styles.actionText, { color: colors.muted }]}>Share</Text>
-        </View>
+        </Pressable>
         <View style={{ flex: 1 }} />
         <Pressable onPress={() => onSave(post.id)} hitSlop={8} testID={`save-${post.id}`}>
           <MaterialCommunityIcons
@@ -128,18 +131,18 @@ function Composer() {
       </Pressable>
       <Hairline style={{ marginVertical: spacing.md }} />
       <View style={styles.composerActions}>
-        <View style={styles.composerAction}>
+        <Pressable style={styles.composerAction} onPress={() => router.push("/compose")} testID="composer-photo">
           <MaterialCommunityIcons name="image-outline" size={18} color={colors.brand} />
           <Text style={[styles.composerActionText, { color: colors.onSurface }]}>Photo</Text>
-        </View>
-        <View style={styles.composerAction}>
+        </Pressable>
+        <Pressable style={styles.composerAction} onPress={() => router.push("/compose")} testID="composer-video">
           <MaterialCommunityIcons name="video-outline" size={18} color={colors.brand} />
           <Text style={[styles.composerActionText, { color: colors.onSurface }]}>Video</Text>
-        </View>
-        <View style={styles.composerAction}>
+        </Pressable>
+        <Pressable style={styles.composerAction} onPress={() => router.push("/evention")} testID="composer-event">
           <MaterialCommunityIcons name="calendar-outline" size={18} color={colors.brand} />
           <Text style={[styles.composerActionText, { color: colors.onSurface }]}>Event</Text>
-        </View>
+        </Pressable>
       </View>
     </Panel>
   );
@@ -185,6 +188,7 @@ function DistrictStrip({ districts }: { districts: District[] }) {
 
 function Trending({ items }: { items: string[] }) {
   const { colors } = useTheme();
+  const router = useRouter();
   return (
     <Panel style={{ marginBottom: spacing.md }}>
       <View style={styles.trendingHead}>
@@ -192,10 +196,10 @@ function Trending({ items }: { items: string[] }) {
         <Text style={[styles.trendingTitle, { color: colors.onSurface }]}>Trending</Text>
       </View>
       {items.map((t) => (
-        <View key={t} style={styles.trendingItem}>
+        <Pressable key={t} style={styles.trendingItem} onPress={() => router.push("/roundtable")} testID={`trending-${t}`}>
           <Text style={[styles.trendingHash, { color: colors.brand }]}>#</Text>
           <Text style={[styles.trendingText, { color: colors.onSurface }]}>{t}</Text>
-        </View>
+        </Pressable>
       ))}
     </Panel>
   );
@@ -322,6 +326,7 @@ const rtStyles = StyleSheet.create({
 
 export default function FeedScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [data, setData] = useState<FeedResponse | null>(null);
   const [districts, setDistricts] = useState<District[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -385,8 +390,8 @@ export default function FeedScreen() {
         title="Konphlux"
         subtitle="One ID, every district"
         actions={[
-          { icon: "bell-outline", onPress: () => {}, testID: "notif-btn", badge: true },
-          { icon: "chat-outline", onPress: () => {}, testID: "msg-btn" },
+          { icon: "bell-outline", onPress: () => router.push("/notifications"), testID: "notif-btn", badge: true },
+          { icon: "chat-outline", onPress: () => router.push("/chatterbox"), testID: "msg-btn" },
         ]}
       />
       {status === "loading" ? (
