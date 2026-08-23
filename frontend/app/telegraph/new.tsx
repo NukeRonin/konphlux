@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, uploadImage } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
+import { Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -19,13 +20,27 @@ export default function TelegraphNew() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const editingId = id || "";
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Essays");
   const [body, setBody] = useState("");
   const [cover, setCover] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<"" | "draft" | "publish">("");
+  const [loading, setLoading] = useState(!!editingId);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!editingId) return;
+    (async () => {
+      try {
+        const a = await api.tgArticle(editingId);
+        setTitle(a.title); setCategory(a.category); setBody(a.body); setCover(a.cover_url);
+      } catch { setError("Couldn't load that draft."); }
+      finally { setLoading(false); }
+    })();
+  }, [editingId]);
 
   const canPost = title.trim().length >= 3 && body.trim().length >= 20;
 
@@ -42,16 +57,28 @@ export default function TelegraphNew() {
     finally { setUploading(false); }
   };
 
-  const post = async () => {
-    if (!canPost || saving) return;
-    setSaving(true); setError("");
+  const submit = useCallback(async (status: "draft" | "published") => {
+    if (saving) return;
+    if (status === "published" && !canPost) return;
+    if (status === "draft" && !title.trim() && !body.trim()) { setError("Add a title or some text before saving a draft."); return; }
+    setSaving(status === "draft" ? "draft" : "publish"); setError("");
+    const payload = { title: title.trim() || "Untitled draft", body: body.trim() || "…", category, cover_url: cover, status };
     try {
-      const created = await api.tgCreateArticle({ title: title.trim(), body: body.trim(), category, cover_url: cover });
-      router.replace(`/telegraph/${created.id}`);
-    } catch (e: any) { setError(e?.message || "Couldn't publish. Please try again."); setSaving(false); }
-  };
+      if (editingId) {
+        const updated = await api.tgUpdateArticle(editingId, payload);
+        if (status === "published") router.replace(`/telegraph/${updated.id}`);
+        else router.replace("/telegraph/drafts");
+      } else {
+        const created = await api.tgCreateArticle(payload);
+        if (status === "published") router.replace(`/telegraph/${created.id}`);
+        else router.replace("/telegraph/drafts");
+      }
+    } catch (e: any) { setError(e?.message || "Couldn't save. Please try again."); setSaving(""); }
+  }, [saving, canPost, title, body, category, cover, editingId, router]);
 
   const inputStyle = [styles.input, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }];
+
+  if (loading) return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><Loading label="Loading your draft…" /></View>;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -60,9 +87,12 @@ export default function TelegraphNew() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Post an Article</Text>
+          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>{editingId ? "Edit Draft" : "Post an Article"}</Text>
           <Eyebrow>Send it down the wire</Eyebrow>
         </View>
+        <Pressable testID="tg-open-drafts" onPress={() => router.push("/telegraph/drafts")} hitSlop={10}>
+          <MaterialCommunityIcons name="file-document-outline" size={22} color={colors.onSurface} />
+        </Pressable>
       </View>
 
       <KeyboardAwareScrollView bottomOffset={20} contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + 120 }} showsVerticalScrollIndicator={false}>
@@ -111,7 +141,18 @@ export default function TelegraphNew() {
       </KeyboardAwareScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <ForgeButton label={saving ? "Publishing…" : "Publish article"} fullWidth size="lg" disabled={!canPost || saving} testID="tg-publish" onPress={post} icon={<MaterialCommunityIcons name="send" size={18} color={colors.onBrandPrimary} />} />
+        <Pressable
+          testID="tg-save-draft"
+          onPress={() => submit("draft")}
+          disabled={!!saving}
+          style={[styles.draftBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary, opacity: saving ? 0.6 : 1 }]}
+        >
+          <MaterialCommunityIcons name="content-save-outline" size={18} color={colors.onSurface} />
+          <Text style={[styles.draftBtnText, { color: colors.onSurface }]}>{saving === "draft" ? "Saving…" : "Save draft"}</Text>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <ForgeButton label={saving === "publish" ? "Publishing…" : "Publish"} fullWidth size="lg" disabled={!canPost || !!saving} testID="tg-publish" onPress={() => submit("published")} icon={<MaterialCommunityIcons name="send" size={18} color={colors.onBrandPrimary} />} />
+        </View>
       </View>
     </View>
   );
@@ -131,5 +172,7 @@ const styles = StyleSheet.create({
   coverPreview: { width: "100%", height: 170, borderRadius: radius.md },
   removeCover: { position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   error: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: spacing.md },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1 },
+  footer: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1 },
+  draftBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 52, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  draftBtnText: { fontFamily: fonts.bodyBold, fontSize: 14 },
 });

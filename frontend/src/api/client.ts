@@ -636,11 +636,38 @@ export type TGArticle = {
   author_name: string;
   author_handle: string;
   created_at: string;
+  status: string;
   likes: number;
   recent_likes: number;
   liked: boolean;
   following: boolean;
+  comments_count: number;
   read_minutes: number;
+};
+
+export type TGComment = {
+  id: string;
+  article_id: string;
+  parent_id: string | null;
+  body: string;
+  author_id: string;
+  author_name: string;
+  author_handle: string;
+  created_at: string;
+  is_mine: boolean;
+  replies?: TGComment[];
+};
+
+export type TGAuthor = {
+  author_id: string;
+  author_name: string;
+  author_handle: string;
+  following: boolean;
+  is_me: boolean;
+  article_count: number;
+  followers_count: number;
+  total_likes: number;
+  articles: TGArticle[];
 };
 
 
@@ -1056,9 +1083,17 @@ export const api = {
   // ---- Telegraph (articles) ----
   tgArticles: (filter: string) => request<TGArticle[]>(`/telegraph/articles?filter=${encodeURIComponent(filter)}`),
   tgArticle: (id: string) => request<TGArticle>(`/telegraph/articles/${id}`),
-  tgCreateArticle: (body: { title: string; body: string; excerpt?: string; category?: string; cover_url?: string }) =>
+  tgCreateArticle: (body: { title: string; body: string; excerpt?: string; category?: string; cover_url?: string; status?: string }) =>
     request<TGArticle>("/telegraph/articles", { method: "POST", body: JSON.stringify(body) }),
+  tgUpdateArticle: (id: string, body: { title: string; body: string; excerpt?: string; category?: string; cover_url?: string; status?: string }) =>
+    request<TGArticle>(`/telegraph/articles/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  tgDrafts: () => request<TGArticle[]>("/telegraph/drafts"),
+  tgAuthor: (authorId: string) => request<TGAuthor>(`/telegraph/authors/${authorId}`),
   tgDeleteArticle: (id: string) => request<{ deleted: boolean }>(`/telegraph/articles/${id}`, { method: "DELETE" }),
   tgLikeArticle: (id: string) => request<{ liked: boolean }>(`/telegraph/articles/${id}/like`, { method: "POST" }),
   tgFollowAuthor: (authorId: string) => request<{ following: boolean }>(`/telegraph/authors/${authorId}/follow`, { method: "POST" }),
+  tgComments: (id: string) => request<TGComment[]>(`/telegraph/articles/${id}/comments`),
+  tgAddComment: (id: string, body: string, parentId?: string) =>
+    request<TGComment>(`/telegraph/articles/${id}/comments`, { method: "POST", body: JSON.stringify({ body, parent_id: parentId ?? null }) }),
+  tgDeleteComment: (commentId: string) => request<{ deleted: boolean }>(`/telegraph/comments/${commentId}`, { method: "DELETE" }),
 };

@@ -73,6 +73,9 @@ export default function TelegraphGallery() {
           <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.headerTitle, { color: colors.onSurface }]}>Article Gallery</Text>
           <Eyebrow>Short thoughts and long essays</Eyebrow>
         </View>
+        <Pressable testID="tg-drafts" onPress={() => router.push("/telegraph/drafts")} hitSlop={10} style={styles.iconGhost}>
+          <MaterialCommunityIcons name="file-document-outline" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="tg-new" onPress={() => router.push("/telegraph/new")} style={[styles.iconBtn, { backgroundColor: colors.brand }]}>
           <MaterialCommunityIcons name="feather" size={19} color={colors.onBrandPrimary} />
         </Pressable>
@@ -121,16 +124,22 @@ export default function TelegraphGallery() {
               <Text numberOfLines={2} style={[styles.title, { color: colors.onSurface }]}>{item.title}</Text>
               <Text numberOfLines={3} style={[styles.excerpt, { color: colors.muted }]}>{item.excerpt}</Text>
               <View style={styles.byRow}>
-                <View style={styles.byLeft}>
+                <Pressable style={styles.byLeft} onPress={() => router.push(`/telegraph/author/${item.author_id}`)} testID={`tg-author-link-${item.id}`} hitSlop={6}>
                   <View style={[styles.avatar, { backgroundColor: colors.surfaceTertiary }]}>
                     <Text style={[styles.avatarText, { color: colors.brand }]}>{(item.author_name || "?").charAt(0).toUpperCase()}</Text>
                   </View>
                   <Text numberOfLines={1} style={[styles.author, { color: colors.onSurface }]}>{item.author_name}</Text>
                   {item.following ? <MaterialCommunityIcons name="account-heart" size={14} color={colors.brand} /> : null}
-                </View>
-                <View style={styles.likeRow}>
-                  <MaterialCommunityIcons name={item.liked ? "heart" : "heart-outline"} size={15} color={item.liked ? colors.brand : colors.muted} />
-                  <Text style={[styles.likeText, { color: colors.muted }]}>{item.likes}</Text>
+                </Pressable>
+                <View style={styles.statsRight}>
+                  <View style={styles.likeRow}>
+                    <MaterialCommunityIcons name="comment-outline" size={14} color={colors.muted} />
+                    <Text style={[styles.likeText, { color: colors.muted }]}>{item.comments_count}</Text>
+                  </View>
+                  <View style={styles.likeRow}>
+                    <MaterialCommunityIcons name={item.liked ? "heart" : "heart-outline"} size={15} color={item.liked ? colors.brand : colors.muted} />
+                    <Text style={[styles.likeText, { color: colors.muted }]}>{item.likes}</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -151,6 +160,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 22 },
   iconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  iconGhost: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   tabRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   tabChip: { height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   tabText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
@@ -171,4 +181,5 @@ const styles = StyleSheet.create({
   author: { fontFamily: fonts.bodyMedium, fontSize: 13, flexShrink: 1 },
   likeRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   likeText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  statsRight: { flexDirection: "row", alignItems: "center", gap: spacing.md },
 });

@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, TGArticle } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { ErrorState, Loading } from "@/src/components/States";
+import { TGComments } from "@/src/components/TGComments";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -84,27 +85,42 @@ export default function TelegraphReader() {
             <MaterialCommunityIcons name="share-variant" size={21} color={colors.onSurface} />
           </Pressable>
           {isOwner ? (
-            <Pressable onPress={confirmDelete} hitSlop={10} testID="tg-delete">
-              <MaterialCommunityIcons name="trash-can-outline" size={21} color={colors.error ?? colors.muted} />
-            </Pressable>
+            <>
+              <Pressable onPress={() => router.push(`/telegraph/new?id=${article.id}`)} hitSlop={10} testID="tg-edit">
+                <MaterialCommunityIcons name="pencil-outline" size={21} color={colors.onSurface} />
+              </Pressable>
+              <Pressable onPress={confirmDelete} hitSlop={10} testID="tg-delete">
+                <MaterialCommunityIcons name="trash-can-outline" size={21} color={colors.error ?? colors.muted} />
+              </Pressable>
+            </>
           ) : null}
         </View>
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 96 }]} showsVerticalScrollIndicator={false}>
-        <View style={[styles.catBadge, { backgroundColor: colors.surfaceTertiary }]}>
-          <Text style={[styles.catText, { color: colors.brand }]}>{article.category}</Text>
+        <View style={styles.topLine}>
+          <View style={[styles.catBadge, { backgroundColor: colors.surfaceTertiary }]}>
+            <Text style={[styles.catText, { color: colors.brand }]}>{article.category}</Text>
+          </View>
+          {article.status === "draft" ? (
+            <View style={[styles.draftBadge, { backgroundColor: colors.surfaceTertiary, borderColor: colors.brand }]}>
+              <MaterialCommunityIcons name="file-document-edit-outline" size={13} color={colors.brand} />
+              <Text style={[styles.draftText, { color: colors.brand }]}>Draft</Text>
+            </View>
+          ) : null}
         </View>
         <Text style={[styles.title, { color: colors.onSurface }]}>{article.title}</Text>
 
         <View style={styles.authorRow}>
-          <View style={[styles.avatar, { backgroundColor: colors.surfaceTertiary }]}>
-            <Text style={[styles.avatarText, { color: colors.brand }]}>{(article.author_name || "?").charAt(0).toUpperCase()}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.author, { color: colors.onSurface }]}>{article.author_name}</Text>
-            <Text style={[styles.byMeta, { color: colors.muted }]}>{fullDate(article.created_at)} · {article.read_minutes} min read</Text>
-          </View>
+          <Pressable style={styles.authorTap} onPress={() => router.push(`/telegraph/author/${article.author_id}`)} testID="tg-author">
+            <View style={[styles.avatar, { backgroundColor: colors.surfaceTertiary }]}>
+              <Text style={[styles.avatarText, { color: colors.brand }]}>{(article.author_name || "?").charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.author, { color: colors.onSurface }]}>{article.author_name}</Text>
+              <Text style={[styles.byMeta, { color: colors.muted }]}>{fullDate(article.created_at)} · {article.read_minutes} min read</Text>
+            </View>
+          </Pressable>
           {!isOwner ? (
             <Pressable
               testID="tg-follow"
@@ -126,6 +142,8 @@ export default function TelegraphReader() {
             <Text key={i} style={[styles.paragraph, { color: colors.onSurface }]}>{p}</Text>
           ))}
         </View>
+
+        {article.status !== "draft" ? <TGComments articleId={article.id} /> : null}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
@@ -147,6 +165,10 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, maxWidth: 720, width: "100%", alignSelf: "center" },
   catBadge: { alignSelf: "flex-start", height: 24, paddingHorizontal: spacing.md, borderRadius: radius.pill, justifyContent: "center" },
   catText: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 0.3 },
+  topLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  draftBadge: { flexDirection: "row", alignItems: "center", gap: 4, height: 24, paddingHorizontal: spacing.sm, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
+  draftText: { fontFamily: fonts.bodyBold, fontSize: 11 },
+  authorTap: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
   title: { fontFamily: fonts.display, fontSize: 28, lineHeight: 36, marginTop: spacing.md },
   authorRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },

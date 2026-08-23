@@ -146,6 +146,8 @@ function RootNavigator() {
         <Stack.Screen name="dreambacker/backings" />
         <Stack.Screen name="telegraph/index" />
         <Stack.Screen name="telegraph/new" />
+        <Stack.Screen name="telegraph/drafts" />
+        <Stack.Screen name="telegraph/author/[id]" />
         <Stack.Screen name="telegraph/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />

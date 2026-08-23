@@ -642,6 +642,12 @@ class TGArticleBody(BaseModel):
     excerpt: str = Field(default="", max_length=280)
     category: str = Field(default="Essays", max_length=40)
     cover_url: str = Field(default="", max_length=600)
+    status: str = Field(default="published", pattern="^(published|draft)$")
+
+
+class TGCommentBody(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    parent_id: str | None = Field(default=None, max_length=40)
 
 
 # ----------------------------- Seed data -----------------------------
@@ -5494,10 +5500,11 @@ def _tg_read_minutes(text: str) -> int:
     return max(1, round(words / 200))
 
 
-def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: set, follow_set: set) -> dict:
+def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: set, follow_set: set, comment_counts: dict | None = None) -> dict:
     aid = a["id"]
     likes = int(a.get("base_likes", 0)) + int(like_counts.get(aid, 0))
     recent = int(a.get("recent_likes", 0)) + int(recent_counts.get(aid, 0))
+    author_id = a.get("author_id", a.get("user_id", ""))
     return {
         "id": aid,
         "title": a.get("title", ""),
@@ -5505,14 +5512,16 @@ def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: se
         "body": a.get("body", ""),
         "category": a.get("category", "Essays"),
         "cover_url": a.get("cover_url", ""),
-        "author_id": a.get("author_id", a.get("user_id", "")),
+        "author_id": author_id,
         "author_name": a.get("author_name", "Anonymous"),
         "author_handle": a.get("author_handle", ""),
         "created_at": a.get("created_at", ""),
+        "status": a.get("status", "published"),
         "likes": likes,
         "recent_likes": recent,
         "liked": aid in liked_ids,
-        "following": a.get("author_id", a.get("user_id", "")) in follow_set,
+        "following": author_id in follow_set,
+        "comments_count": int((comment_counts or {}).get(aid, 0)),
         "read_minutes": _tg_read_minutes(a.get("body", "")),
     }
 
@@ -5536,14 +5545,30 @@ async def _tg_engagement(article_ids: list, user_id: str) -> tuple[dict, dict, s
     return like_counts, recent_counts, liked_ids
 
 
+async def _tg_comment_counts(article_ids: list) -> dict:
+    if not article_ids:
+        return {}
+    counts: dict = {}
+    rows = await db.tg_comments.find({"article_id": {"$in": article_ids}}, {"_id": 0, "article_id": 1}).to_list(50000)
+    for r in rows:
+        counts[r["article_id"]] = counts.get(r["article_id"], 0) + 1
+    return counts
+
+
+async def _tg_follow_set(user_id: str) -> set:
+    rows = await db.tg_follows.find({"user_id": user_id}, {"_id": 0, "author_id": 1}).to_list(2000)
+    return {r["author_id"] for r in rows}
+
+
 @api_router.get("/telegraph/articles")
 async def tg_list_articles(filter: str = "all", user: dict = Depends(require_user)):
-    articles = await db.tg_articles.find({}, {"_id": 0}).to_list(2000)
+    # Only published articles appear in the public gallery — drafts are private.
+    articles = await db.tg_articles.find({"status": {"$ne": "draft"}}, {"_id": 0}).to_list(2000)
     ids = [a["id"] for a in articles]
     like_counts, recent_counts, liked_ids = await _tg_engagement(ids, user["id"])
-    follow_rows = await db.tg_follows.find({"user_id": user["id"]}, {"_id": 0, "author_id": 1}).to_list(2000)
-    follow_set = {r["author_id"] for r in follow_rows}
-    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set) for a in articles]
+    comment_counts = await _tg_comment_counts(ids)
+    follow_set = await _tg_follow_set(user["id"])
+    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts) for a in articles]
 
     if filter == "following":
         pub = [p for p in pub if p["following"]]
@@ -5557,24 +5582,72 @@ async def tg_list_articles(filter: str = "all", user: dict = Depends(require_use
     return pub
 
 
+@api_router.get("/telegraph/drafts")
+async def tg_list_drafts(user: dict = Depends(require_user)):
+    rows = await db.tg_articles.find({"author_id": user["id"], "status": "draft"}, {"_id": 0}).to_list(500)
+    rows.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+    return [_tg_public(a, like_counts={}, recent_counts={}, liked_ids=set(), follow_set=set()) for a in rows]
+
+
+@api_router.get("/telegraph/authors/{author_id}")
+async def tg_author_profile(author_id: str, user: dict = Depends(require_user)):
+    articles = await db.tg_articles.find({"author_id": author_id, "status": {"$ne": "draft"}}, {"_id": 0}).to_list(1000)
+    if not articles:
+        # Fall back to a registered user with no published articles yet.
+        u = await db.users.find_one({"id": author_id}, {"_id": 0})
+        if not u:
+            raise HTTPException(status_code=404, detail="Writer not found")
+        name, handle = u["display_name"], u.get("handle", "")
+    else:
+        name = articles[0].get("author_name", "Anonymous")
+        handle = articles[0].get("author_handle", "")
+    ids = [a["id"] for a in articles]
+    like_counts, recent_counts, liked_ids = await _tg_engagement(ids, user["id"])
+    comment_counts = await _tg_comment_counts(ids)
+    follow_set = await _tg_follow_set(user["id"])
+    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts) for a in articles]
+    pub.sort(key=lambda p: p["created_at"], reverse=True)
+    followers = await db.tg_follows.count_documents({"author_id": author_id})
+    total_likes = sum(p["likes"] for p in pub)
+    return {
+        "author_id": author_id,
+        "author_name": name,
+        "author_handle": handle,
+        "following": author_id in follow_set,
+        "is_me": author_id == user["id"],
+        "article_count": len(pub),
+        "followers_count": followers,
+        "total_likes": total_likes,
+        "articles": pub,
+    }
+
+
 @api_router.get("/telegraph/articles/{article_id}")
 async def tg_get_article(article_id: str, user: dict = Depends(require_user)):
     a = await db.tg_articles.find_one({"id": article_id}, {"_id": 0})
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
+    # Drafts are only visible to their author.
+    if a.get("status") == "draft" and a.get("author_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="Article not found")
     like_counts, recent_counts, liked_ids = await _tg_engagement([article_id], user["id"])
-    follow_rows = await db.tg_follows.find({"user_id": user["id"]}, {"_id": 0, "author_id": 1}).to_list(2000)
-    follow_set = {r["author_id"] for r in follow_rows}
-    return _tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set)
+    comment_counts = await _tg_comment_counts([article_id])
+    follow_set = await _tg_follow_set(user["id"])
+    return _tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts)
+
+
+def _tg_author_fields(user: dict) -> tuple[str, str]:
+    handle = user.get("handle", "")
+    if handle and not handle.startswith("@"):
+        handle = "@" + handle
+    return user["display_name"], handle
 
 
 @api_router.post("/telegraph/articles", status_code=201)
 async def tg_create_article(body: TGArticleBody, user: dict = Depends(require_user)):
     now = datetime.now(timezone.utc).isoformat()
     excerpt = body.excerpt.strip() or (body.body.strip()[:200].rsplit(" ", 1)[0] + "…")
-    handle = user.get("handle", "")
-    if handle and not handle.startswith("@"):
-        handle = "@" + handle
+    author_name, handle = _tg_author_fields(user)
     article = {
         "id": uuid.uuid4().hex[:12],
         "title": body.title.strip(),
@@ -5584,8 +5657,9 @@ async def tg_create_article(body: TGArticleBody, user: dict = Depends(require_us
         "cover_url": body.cover_url.strip(),
         "author_id": user["id"],
         "user_id": user["id"],
-        "author_name": user["display_name"],
+        "author_name": author_name,
         "author_handle": handle,
+        "status": body.status,
         "base_likes": 0,
         "recent_likes": 0,
         "seeded": False,
@@ -5593,6 +5667,31 @@ async def tg_create_article(body: TGArticleBody, user: dict = Depends(require_us
     }
     await db.tg_articles.insert_one(dict(article))
     return _tg_public(article, like_counts={}, recent_counts={}, liked_ids=set(), follow_set=set())
+
+
+@api_router.put("/telegraph/articles/{article_id}")
+async def tg_update_article(article_id: str, body: TGArticleBody, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if a.get("author_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only edit your own articles")
+    excerpt = body.excerpt.strip() or (body.body.strip()[:200].rsplit(" ", 1)[0] + "…")
+    updates = {
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "excerpt": excerpt,
+        "category": body.category.strip() or "Essays",
+        "cover_url": body.cover_url.strip(),
+        "status": body.status,
+    }
+    # Publishing a draft stamps a fresh publish time so it lands in New correctly.
+    if a.get("status") == "draft" and body.status == "published":
+        updates["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tg_articles.update_one({"id": article_id}, {"$set": updates})
+    merged = {**a, **updates}
+    merged.pop("_id", None)
+    return _tg_public(merged, like_counts={}, recent_counts={}, liked_ids=set(), follow_set=set())
 
 
 @api_router.delete("/telegraph/articles/{article_id}")
@@ -5604,6 +5703,7 @@ async def tg_delete_article(article_id: str, user: dict = Depends(require_user))
         raise HTTPException(status_code=403, detail="You can only delete your own articles")
     await db.tg_articles.delete_one({"id": article_id})
     await db.tg_likes.delete_many({"article_id": article_id})
+    await db.tg_comments.delete_many({"article_id": article_id})
     return {"deleted": True}
 
 
@@ -5638,9 +5738,74 @@ async def tg_follow_author(author_id: str, user: dict = Depends(require_user)):
     return {"following": following}
 
 
+# ----- Telegraph comments (top-level + one level of replies) -----
+def _tg_comment_public(c: dict, user_id: str) -> dict:
+    return {
+        "id": c["id"],
+        "article_id": c["article_id"],
+        "parent_id": c.get("parent_id"),
+        "body": c.get("body", ""),
+        "author_id": c.get("user_id", ""),
+        "author_name": c.get("author_name", "Anonymous"),
+        "author_handle": c.get("author_handle", ""),
+        "created_at": c.get("created_at", ""),
+        "is_mine": c.get("user_id") == user_id,
+    }
 
 
+@api_router.get("/telegraph/articles/{article_id}/comments")
+async def tg_list_comments(article_id: str, user: dict = Depends(require_user)):
+    rows = await db.tg_comments.find({"article_id": article_id}, {"_id": 0}).to_list(5000)
+    rows.sort(key=lambda c: c.get("created_at", ""))
+    pub = [_tg_comment_public(c, user["id"]) for c in rows]
+    tops = [c for c in pub if not c["parent_id"]]
+    replies_by_parent: dict = {}
+    for c in pub:
+        if c["parent_id"]:
+            replies_by_parent.setdefault(c["parent_id"], []).append(c)
+    # newest top-level threads first; replies stay chronological
+    tops.sort(key=lambda c: c["created_at"], reverse=True)
+    return [{**t, "replies": replies_by_parent.get(t["id"], [])} for t in tops]
 
+
+@api_router.post("/telegraph/articles/{article_id}/comments", status_code=201)
+async def tg_create_comment(article_id: str, body: TGCommentBody, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id}, {"_id": 0, "id": 1})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    parent_id = None
+    if body.parent_id:
+        parent = await db.tg_comments.find_one({"id": body.parent_id, "article_id": article_id}, {"_id": 0})
+        if not parent:
+            raise HTTPException(status_code=404, detail="Comment to reply to was not found")
+        # Only allow one level of nesting — a reply's parent becomes the top-level thread.
+        parent_id = parent.get("parent_id") or parent["id"]
+    author_name, handle = _tg_author_fields(user)
+    comment = {
+        "id": uuid.uuid4().hex[:12],
+        "article_id": article_id,
+        "parent_id": parent_id,
+        "body": body.body.strip(),
+        "user_id": user["id"],
+        "author_name": author_name,
+        "author_handle": handle,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.tg_comments.insert_one(dict(comment))
+    return _tg_comment_public(comment, user["id"])
+
+
+@api_router.delete("/telegraph/comments/{comment_id}")
+async def tg_delete_comment(comment_id: str, user: dict = Depends(require_user)):
+    c = await db.tg_comments.find_one({"id": comment_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if c.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own comments")
+    # Deleting a top-level comment removes its replies too.
+    await db.tg_comments.delete_one({"id": comment_id})
+    await db.tg_comments.delete_many({"parent_id": comment_id})
+    return {"deleted": True}
 
 
 
