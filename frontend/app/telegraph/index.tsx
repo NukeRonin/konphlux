@@ -125,6 +125,20 @@ export default function TelegraphGallery() {
         keyExtractor={(a) => a.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View style={styles.quickRow}>
+            <Pressable testID="tg-news-entry" onPress={() => router.push("/telegraph/news")} style={[styles.quickCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="newspaper-variant-multiple-outline" size={22} color={colors.brand} />
+              <Text style={[styles.quickTitle, { color: colors.onSurface }]}>News</Text>
+              <Text style={[styles.quickSub, { color: colors.muted }]}>Headlines from every angle</Text>
+            </Pressable>
+            <Pressable testID="tg-reading-entry" onPress={() => router.push("/telegraph/reading-list")} style={[styles.quickCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="bookmark-multiple-outline" size={22} color={colors.brand} />
+              <Text style={[styles.quickTitle, { color: colors.onSurface }]}>Reading List</Text>
+              <Text style={[styles.quickSub, { color: colors.muted }]}>Saved to read later</Text>
+            </Pressable>
+          </View>
+        }
         renderItem={({ item }) => (
           <Pressable testID={`tg-article-${item.id}`} onPress={() => router.push(`/telegraph/${item.id}`)} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             {item.cover_url ? (
@@ -184,6 +198,10 @@ const styles = StyleSheet.create({
   badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
   badgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
+  quickRow: { flexDirection: "row", gap: spacing.md },
+  quickCard: { flex: 1, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: 3 },
+  quickTitle: { fontFamily: fonts.displaySemi, fontSize: 16, marginTop: 4 },
+  quickSub: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
   card: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   cover: { width: "100%", height: 150 },
   cardBody: { padding: spacing.md, gap: spacing.xs },

@@ -221,7 +221,8 @@ const TELEGRAPH_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Trending": { route: "/telegraph?filter=trending", icon: "trending-up" },
   "New": { route: "/telegraph?filter=new", icon: "clock-outline" },
   "Following": { route: "/telegraph?filter=following", icon: "account-heart-outline" },
-  "Reading lists": { route: "/telegraph?filter=all", icon: "bookmark-multiple-outline" },
+  "News": { route: "/telegraph/news", icon: "newspaper-variant-multiple-outline" },
+  "Reading lists": { route: "/telegraph/reading-list", icon: "bookmark-multiple-outline" },
 };
 
 const WAYPOINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {

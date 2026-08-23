@@ -649,7 +649,33 @@ export type TGArticle = {
   following: boolean;
   comments_count: number;
   read_minutes: number;
+  saved?: boolean;
 };
+
+export type NewsSource = {
+  source_name: string;
+  bias: string;
+  title: string;
+  description: string;
+  url: string;
+  image_url: string;
+  published_at: string;
+};
+
+export type NewsCluster = {
+  id: string;
+  headline: string;
+  summary: string;
+  image_url: string;
+  published_at: string;
+  source_count: number;
+  coverage: { Left: number; Center: number; Right: number };
+  sources: NewsSource[];
+};
+
+export type NewsResponse = { configured: boolean; topic: string; clusters: NewsCluster[]; cached: boolean };
+
+export type VaultSharedBoard = { share_id: string; board_name: string; owner_name: string; count: number; cover_url: string; created_at: string };
 
 export type TGComment = {
   id: string;
@@ -1175,6 +1201,9 @@ export const api = {
   tgLikeComment: (commentId: string) => request<{ liked: boolean; likes: number }>(`/telegraph/comments/${commentId}/like`, { method: "POST" }),
   tgFollowingUnseen: () => request<{ count: number }>("/telegraph/following/unseen"),
   tgFollowingSeen: () => request<{ count: number }>("/telegraph/following/seen", { method: "POST" }),
+  tgToggleReading: (id: string) => request<{ saved: boolean }>(`/telegraph/articles/${id}/reading-list`, { method: "POST" }),
+  tgReadingList: () => request<TGArticle[]>("/telegraph/reading-list"),
+  tgNews: (topic = "top") => request<NewsResponse>(`/telegraph/news?topic=${encodeURIComponent(topic)}`),
 
   // ---- Waypoint (stays & bookings) ----
   wpStays: (q: string, type: string, group = "", kind = "rent") =>
@@ -1208,4 +1237,8 @@ export const api = {
   vaultCollections: () => request<VaultCollection[]>("/vault/collections"),
   vaultCreateCollection: (name: string) => request<VaultCollection>("/vault/collections", { method: "POST", body: JSON.stringify({ name }) }),
   vaultDeleteCollection: (id: string) => request<{ deleted: boolean }>(`/vault/collections/${id}`, { method: "DELETE" }),
+  vaultShareCollection: (id: string, recipient: string) => request<{ shared: boolean; recipient: string }>(`/vault/collections/${id}/share`, { method: "POST", body: JSON.stringify({ recipient }) }),
+  vaultShared: () => request<VaultSharedBoard[]>("/vault/shared"),
+  vaultSharedDetail: (shareId: string) => request<{ share_id: string; board_name: string; owner_name: string; items: VaultItem[] }>(`/vault/shared/${shareId}`),
+  vaultRemoveShare: (shareId: string) => request<{ removed: boolean }>(`/vault/shared/${shareId}`, { method: "DELETE" }),
 };

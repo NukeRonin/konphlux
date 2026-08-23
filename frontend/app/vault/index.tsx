@@ -5,7 +5,7 @@ import React, { useCallback, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, VaultCollection, VaultItem } from "@/src/api/client";
+import { api, VaultCollection, VaultItem, VaultSharedBoard } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { EmptyState, ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -94,6 +94,7 @@ export default function VaultHub() {
   const [cat, setCat] = useState(params.category && CATEGORIES.some((c) => c.key === params.category) ? params.category : "All");
   const [items, setItems] = useState<VaultItem[]>([]);
   const [collections, setCollections] = useState<VaultCollection[]>([]);
+  const [shared, setShared] = useState<VaultSharedBoard[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [modal, setModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -101,8 +102,8 @@ export default function VaultHub() {
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      const [its, colls] = await Promise.all([api.vaultItems(q.trim(), "", cat === "All" ? "" : cat), api.vaultCollections()]);
-      setItems(its); setCollections(colls); setStatus("ready");
+      const [its, colls, shd] = await Promise.all([api.vaultItems(q.trim(), "", cat === "All" ? "" : cat), api.vaultCollections(), api.vaultShared()]);
+      setItems(its); setCollections(colls); setShared(shd); setStatus("ready");
     } catch { setStatus("error"); }
   }, [q, cat]);
 
@@ -200,6 +201,26 @@ export default function VaultHub() {
             </>
           ) : null}
 
+          {shared.length > 0 && !q && cat === "All" ? (
+            <>
+              <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Shared with you</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collRow}>
+                {shared.map((s) => (
+                  <Pressable key={s.share_id} testID={`vault-shared-${s.share_id}`} onPress={() => router.push(`/vault/shared/${s.share_id}`)} style={styles.collCard}>
+                    <View style={[styles.collCover, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                      {s.cover_url ? <Image source={{ uri: s.cover_url }} style={StyleSheet.absoluteFill as any} contentFit="cover" /> : <MaterialCommunityIcons name="account-multiple" size={30} color={colors.muted} />}
+                      <View style={[styles.sharedTag, { backgroundColor: colors.brand }]}>
+                        <MaterialCommunityIcons name="account-arrow-left" size={11} color={colors.onBrandPrimary} />
+                      </View>
+                    </View>
+                    <Text numberOfLines={1} style={[styles.collName, { color: colors.onSurface }]}>{s.board_name}</Text>
+                    <Text numberOfLines={1} style={[styles.collCount, { color: colors.muted }]}>from {s.owner_name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
+
           <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{q ? "Results" : cat === "All" ? "All saved" : cat}</Text>
           {items.length === 0 ? (
             <EmptyState icon="bookmark-multiple-outline" title={q ? "Nothing found" : `No ${cat === "All" ? "saved items" : cat.toLowerCase()} yet`} subtitle={q ? "Try a different search." : "Save items from the Bazaar, Frankenstein Lab and Bluepaint to see them here."} />
@@ -261,6 +282,7 @@ const styles = StyleSheet.create({
   collCover: { width: 120, height: 90, borderRadius: radius.md, borderWidth: 1, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   collName: { fontFamily: fonts.bodyBold, fontSize: 13.5, marginTop: 6 },
   collCount: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
+  sharedTag: { position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   masonry: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg },
   col: { flex: 1, gap: spacing.md },
   tile: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },

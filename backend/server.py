@@ -16,6 +16,7 @@ import base64
 import jwt
 import random
 import stripe
+import httpx
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from datetime import datetime, timezone, timedelta, date
@@ -776,7 +777,7 @@ DISTRICTS = [
      "tagline": "Short thoughts and long essays.",
      "description": "Post a passing thought or publish a full article for Konphlux to read.",
      "chatmonger": {"name": "Valeri", "role": "Wire Operator", "greeting": "Compose your message — I'll see it down the wire."},
-     "features": ["All Articles", "Post Something", "Popular", "Trending", "New", "Following", "Reading lists"]},
+     "features": ["All Articles", "Post Something", "Popular", "Trending", "New", "Following", "News", "Reading lists"]},
     {"slug": "roundtable", "name": "Roundtable", "icon": "forum",
      "tagline": "Every discussion in Konphlux ends up here.",
      "description": "Communities, threads, votes and awards. Discussions started anywhere on the site are routed to the Roundtable.",
@@ -2965,6 +2966,15 @@ async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(r
         )
     reply["mentions"] = list({m for m in body.mentions if m and m != user["id"]})
     reply["mention_names"] = mention_names
+    # Also alert the thread starter (unless it's you or they were already @mentioned).
+    starter = t.get("user_id")
+    if starter and starter not in ("seed", user["id"]) and starter not in set(reply["mentions"]):
+        if await db.users.find_one({"id": starter}, {"_id": 0, "id": 1}):
+            await _notify(
+                starter, "roundtable_reply", None,
+                f"{user['display_name']} replied to your discussion",
+                f"On \u201c{t.get('title', 'your thread')}\u201d: {reply['body'][:120]}",
+            )
     await db.rt_replies.insert_one(dict(reply))
     reply.pop("_id", None)
     return reply
@@ -5798,7 +5808,7 @@ def _tg_read_minutes(text: str) -> int:
     return max(1, round(words / 200))
 
 
-def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: set, follow_set: set, comment_counts: dict | None = None) -> dict:
+def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: set, follow_set: set, comment_counts: dict | None = None, reading_ids: set | None = None) -> dict:
     aid = a["id"]
     likes = int(a.get("base_likes", 0)) + int(like_counts.get(aid, 0))
     recent = int(a.get("recent_likes", 0)) + int(recent_counts.get(aid, 0))
@@ -5821,6 +5831,7 @@ def _tg_public(a: dict, *, like_counts: dict, recent_counts: dict, liked_ids: se
         "following": author_id in follow_set,
         "comments_count": int((comment_counts or {}).get(aid, 0)),
         "read_minutes": _tg_read_minutes(a.get("body", "")),
+        "saved": aid in (reading_ids or set()),
     }
 
 
@@ -5858,6 +5869,11 @@ async def _tg_follow_set(user_id: str) -> set:
     return {r["author_id"] for r in rows}
 
 
+async def _tg_reading_ids(user_id: str) -> set:
+    rows = await db.tg_reading.find({"user_id": user_id}, {"_id": 0, "article_id": 1}).to_list(2000)
+    return {r["article_id"] for r in rows}
+
+
 @api_router.get("/telegraph/articles")
 async def tg_list_articles(filter: str = "all", user: dict = Depends(require_user)):
     # Only published articles appear in the public gallery — drafts are private.
@@ -5866,7 +5882,8 @@ async def tg_list_articles(filter: str = "all", user: dict = Depends(require_use
     like_counts, recent_counts, liked_ids = await _tg_engagement(ids, user["id"])
     comment_counts = await _tg_comment_counts(ids)
     follow_set = await _tg_follow_set(user["id"])
-    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts) for a in articles]
+    reading_ids = await _tg_reading_ids(user["id"])
+    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts, reading_ids=reading_ids) for a in articles]
 
     if filter == "following":
         pub = [p for p in pub if p["following"]]
@@ -5931,7 +5948,8 @@ async def tg_get_article(article_id: str, user: dict = Depends(require_user)):
     like_counts, recent_counts, liked_ids = await _tg_engagement([article_id], user["id"])
     comment_counts = await _tg_comment_counts([article_id])
     follow_set = await _tg_follow_set(user["id"])
-    return _tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts)
+    reading_ids = await _tg_reading_ids(user["id"])
+    return _tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts, reading_ids=reading_ids)
 
 
 def _tg_author_fields(user: dict) -> tuple[str, str]:
@@ -6160,6 +6178,194 @@ async def tg_following_seen(user: dict = Depends(require_user)):
         upsert=True,
     )
     return {"count": 0}
+
+
+# ----- Telegraph: Reading List (save articles to read later) -----
+@api_router.post("/telegraph/articles/{article_id}/reading-list")
+async def tg_toggle_reading(article_id: str, user: dict = Depends(require_user)):
+    a = await db.tg_articles.find_one({"id": article_id}, {"_id": 0, "id": 1})
+    if not a:
+        raise HTTPException(status_code=404, detail="Article not found")
+    q = {"user_id": user["id"], "article_id": article_id}
+    existing = await db.tg_reading.find_one(q)
+    if existing:
+        await db.tg_reading.delete_one(q)
+        return {"saved": False}
+    await db.tg_reading.insert_one({**q, "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"saved": True}
+
+
+@api_router.get("/telegraph/reading-list")
+async def tg_reading_list(user: dict = Depends(require_user)):
+    saved = await db.tg_reading.find({"user_id": user["id"]}, {"_id": 0}).to_list(2000)
+    saved.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    order = {r["article_id"]: i for i, r in enumerate(saved)}
+    ids = list(order.keys())
+    if not ids:
+        return []
+    articles = await db.tg_articles.find({"id": {"$in": ids}, "status": {"$ne": "draft"}}, {"_id": 0}).to_list(2000)
+    like_counts, recent_counts, liked_ids = await _tg_engagement(ids, user["id"])
+    comment_counts = await _tg_comment_counts(ids)
+    follow_set = await _tg_follow_set(user["id"])
+    reading_ids = set(ids)
+    pub = [_tg_public(a, like_counts=like_counts, recent_counts=recent_counts, liked_ids=liked_ids, follow_set=follow_set, comment_counts=comment_counts, reading_ids=reading_ids) for a in articles]
+    pub.sort(key=lambda p: order.get(p["id"], 999))
+    return pub
+
+
+# ----- Telegraph: News (live external headlines via NewsAPI, grouped by story) -----
+# Heuristic political-lean map for common outlets (Ground News-style perspective labels).
+_NEWS_BIAS = {
+    "left": {"cnn", "msnbc", "the new york times", "new york times", "the guardian", "guardian",
+             "vox", "huffpost", "huffington post", "the washington post", "washington post",
+             "buzzfeed", "the daily beast", "slate", "mother jones", "the atlantic", "nbc news", "abc news"},
+    "right": {"fox news", "breitbart", "the daily wire", "national review", "the washington times",
+              "new york post", "the american conservative", "the blaze", "washington examiner",
+              "fox business", "newsmax", "the federalist", "daily mail"},
+}
+_NEWS_CACHE: dict = {}
+_NEWS_TTL = 300  # seconds
+
+
+def _news_bias(source_name: str) -> str:
+    s = (source_name or "").strip().lower()
+    if s in _NEWS_BIAS["left"]:
+        return "Left"
+    if s in _NEWS_BIAS["right"]:
+        return "Right"
+    return "Center"
+
+
+def _news_norm_title(title: str) -> str:
+    import re as _re
+    title = _re.sub(r"\s+[|\u2013\u2014-]\s+[^|\u2013\u2014-]+$", "", title or "")
+    return _re.sub(r"[^a-z0-9 ]", "", title.lower()).strip()
+
+
+def _news_group(articles: list) -> list:
+    """Cluster articles about the same story using title similarity + keyword overlap."""
+    from difflib import SequenceMatcher
+    stop = {"the", "and", "for", "with", "from", "that", "this", "have", "has", "are",
+            "was", "will", "you", "your", "after", "over", "into", "amid", "says", "say"}
+
+    def toks(norm: str) -> set:
+        return {w for w in norm.split() if len(w) > 3 and w not in stop}
+
+    clusters: list = []
+    for a in articles:
+        norm = _news_norm_title(a["title"])
+        if not norm:
+            continue
+        tk = toks(norm)
+        placed = False
+        for c in clusters:
+            ratio = SequenceMatcher(None, norm, c["_norm"]).ratio()
+            shared = tk & c["_toks"]
+            smaller = min(len(tk), len(c["_toks"])) or 1
+            if ratio >= 0.6 or (len(shared) >= 3 and len(shared) / smaller >= 0.6):
+                c["sources"].append(a)
+                c["_toks"] |= tk
+                placed = True
+                break
+        if not placed:
+            clusters.append({"_norm": norm, "_toks": tk, "sources": [a]})
+    out = []
+    for c in clusters:
+        srcs = c["sources"]
+        # De-dupe by source name within a story.
+        seen = set()
+        uniq = []
+        for s in srcs:
+            if s["source_name"] not in seen:
+                seen.add(s["source_name"])
+                uniq.append(s)
+        lean = {"Left": 0, "Center": 0, "Right": 0}
+        for s in uniq:
+            lean[s["bias"]] += 1
+        lead = max(uniq, key=lambda s: (bool(s.get("image_url")), len(s.get("description") or "")))
+        out.append({
+            "id": uuid.uuid4().hex[:12],
+            "headline": lead["title"],
+            "summary": lead.get("description") or "",
+            "image_url": lead.get("image_url") or "",
+            "published_at": lead.get("published_at") or "",
+            "source_count": len(uniq),
+            "coverage": lean,
+            "sources": uniq,
+        })
+    # Prioritise stories with the broadest coverage first.
+    out.sort(key=lambda c: (c["source_count"], c["published_at"]), reverse=True)
+    return out
+
+
+async def _news_fetch(topic: str) -> list:
+    import os, asyncio
+    key = os.environ.get("NEWS_API_KEY", "").strip()
+    if not key or key in ("placeholder", "replace_with_your_key"):
+        return []
+    headers = {"X-Api-Key": key}
+    common = {"pageSize": 50, "language": "en"}
+    categories = {"business", "entertainment", "general", "health", "science", "sports", "technology"}
+    reqs = []
+    async with httpx.AsyncClient(base_url="https://newsapi.org/v2", timeout=12) as client:
+        async def _get(path, params):
+            try:
+                r = await client.get(path, params=params, headers=headers)
+                d = r.json()
+                return d.get("articles", []) if d.get("status") == "ok" else []
+            except Exception as e:  # noqa: BLE001
+                logger.warning("NewsAPI request failed: %s", e)
+                return []
+        if not topic or topic == "top":
+            reqs = [_get("/top-headlines", {**common, "country": "us"})]
+        elif topic in categories:
+            # Both endpoints → maximises same-story overlap across outlets.
+            reqs = [
+                _get("/top-headlines", {**common, "country": "us", "category": topic}),
+                _get("/everything", {**common, "q": topic, "sortBy": "publishedAt"}),
+            ]
+        else:  # world, politics, or freeform
+            reqs = [
+                _get("/top-headlines", {**common, "country": "us", "q": topic}),
+                _get("/everything", {**common, "q": topic, "sortBy": "publishedAt"}),
+            ]
+        results = await asyncio.gather(*reqs)
+    raw = [x for batch in results for x in batch]
+    articles = []
+    seen_urls = set()
+    for x in raw:
+        url = x.get("url") or ""
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        src = (x.get("source") or {}).get("name") or "Unknown"
+        if not x.get("title") or x.get("title") == "[Removed]":
+            continue
+        articles.append({
+            "source_name": src,
+            "bias": _news_bias(src),
+            "title": x.get("title", ""),
+            "description": x.get("description") or "",
+            "url": url,
+            "image_url": x.get("urlToImage") or "",
+            "published_at": x.get("publishedAt") or "",
+        })
+    return articles
+
+
+@api_router.get("/telegraph/news")
+async def tg_news(topic: str = "top", user: dict = Depends(require_user)):
+    import os, time
+    configured = bool(os.environ.get("NEWS_API_KEY", "").strip()) and \
+        os.environ.get("NEWS_API_KEY", "").strip() not in ("placeholder", "replace_with_your_key")
+    now = time.time()
+    cached = _NEWS_CACHE.get(topic)
+    if cached and now - cached["ts"] < _NEWS_TTL:
+        return {"configured": configured, "topic": topic, "clusters": cached["clusters"], "cached": True}
+    articles = await _news_fetch(topic)
+    clusters = _news_group(articles)
+    _NEWS_CACHE[topic] = {"ts": now, "clusters": clusters}
+    return {"configured": configured, "topic": topic, "clusters": clusters, "cached": False}
 
 
 # ----------------------------- Waypoint (stays & bookings) -----------------------------
@@ -6607,7 +6813,72 @@ async def vault_delete_collection(coll_id: str, user: dict = Depends(require_use
         raise HTTPException(status_code=404, detail="Collection not found")
     # Items stay in the Vault, just uncollected.
     await db.vault_items.update_many({"user_id": user["id"], "collection_id": coll_id}, {"$set": {"collection_id": None}})
+    await db.vault_shares.delete_many({"collection_id": coll_id, "owner_id": user["id"]})
     return {"deleted": True}
+
+
+# ----- Vault: Shared Boards (share a board with friends) -----
+class VaultShareBody(BaseModel):
+    recipient: str = Field(min_length=1, max_length=120)  # email or @handle
+
+
+@api_router.post("/vault/collections/{coll_id}/share", status_code=201)
+async def vault_share_collection(coll_id: str, body: VaultShareBody, user: dict = Depends(require_user)):
+    coll = await db.vault_collections.find_one({"id": coll_id, "user_id": user["id"]}, {"_id": 0})
+    if not coll:
+        raise HTTPException(status_code=404, detail="Board not found")
+    key = body.recipient.strip()
+    handle = key if key.startswith("@") else f"@{key}"
+    recipient = await db.users.find_one({"$or": [{"email": key.lower()}, {"handle": handle}, {"handle": key}]})
+    if not recipient:
+        raise HTTPException(status_code=404, detail="No Konphlux member found for that email or handle")
+    if recipient["id"] == user["id"]:
+        raise HTTPException(status_code=400, detail="That board is already yours")
+    existing = await db.vault_shares.find_one({"collection_id": coll_id, "recipient_id": recipient["id"]})
+    if not existing:
+        await db.vault_shares.insert_one({
+            "id": uuid.uuid4().hex[:12], "collection_id": coll_id, "board_name": coll["name"],
+            "owner_id": user["id"], "owner_name": user["display_name"], "recipient_id": recipient["id"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await _notify(
+            recipient["id"], "vault_share", None,
+            f"{user['display_name']} shared a Vault board with you",
+            f"\u201c{coll['name']}\u201d is now in your Vault under Shared with you.",
+        )
+    return {"shared": True, "recipient": recipient["display_name"]}
+
+
+@api_router.get("/vault/shared")
+async def vault_shared_with_me(user: dict = Depends(require_user)):
+    shares = await db.vault_shares.find({"recipient_id": user["id"]}, {"_id": 0}).to_list(200)
+    out = []
+    for s in shares:
+        items = await db.vault_items.find({"user_id": s["owner_id"], "collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
+        cover = next((i["image_url"] for i in items if i.get("image_url")), "")
+        out.append({"share_id": s["id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
+                    "count": len(items), "cover_url": cover, "created_at": s.get("created_at", "")})
+    out.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+    return out
+
+
+@api_router.get("/vault/shared/{share_id}")
+async def vault_shared_detail(share_id: str, user: dict = Depends(require_user)):
+    s = await db.vault_shares.find_one({"id": share_id, "recipient_id": user["id"]}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Shared board not found")
+    items = await db.vault_items.find({"user_id": s["owner_id"], "collection_id": s["collection_id"]}, {"_id": 0}).to_list(500)
+    items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return {"share_id": s["id"], "board_name": s["board_name"], "owner_name": s["owner_name"],
+            "items": [_vault_public(i) for i in items]}
+
+
+@api_router.delete("/vault/shared/{share_id}")
+async def vault_remove_share(share_id: str, user: dict = Depends(require_user)):
+    res = await db.vault_shares.delete_one({"id": share_id, "recipient_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Shared board not found")
+    return {"removed": True}
 
 
 

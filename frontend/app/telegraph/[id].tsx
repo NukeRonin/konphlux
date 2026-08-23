@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, TGArticle } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { DiscussItemButton } from "@/src/components/DiscussItemButton";
 import { ErrorState, Loading } from "@/src/components/States";
 import { TGComments } from "@/src/components/TGComments";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -60,6 +61,13 @@ export default function TelegraphReader() {
     try { await Share.share({ message: `${article.title}\n\nby ${article.author_name} on Konphlux Telegraph\n\n${article.excerpt}` }); } catch { /* ignore */ }
   };
 
+  const toggleReading = async () => {
+    if (!article || busy) return;
+    setBusy(true);
+    setArticle({ ...article, saved: !article.saved });
+    try { await api.tgToggleReading(article.id); } catch { load(); } finally { setBusy(false); }
+  };
+
   const confirmDelete = () => {
     if (!article) return;
     Alert.alert("Delete article?", `"${article.title}" will be permanently removed.`, [
@@ -81,6 +89,9 @@ export default function TelegraphReader() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <View style={styles.topActions}>
+          <Pressable onPress={toggleReading} hitSlop={10} testID="tg-reading-toggle">
+            <MaterialCommunityIcons name={article.saved ? "bookmark" : "bookmark-outline"} size={22} color={article.saved ? colors.brand : colors.onSurface} />
+          </Pressable>
           <Pressable onPress={share} hitSlop={10} testID="tg-share">
             <MaterialCommunityIcons name="share-variant" size={21} color={colors.onSurface} />
           </Pressable>
@@ -153,6 +164,10 @@ export default function TelegraphReader() {
             {article.liked ? "Liked" : "Like"} · {article.likes}
           </Text>
         </Pressable>
+        <View style={{ width: spacing.sm }} />
+        <View style={{ flex: 1 }}>
+          <DiscussItemButton category="Telegraph" title={article.title} context={`Discussing "${article.title}" from the Telegraph.`} />
+        </View>
       </View>
     </View>
   );

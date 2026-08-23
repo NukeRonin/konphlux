@@ -150,6 +150,8 @@ function RootNavigator() {
         <Stack.Screen name="telegraph/drafts" />
         <Stack.Screen name="telegraph/author/[id]" />
         <Stack.Screen name="telegraph/[id]" />
+        <Stack.Screen name="telegraph/reading-list" />
+        <Stack.Screen name="telegraph/news" />
         <Stack.Screen name="waypoint/index" />
         <Stack.Screen name="waypoint/host" />
         <Stack.Screen name="waypoint/bookings" />
@@ -160,6 +162,7 @@ function RootNavigator() {
         <Stack.Screen name="vault/add" />
         <Stack.Screen name="vault/item/[id]" />
         <Stack.Screen name="vault/collection/[id]" />
+        <Stack.Screen name="vault/shared/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />

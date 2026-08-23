@@ -9,6 +9,7 @@ import * as WebBrowser from "expo-web-browser";
 import { api, DBBacker, DBComment, DBProject, DBRecurringSupporter, DBUpdate } from "@/src/api/client";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
+import { DiscussItemButton } from "@/src/components/DiscussItemButton";
 import { ErrorState, Loading } from "@/src/components/States";
 import { ConfettiCelebration } from "@/src/components/ConfettiCelebration";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -208,6 +209,10 @@ export default function FundraiserDetail() {
             <MaterialCommunityIcons name={categoryMeta(project.category).icon as IconName} size={12} color={colors.brand} />
             <Text style={[styles.catChipText, { color: colors.brand }]}>{categoryMeta(project.category).label}</Text>
           </View>
+        </View>
+
+        <View style={{ marginTop: spacing.md, alignSelf: "flex-start" }}>
+          <DiscussItemButton category="Dreambacker" title={project.title} context={`Let's talk about the "${project.title}" fundraiser on Dreambacker.`} />
         </View>
 
         <View style={[styles.progressCard, { backgroundColor: colors.surfaceSecondary, borderColor: project.funded ? colors.brand : colors.border }]}>
