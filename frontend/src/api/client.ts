@@ -377,6 +377,8 @@ export type BBCourseCard = {
   icon: string;
   summary: string;
   lesson_count: number;
+  rating?: { avg: number; count: number };
+  user_created?: boolean;
 };
 export type BBLesson = { title: string; body: string };
 export type BBCourse = BBCourseCard & { lessons: BBLesson[]; completed: number[]; rating?: { avg: number; count: number }; user_created?: boolean };
@@ -614,6 +616,7 @@ export type RetroBusiness = {
   id: string; name: string; category: string; address: string; description: string; image: string;
   lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
   distance_km?: number | null; reviews?: RetroReview[]; can_review?: boolean; is_favorite?: boolean; status?: string;
+  reopen_at?: string; reopen_in_days?: number;
 };
 export type RetroListing = {
   id: string; name: string; category: string; asking_price: string; location: string; description: string;
@@ -772,7 +775,8 @@ export type VaultItem = {
 
 export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
 export type FriendCard = { id: string; display_name: string; handle: string; avatar: string };
-export type FriendActivity = { id: string; actor: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string };
+export type FriendActivity = { id: string; actor: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string; cheers: number; cheered: boolean; comment_count: number };
+export type FeedComment = { id: string; activity_id: string; user_id: string; author: string; text: string; created_at: string };
 
 export type WPBooking = {
   id: string;
@@ -1003,10 +1007,13 @@ export const api = {
 
   // BrainBoost (learning district)
   bbHub: () => request<BBHub>("/brainboost"),
-  bbCourses: (category?: string) =>
-    request<{ courses: BBCourseCard[]; categories: string[] }>(
-      `/brainboost/courses${category ? `?category=${encodeURIComponent(category)}` : ""}`,
-    ),
+  bbCourses: (category?: string, sort?: string) => {
+    const p = new URLSearchParams();
+    if (category) p.set("category", category);
+    if (sort) p.set("sort", sort);
+    const qs = p.toString();
+    return request<{ courses: BBCourseCard[]; categories: string[] }>(`/brainboost/courses${qs ? `?${qs}` : ""}`);
+  },
   bbCourse: (id: string) => request<BBCourse>(`/brainboost/courses/${id}`),
   bbCourseReviews: (id: string) => request<BBReviewsResponse>(`/brainboost/courses/${id}/reviews`),
   bbAddReview: (id: string, rating: number, text: string) =>
@@ -1329,6 +1336,10 @@ export const api = {
   vaultToggleFavorite: (id: string) => request<{ is_favorite: boolean }>(`/vault/items/${id}/favorite`, { method: "POST" }),
   friends: () => request<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>("/friends"),
   friendsFeed: () => request<{ activity: FriendActivity[] }>("/friends/feed"),
+  feedCheer: (activityId: string) => request<{ cheered: boolean; cheers: number }>(`/friends/feed/${activityId}/cheer`, { method: "POST" }),
+  feedComments: (activityId: string) => request<{ comments: FeedComment[] }>(`/friends/feed/${activityId}/comments`),
+  feedAddComment: (activityId: string, text: string) =>
+    request<FeedComment>(`/friends/feed/${activityId}/comments`, { method: "POST", body: JSON.stringify({ text }) }),
   friendsSearch: (q: string) => request<(FriendCard & { relation: string })[]>(`/friends/search?q=${encodeURIComponent(q)}`),
   friendRequest: (id: string) => request<{ status: string }>(`/friends/request/${id}`, { method: "POST" }),
   friendAccept: (id: string) => request<{ status: string }>(`/friends/accept/${id}`, { method: "POST" }),

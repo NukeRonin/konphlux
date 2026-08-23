@@ -17,18 +17,19 @@ export default function BrainBoostCourses() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState<string | null>(null);
+  const [sort, setSort] = useState<"recent" | "rating">("recent");
   const [data, setData] = useState<{ courses: BBCourseCard[]; categories: string[] } | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      setData(await api.bbCourses());
+      setData(await api.bbCourses(undefined, sort));
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, []);
+  }, [sort]);
 
   useFocusEffect(
     useCallback(() => {
@@ -63,16 +64,26 @@ export default function BrainBoostCourses() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
-            <Pressable testID="cat-all" onPress={() => setCategory(null)} style={[styles.catChip, { backgroundColor: !category ? colors.surfaceTertiary : "transparent", borderColor: !category ? colors.brand : colors.border }]}>
-              <Text style={[styles.catText, { color: !category ? colors.brand : colors.muted }]}>All</Text>
-            </Pressable>
-            {(data?.categories ?? []).map((c) => (
-              <Pressable key={c} testID={`cat-${c}`} onPress={() => setCategory(category === c ? null : c)} style={[styles.catChip, { backgroundColor: category === c ? colors.surfaceTertiary : "transparent", borderColor: category === c ? colors.brand : colors.border }]}>
-                <Text style={[styles.catText, { color: category === c ? colors.brand : colors.muted }]}>{c}</Text>
+          <View>
+            <View style={styles.sortRow}>
+              {(["recent", "rating"] as const).map((s) => (
+                <Pressable key={s} testID={`sort-${s}`} onPress={() => setSort(s)} style={[styles.sortChip, { backgroundColor: sort === s ? colors.brand : colors.surfaceSecondary, borderColor: sort === s ? colors.brand : colors.border }]}>
+                  <MaterialCommunityIcons name={s === "recent" ? "clock-outline" : "star"} size={13} color={sort === s ? colors.onBrandPrimary : colors.muted} />
+                  <Text style={[styles.sortText, { color: sort === s ? colors.onBrandPrimary : colors.muted }]}>{s === "recent" ? "Newest" : "Top rated"}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
+              <Pressable testID="cat-all" onPress={() => setCategory(null)} style={[styles.catChip, { backgroundColor: !category ? colors.surfaceTertiary : "transparent", borderColor: !category ? colors.brand : colors.border }]}>
+                <Text style={[styles.catText, { color: !category ? colors.brand : colors.muted }]}>All</Text>
               </Pressable>
-            ))}
-          </ScrollView>
+              {(data?.categories ?? []).map((c) => (
+                <Pressable key={c} testID={`cat-${c}`} onPress={() => setCategory(category === c ? null : c)} style={[styles.catChip, { backgroundColor: category === c ? colors.surfaceTertiary : "transparent", borderColor: category === c ? colors.brand : colors.border }]}>
+                  <Text style={[styles.catText, { color: category === c ? colors.brand : colors.muted }]}>{c}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
         }
         renderItem={({ item }) => (
           <Pressable testID={`course-${item.id}`} onPress={() => router.push(`/brainboost/course/${item.id}`)} style={[styles.row, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -87,6 +98,13 @@ export default function BrainBoostCourses() {
                   <Text style={[styles.pillText, { color: colors.brand }]}>{item.category}</Text>
                 </View>
                 <Text style={[styles.metaText, { color: colors.muted }]}>{item.level} · {item.lesson_count} lessons</Text>
+                {item.rating && item.rating.count > 0 ? (
+                  <View style={styles.ratePill}>
+                    <MaterialCommunityIcons name="star" size={12} color="#E0A500" />
+                    <Text style={[styles.rateText, { color: colors.onSurface }]}>{item.rating.avg.toFixed(1)}</Text>
+                    <Text style={[styles.rateCount, { color: colors.muted }]}>({item.rating.count})</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
           </Pressable>
@@ -107,6 +125,12 @@ const styles = StyleSheet.create({
   uploadText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   catRow: { gap: spacing.sm, paddingBottom: spacing.md },
+  sortRow: { flexDirection: "row", gap: spacing.sm, paddingBottom: spacing.md },
+  sortChip: { flexDirection: "row", alignItems: "center", gap: 4, height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  sortText: { fontFamily: fonts.bodyBold, fontSize: 12 },
+  ratePill: { flexDirection: "row", alignItems: "center", gap: 2 },
+  rateText: { fontFamily: fonts.bodyBold, fontSize: 11 },
+  rateCount: { fontFamily: fonts.body, fontSize: 10 },
   catChip: { height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   catText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
   row: { flexDirection: "row", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },

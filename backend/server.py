@@ -3695,12 +3695,20 @@ async def brainboost_hub(user: dict = Depends(require_user)):
 
 
 @api_router.get("/brainboost/courses")
-async def brainboost_courses(user: dict = Depends(require_user), category: str | None = None):
+async def brainboost_courses(user: dict = Depends(require_user), category: str | None = None, sort: str = "recent"):
     query: dict = {}
     if category and category != "All":
         query["category"] = category
     docs = await db.bb_courses.find(query, {"_id": 0}).to_list(300)
-    return {"courses": [_bb_course_card(c) for c in docs], "categories": BB_CATEGORIES}
+    cards = []
+    for c in docs:
+        card = _bb_course_card(c)
+        card["rating"] = await _bb_course_rating(c["id"])
+        card["user_created"] = bool(c.get("user_created"))
+        cards.append(card)
+    if sort == "rating":
+        cards.sort(key=lambda x: (x["rating"]["avg"], x["rating"]["count"]), reverse=True)
+    return {"courses": cards, "categories": BB_CATEGORIES}
 
 
 @api_router.post("/brainboost/courses", status_code=201)
@@ -3860,7 +3868,57 @@ async def friends_feed(user: dict = Depends(require_user)):
         })
 
     activity.sort(key=lambda a: a.get("created_at", ""), reverse=True)
-    return {"activity": activity[:60]}
+    activity = activity[:60]
+    # Attach cheer + comment counts and whether the current user cheered.
+    ids = [a["id"] for a in activity]
+    cheers = await db.ff_cheers.find({"activity_id": {"$in": ids}}, {"_id": 0}).to_list(9000)
+    cheer_count: dict = {}
+    my_cheers = set()
+    for c in cheers:
+        cheer_count[c["activity_id"]] = cheer_count.get(c["activity_id"], 0) + 1
+        if c["user_id"] == uid:
+            my_cheers.add(c["activity_id"])
+    comments = await db.ff_comments.find({"activity_id": {"$in": ids}}, {"_id": 0, "activity_id": 1}).to_list(9000)
+    comment_count: dict = {}
+    for c in comments:
+        comment_count[c["activity_id"]] = comment_count.get(c["activity_id"], 0) + 1
+    for a in activity:
+        a["cheers"] = cheer_count.get(a["id"], 0)
+        a["cheered"] = a["id"] in my_cheers
+        a["comment_count"] = comment_count.get(a["id"], 0)
+    return {"activity": activity}
+
+
+@api_router.post("/friends/feed/{activity_id}/cheer")
+async def friends_feed_cheer(activity_id: str, user: dict = Depends(require_user)):
+    q = {"activity_id": activity_id, "user_id": user["id"]}
+    if await db.ff_cheers.find_one(q):
+        await db.ff_cheers.delete_one(q)
+        cheered = False
+    else:
+        await db.ff_cheers.insert_one({**q, "created_at": datetime.now(timezone.utc).isoformat()})
+        cheered = True
+    count = await db.ff_cheers.count_documents({"activity_id": activity_id})
+    return {"cheered": cheered, "cheers": count}
+
+
+@api_router.get("/friends/feed/{activity_id}/comments")
+async def friends_feed_comments(activity_id: str, user: dict = Depends(require_user)):
+    rows = await db.ff_comments.find({"activity_id": activity_id}, {"_id": 0}).to_list(500)
+    rows.sort(key=lambda r: r.get("created_at", ""))
+    return {"comments": rows}
+
+
+@api_router.post("/friends/feed/{activity_id}/comments", status_code=201)
+async def friends_feed_add_comment(activity_id: str, body: ListItemBody, user: dict = Depends(require_user)):
+    doc = {
+        "id": uuid.uuid4().hex[:12], "activity_id": activity_id, "user_id": user["id"],
+        "author": user["display_name"], "text": body.text.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.ff_comments.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
 
 
 # ----- BrainBoost course reviews -----
@@ -4404,6 +4462,19 @@ async def _archive_stale_streams() -> None:
         })
         # Move the stream out of "live" — it becomes a recent replay + a PictureShow video.
         await db.ps_streams.update_one({"id": s["id"]}, {"$set": {"status": "recent", "archived_video_id": vid}})
+        # Auto-save a short highlight clip so followers get a quick recap in Streamora.
+        await db.ps_clips.insert_one({
+            "id": "clip-" + uuid.uuid4().hex[:8],
+            "title": f"Highlight — {s.get('title', 'Live stream')}",
+            "channel_id": s.get("channel_id", ""),
+            "category": s.get("category", "Shorts"),
+            "thumbnail": s.get("thumbnail", ""),
+            "video_url": s.get("video_url", "") or f"{_V}BigBuckBunny.mp4",
+            "duration": "0:30", "views": int(s.get("viewers", 0)), "likes": 0,
+            "description": "Auto-saved highlight from an archived live broadcast.",
+            "from_stream": True, "stream_id": s["id"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 def _ps_stream_card(s: dict, channels: dict) -> dict:
@@ -5729,7 +5800,7 @@ async def _retro_public(b: dict) -> dict:
     user_n = agg[0]["n"] if agg else 0
     total_n = base_reviews + user_n
     avg = ((base_rating * base_reviews) + user_sum) / total_n if total_n else 0.0
-    return {
+    pub = {
         "id": b["id"], "name": b["name"], "category": b["category"], "address": b.get("address", ""),
         "description": b.get("description", ""), "image": b.get("image", ""),
         "lat": b.get("lat"), "lng": b.get("lng"),
@@ -5737,6 +5808,18 @@ async def _retro_public(b: dict) -> dict:
         "owner_id": b.get("owner_id", ""),
         "status": b.get("status", "open"),
     }
+    # Reopening countdown for temporarily-closed places.
+    if b.get("status") == "temporary_closure" and b.get("reopen_at"):
+        try:
+            ra = datetime.fromisoformat(b["reopen_at"])
+            if ra.tzinfo is None:
+                ra = ra.replace(tzinfo=timezone.utc)
+            days = max(0, (ra - datetime.now(timezone.utc)).days)
+            pub["reopen_at"] = b["reopen_at"]
+            pub["reopen_in_days"] = days
+        except (ValueError, TypeError):
+            pass
+    return pub
 
 
 @api_router.get("/retrospections/meta")

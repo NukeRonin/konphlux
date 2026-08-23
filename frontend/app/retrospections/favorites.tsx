@@ -68,6 +68,16 @@ export default function FavoritePlaces() {
                     <Text style={[styles.catText, { color: m.color }]}>{b.category}</Text>
                   </View>
                   <Text style={[styles.name, { color: colors.onSurface }]} numberOfLines={1}>{b.name}</Text>
+                  {b.status === "temporary_closure" ? (
+                    <View style={styles.reopenPill}>
+                      <MaterialCommunityIcons name="clock-alert-outline" size={11} color="#B7791F" />
+                      <Text style={styles.reopenText}>
+                        {typeof b.reopen_in_days === "number"
+                          ? (b.reopen_in_days <= 0 ? "Reopens today" : `Reopens in ${b.reopen_in_days} day${b.reopen_in_days === 1 ? "" : "s"}`)
+                          : "Temporarily closed"}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.ratingRow}>
                     <Stars rating={b.avg_rating} />
                     <Text style={[styles.ratingText, { color: colors.onSurface }]}>{b.avg_rating.toFixed(1)}</Text>
@@ -95,6 +105,8 @@ const styles = StyleSheet.create({
   catPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, height: 22, borderRadius: radius.pill },
   catText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
   name: { fontFamily: fonts.bodyBold, fontSize: 15.5, marginTop: 4 },
+  reopenPill: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", backgroundColor: "#FEF3C7", paddingHorizontal: 8, height: 20, borderRadius: radius.pill, marginTop: 4 },
+  reopenText: { fontFamily: fonts.bodyBold, fontSize: 10.5, color: "#B7791F" },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
   ratingText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   ratingCount: { fontFamily: fonts.body, fontSize: 12 },

@@ -5,7 +5,7 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, fileUrl, FriendActivity, FriendCard } from "@/src/api/client";
+import { api, FeedComment, fileUrl, FriendActivity, FriendCard } from "@/src/api/client";
 import { AvatarInitials } from "@/src/components/AvatarInitials";
 import { Eyebrow } from "@/src/components/BrassText";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -36,6 +36,10 @@ export default function Friends() {
   const [data, setData] = useState<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>({ friends: [], incoming: [], outgoing: [] });
   const [feed, setFeed] = useState<FriendActivity[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [comments, setComments] = useState<FeedComment[]>([]);
+  const [commentText, setCommentText] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Rel[]>([]);
   const [searching, setSearching] = useState(false);
@@ -47,6 +51,29 @@ export default function Friends() {
     try { setFeed((await api.friendsFeed()).activity); } catch { /* ignore */ } finally { setFeedLoading(false); }
   }, []);
   useFocusEffect(useCallback(() => { load(); loadFeed(); }, [load, loadFeed]));
+
+  const cheer = async (a: FriendActivity) => {
+    setFeed((f) => f.map((x) => x.id === a.id ? { ...x, cheered: !x.cheered, cheers: x.cheers + (x.cheered ? -1 : 1) } : x));
+    try { await api.feedCheer(a.id); } catch { loadFeed(); }
+  };
+
+  const toggleComments = async (a: FriendActivity) => {
+    if (expanded === a.id) { setExpanded(null); return; }
+    setExpanded(a.id); setComments([]); setCommentText("");
+    try { setComments((await api.feedComments(a.id)).comments); } catch { /* ignore */ }
+  };
+
+  const postComment = async (a: FriendActivity) => {
+    const txt = commentText.trim();
+    if (!txt || commentBusy) return;
+    setCommentBusy(true);
+    try {
+      const c = await api.feedAddComment(a.id, txt);
+      setComments((cs) => [...cs, c]);
+      setCommentText("");
+      setFeed((f) => f.map((x) => x.id === a.id ? { ...x, comment_count: x.comment_count + 1 } : x));
+    } catch { /* ignore */ } finally { setCommentBusy(false); }
+  };
 
   const search = async (text: string) => {
     setQ(text);
@@ -104,21 +131,50 @@ export default function Friends() {
           contentContainerStyle={{ paddingVertical: spacing.sm, paddingBottom: insets.bottom + spacing.xl }}
           renderItem={({ item }) => {
             const img = item.image_path ? fileUrl(item.image_path) : item.image_url;
+            const isOpen = expanded === item.id;
             return (
-              <Pressable testID={`feed-${item.id}`} onPress={() => item.route && router.push(item.route as any)} style={[styles.feedRow, { borderBottomColor: colors.border }]}>
-                <View style={[styles.feedIcon, { backgroundColor: colors.surfaceTertiary }]}>
-                  <MaterialCommunityIcons name={VERB_ICON[item.verb] ?? "star"} size={18} color={colors.brand} />
+              <View style={[styles.feedItem, { borderBottomColor: colors.border }]}>
+                <Pressable testID={`feed-${item.id}`} onPress={() => item.route && router.push(item.route as any)} style={styles.feedRow}>
+                  <View style={[styles.feedIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                    <MaterialCommunityIcons name={VERB_ICON[item.verb] ?? "star"} size={18} color={colors.brand} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.feedText, { color: colors.onSurface }]}>
+                      <Text style={{ fontFamily: fonts.bodyBold }}>{item.actor}</Text>
+                      {` ${item.verb} ${item.what}`}
+                    </Text>
+                    {item.title ? <Text numberOfLines={1} style={[styles.feedTitle, { color: colors.muted }]}>{item.title}</Text> : null}
+                    <Text style={[styles.feedTime, { color: colors.muted }]}>{timeAgo(item.created_at)}</Text>
+                  </View>
+                  {img ? <Image source={{ uri: img }} style={styles.feedThumb} contentFit="cover" transition={200} /> : null}
+                </Pressable>
+                <View style={styles.feedActions}>
+                  <Pressable testID={`cheer-${item.id}`} onPress={() => cheer(item)} hitSlop={8} style={styles.actionBtn}>
+                    <MaterialCommunityIcons name={item.cheered ? "hand-clap" : "hand-clap"} size={18} color={item.cheered ? colors.brand : colors.muted} />
+                    <Text style={[styles.actionText, { color: item.cheered ? colors.brand : colors.muted }]}>Cheer{item.cheers ? ` ${item.cheers}` : ""}</Text>
+                  </Pressable>
+                  <Pressable testID={`comment-${item.id}`} onPress={() => toggleComments(item)} hitSlop={8} style={styles.actionBtn}>
+                    <MaterialCommunityIcons name="comment-outline" size={17} color={isOpen ? colors.brand : colors.muted} />
+                    <Text style={[styles.actionText, { color: isOpen ? colors.brand : colors.muted }]}>Comment{item.comment_count ? ` ${item.comment_count}` : ""}</Text>
+                  </Pressable>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.feedText, { color: colors.onSurface }]}>
-                    <Text style={{ fontFamily: fonts.bodyBold }}>{item.actor}</Text>
-                    {` ${item.verb} ${item.what}`}
-                  </Text>
-                  {item.title ? <Text numberOfLines={1} style={[styles.feedTitle, { color: colors.muted }]}>{item.title}</Text> : null}
-                  <Text style={[styles.feedTime, { color: colors.muted }]}>{timeAgo(item.created_at)}</Text>
-                </View>
-                {img ? <Image source={{ uri: img }} style={styles.feedThumb} contentFit="cover" transition={200} /> : null}
-              </Pressable>
+                {isOpen ? (
+                  <View style={styles.commentBox}>
+                    {comments.map((c) => (
+                      <View key={c.id} style={styles.commentRow}>
+                        <Text style={[styles.commentAuthor, { color: colors.onSurface }]}>{c.author}</Text>
+                        <Text style={[styles.commentText, { color: colors.muted }]}>{c.text}</Text>
+                      </View>
+                    ))}
+                    <View style={[styles.commentInputRow, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+                      <TextInput testID={`comment-input-${item.id}`} value={commentText} onChangeText={setCommentText} placeholder="Add a comment…" placeholderTextColor={colors.muted} style={[styles.commentInput, { color: colors.onSurface }]} />
+                      <Pressable testID={`comment-send-${item.id}`} onPress={() => postComment(item)} disabled={!commentText.trim() || commentBusy} hitSlop={8}>
+                        <MaterialCommunityIcons name="send" size={20} color={commentText.trim() ? colors.brand : colors.muted} />
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
             );
           }}
           ListEmptyComponent={<Text style={[styles.empty, { color: colors.muted }]}>{feedLoading ? "Loading…" : "No friend activity yet. Add friends to see what they create and save."}</Text>}
@@ -177,12 +233,22 @@ const styles = StyleSheet.create({
   tabRow: { flexDirection: "row", paddingHorizontal: spacing.lg, gap: spacing.xl },
   tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.md, borderBottomWidth: 2 },
   tabLabel: { fontFamily: fonts.bodyBold, fontSize: 14 },
-  feedRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1 },
+  feedItem: { borderBottomWidth: 1 },
+  feedRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   feedIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   feedText: { fontFamily: fonts.body, fontSize: 14.5, lineHeight: 20 },
   feedTitle: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: 2 },
   feedTime: { fontFamily: fonts.body, fontSize: 11.5, marginTop: 3 },
   feedThumb: { width: 48, height: 48, borderRadius: radius.sm },
+  feedActions: { flexDirection: "row", gap: spacing.xl, paddingHorizontal: spacing.lg + 50, paddingVertical: spacing.sm },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 5 },
+  actionText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
+  commentBox: { paddingHorizontal: spacing.lg + 50, paddingBottom: spacing.md, gap: spacing.xs },
+  commentRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  commentAuthor: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  commentText: { fontFamily: fonts.body, fontSize: 13, flexShrink: 1 },
+  commentInputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, height: 40, marginTop: spacing.xs },
+  commentInput: { flex: 1, fontFamily: fonts.body, fontSize: 14 },
   searchBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, margin: spacing.lg, marginBottom: spacing.sm, height: 46, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
   section: { fontFamily: fonts.displaySemi, fontSize: 15, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
