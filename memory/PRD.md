@@ -10,6 +10,13 @@
 - **Backend** (`server.py`): FastAPI + MongoDB (motor). Seeds 22 districts, 6 feed posts, 8 bazaar listings. JWT auth (PyJWT + argon2/pwdlib). AI Chatmonger via emergentintegrations (Emergent LLM key, openai `gpt-5.4`). All data routes require Bearer token; under `/api`.
 
 ## Implemented
+### 2026-06 (Reopen Reminders · Cheer/Comment Notifications; user self-testing, tests/screenshots skipped)
+- ✅ **Reopen Reminders**: one-tap "Remind me" bell on temporarily-closed favourites (retrospections/favorites.tsx). Backend `retro_reopen_reminders` collection; POST `/retrospections/reopen-reminder/{id}` toggle; favorites payload now returns `reminding`. `_sweep_reopenings` nudges anyone who favourited OR set a reminder when the reopen date passes, then clears one-shot reminders.
+- ✅ **Cheer/Comment Notifications**: cheering or commenting on a friend's feed item now sends the creator an in-app notification (bell). New `_activity_owner()` resolves the owner from the activity id prefix (fv-/bc-/vi- → frank_vault/bb_courses/vault_items); `friends_feed_cheer` (only on cheer-on) and `friends_feed_add_comment` call `_notify` (types `friend_cheer`/`friend_comment`) when actor ≠ owner.
+- Files: backend/server.py (_activity_owner + notify in cheer/comment, retro_reopen_reminder endpoint + reminding flag + sweep recipients union); frontend app/retrospections/favorites.tsx (Remind me toggle), src/api/client.ts (RetroBusiness.reminding + retroReopenReminder).
+- Verified: backend smoke — reminder toggle on/off + reminding flag; owner unread count +2 after a cheer+comment with latest types [friend_comment, friend_cheer]. Lint clean, iOS entry bundle 200. Backend + Expo restarted.
+
+
 ### 2026-06 (Course Sorting · Feed Reactions · Reopening Countdown · Stream Highlights; user self-testing, tests/screenshots skipped)
 - ✅ **Course Sorting**: `/brainboost/courses` accepts `sort=recent|rating`, attaches `rating{avg,count}` + `user_created` per card. courses.tsx got Newest/Top-rated sort chips and a ★ rating pill on each course card.
 - ✅ **Feed Reactions**: friends Activity feed items are now cheerable + commentable. `ff_cheers`/`ff_comments` collections; endpoints POST `/friends/feed/{id}/cheer` (toggle), GET/POST `/friends/feed/{id}/comments`. `friends_feed` now returns `cheers/cheered/comment_count`. friends/index.tsx feed rows got a Cheer button + expandable inline comment thread with input.

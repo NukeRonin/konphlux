@@ -3889,6 +3889,19 @@ async def friends_feed(user: dict = Depends(require_user)):
     return {"activity": activity}
 
 
+async def _activity_owner(activity_id: str) -> str | None:
+    """Resolve the creator/owner user_id of a friend-feed activity item."""
+    if activity_id.startswith("fv-"):
+        d = await db.frank_vault.find_one({"id": activity_id[3:]}, {"_id": 0, "user_id": 1})
+    elif activity_id.startswith("bc-"):
+        d = await db.bb_courses.find_one({"id": activity_id[3:]}, {"_id": 0, "user_id": 1})
+    elif activity_id.startswith("vi-"):
+        d = await db.vault_items.find_one({"id": activity_id[3:]}, {"_id": 0, "user_id": 1})
+    else:
+        d = None
+    return d.get("user_id") if d else None
+
+
 @api_router.post("/friends/feed/{activity_id}/cheer")
 async def friends_feed_cheer(activity_id: str, user: dict = Depends(require_user)):
     q = {"activity_id": activity_id, "user_id": user["id"]}
@@ -3898,6 +3911,10 @@ async def friends_feed_cheer(activity_id: str, user: dict = Depends(require_user
     else:
         await db.ff_cheers.insert_one({**q, "created_at": datetime.now(timezone.utc).isoformat()})
         cheered = True
+        owner = await _activity_owner(activity_id)
+        if owner and owner != user["id"]:
+            await _notify(owner, "friend_cheer", None, "Someone cheered your creation",
+                          f"{user['display_name']} cheered something you made. 👏")
     count = await db.ff_cheers.count_documents({"activity_id": activity_id})
     return {"cheered": cheered, "cheers": count}
 
@@ -3918,6 +3935,10 @@ async def friends_feed_add_comment(activity_id: str, body: ListItemBody, user: d
     }
     await db.ff_comments.insert_one(dict(doc))
     doc.pop("_id", None)
+    owner = await _activity_owner(activity_id)
+    if owner and owner != user["id"]:
+        await _notify(owner, "friend_comment", None, "New comment on your creation",
+                      f"{user['display_name']}: \u201c{body.text.strip()[:80]}\u201d")
     return doc
 
 
@@ -5976,15 +5997,19 @@ async def _sweep_reopenings() -> None:
         if when > now:
             continue
         favs = await db.retro_favorites.find({"business_id": b["id"]}, {"_id": 0, "user_id": 1}).to_list(5000)
+        reminders = await db.retro_reopen_reminders.find({"business_id": b["id"]}, {"_id": 0, "user_id": 1}).to_list(5000)
+        # Notify anyone who favourited the place OR set an explicit "remind me".
+        recipients = {f["user_id"] for f in favs} | {r["user_id"] for r in reminders}
         notified = set(b.get("reopen_notified", []))
-        for f in favs:
-            u = f["user_id"]
+        for u in recipients:
             if u in notified:
                 continue
             await _notify(u, "retro_reopen", b["id"],
                           f"{b['name']} has reopened",
                           f"Good news — {b['name']} is open again after being temporarily closed. Pay them a visit!")
             notified.add(u)
+        # One-shot reminders fire once, then clear.
+        await db.retro_reopen_reminders.delete_many({"business_id": b["id"]})
         await db.retro_businesses.update_one(
             {"id": b["id"]},
             {"$set": {"status": "open", "status_note": "", "reopen_notified": list(notified)},
@@ -6016,14 +6041,28 @@ async def retro_remove_favorite(business_id: str, user: dict = Depends(require_u
 @api_router.get("/retrospections/favorites")
 async def retro_favorites(user: dict = Depends(require_user)):
     favs = await db.retro_favorites.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    reminding = {r["business_id"] for r in await db.retro_reopen_reminders.find({"user_id": user["id"]}, {"_id": 0, "business_id": 1}).to_list(2000)}
     out = []
     for f in favs:
         b = await db.retro_businesses.find_one({"id": f["business_id"]}, {"_id": 0})
         if b:
             pub = await _retro_public(b)
             pub["is_favorite"] = True
+            pub["reminding"] = b["id"] in reminding
             out.append(pub)
     return out
+
+
+@api_router.post("/retrospections/reopen-reminder/{business_id}")
+async def retro_reopen_reminder(business_id: str, user: dict = Depends(require_user)):
+    if not await db.retro_businesses.find_one({"id": business_id}):
+        raise HTTPException(status_code=404, detail="Business not found")
+    q = {"user_id": user["id"], "business_id": business_id}
+    if await db.retro_reopen_reminders.find_one(q):
+        await db.retro_reopen_reminders.delete_one(q)
+        return {"reminding": False}
+    await db.retro_reopen_reminders.insert_one({**q, "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"reminding": True}
 
 
 # ----- Retrospections: Commercial Marketplace (businesses for sale) -----

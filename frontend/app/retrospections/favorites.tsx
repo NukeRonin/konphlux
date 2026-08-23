@@ -30,6 +30,11 @@ export default function FavoritePlaces() {
     try { await api.retroRemoveFavorite(b.id); } catch { load(); }
   };
 
+  const remind = async (b: RetroBusiness) => {
+    setList((prev) => prev.map((x) => x.id === b.id ? { ...x, reminding: !x.reminding } : x));
+    try { await api.retroReopenReminder(b.id); } catch { load(); }
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
@@ -69,13 +74,24 @@ export default function FavoritePlaces() {
                   </View>
                   <Text style={[styles.name, { color: colors.onSurface }]} numberOfLines={1}>{b.name}</Text>
                   {b.status === "temporary_closure" ? (
-                    <View style={styles.reopenPill}>
-                      <MaterialCommunityIcons name="clock-alert-outline" size={11} color="#B7791F" />
-                      <Text style={styles.reopenText}>
-                        {typeof b.reopen_in_days === "number"
-                          ? (b.reopen_in_days <= 0 ? "Reopens today" : `Reopens in ${b.reopen_in_days} day${b.reopen_in_days === 1 ? "" : "s"}`)
-                          : "Temporarily closed"}
-                      </Text>
+                    <View style={styles.reopenRow}>
+                      <View style={styles.reopenPill}>
+                        <MaterialCommunityIcons name="clock-alert-outline" size={11} color="#B7791F" />
+                        <Text style={styles.reopenText}>
+                          {typeof b.reopen_in_days === "number"
+                            ? (b.reopen_in_days <= 0 ? "Reopens today" : `Reopens in ${b.reopen_in_days} day${b.reopen_in_days === 1 ? "" : "s"}`)
+                            : "Temporarily closed"}
+                        </Text>
+                      </View>
+                      <Pressable
+                        testID={`remind-${b.id}`}
+                        onPress={() => remind(b)}
+                        hitSlop={8}
+                        style={[styles.remindBtn, { borderColor: b.reminding ? colors.brand : colors.border, backgroundColor: b.reminding ? colors.brand : "transparent" }]}
+                      >
+                        <MaterialCommunityIcons name={b.reminding ? "bell-check" : "bell-plus-outline"} size={12} color={b.reminding ? colors.onBrandPrimary : colors.brand} />
+                        <Text style={[styles.remindText, { color: b.reminding ? colors.onBrandPrimary : colors.brand }]}>{b.reminding ? "Reminding" : "Remind me"}</Text>
+                      </Pressable>
                     </View>
                   ) : null}
                   <View style={styles.ratingRow}>
@@ -107,6 +123,9 @@ const styles = StyleSheet.create({
   name: { fontFamily: fonts.bodyBold, fontSize: 15.5, marginTop: 4 },
   reopenPill: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", backgroundColor: "#FEF3C7", paddingHorizontal: 8, height: 20, borderRadius: radius.pill, marginTop: 4 },
   reopenText: { fontFamily: fonts.bodyBold, fontSize: 10.5, color: "#B7791F" },
+  reopenRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap", marginTop: 4 },
+  remindBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 8, height: 22, borderRadius: radius.pill, borderWidth: 1 },
+  remindText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
   ratingText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   ratingCount: { fontFamily: fonts.body, fontSize: 12 },

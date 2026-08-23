@@ -616,7 +616,7 @@ export type RetroBusiness = {
   id: string; name: string; category: string; address: string; description: string; image: string;
   lat: number | null; lng: number | null; avg_rating: number; review_count: number; owner_id: string;
   distance_km?: number | null; reviews?: RetroReview[]; can_review?: boolean; is_favorite?: boolean; status?: string;
-  reopen_at?: string; reopen_in_days?: number;
+  reopen_at?: string; reopen_in_days?: number; reminding?: boolean;
 };
 export type RetroListing = {
   id: string; name: string; category: string; asking_price: string; location: string; description: string;
@@ -1225,6 +1225,7 @@ export const api = {
   retroNearby: (lat: number, lng: number) => request<{ center: { lat: number; lng: number }; businesses: RetroBusiness[] }>(`/retrospections/nearby?lat=${lat}&lng=${lng}`),
   retroStatus: () => request<RetroStatus>("/retrospections/status"),
   retroFavorites: () => request<RetroBusiness[]>("/retrospections/favorites"),
+  retroReopenReminder: (id: string) => request<{ reminding: boolean }>(`/retrospections/reopen-reminder/${id}`, { method: "POST" }),
   retroAddFavorite: (id: string) => request<{ is_favorite: boolean }>(`/retrospections/favorites/${id}`, { method: "POST" }),
   retroRemoveFavorite: (id: string) => request<{ is_favorite: boolean }>(`/retrospections/favorites/${id}`, { method: "DELETE" }),
   retroListings: (params: { category?: string; q?: string } = {}) => {
