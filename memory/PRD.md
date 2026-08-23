@@ -153,6 +153,15 @@
 - ✅ **Résumé Themes**: PDF export now offers 4 themes (Brass/Slate/Ink/Rose) via a picker before download (src/utils/resumePdf.ts).
 - All backend flows verified via curl (offer/interview send+respond, evention sync, review→avg, chat cards). Evention screen smoke-tested. User self-tests; automated tests skipped.
 
+### 2026-06 (Vault — Visual & Creative Hub categories; user self-testing)
+- ✅ **Category buttons** in the Vault: All, Jokes, GIFs, Logos, Memes, Artwork, Quotes (horizontal chip row under search). Selecting filters the grid by category.
+- ✅ **Layout by type**: visual categories (GIFs/Logos/Memes/Artwork + All) render the Pinterest-style two-column masonry; text categories (Jokes/Quotes) render a clean single-column card layout. In mixed/All view, text items render as compact text tiles within the masonry.
+- ✅ **Receives uploads across the app**: vault items now carry a `category` + `text` field. Frankenstein Lab saves auto-tag category by kind (GenoPic→Artwork, GenoLogo→Logos, GenoGIF→GIFs, GenoMeme→Memes). SaveToVaultButton/vaultSave accept category+text so other areas can drop items into any category (incl. text Jokes/Quotes).
+- ✅ Seed refreshed: 10 sample items spanning all 6 categories (image tiles + 2 jokes + 2 quotes as text cards), so every category button shows content immediately.
+- Backend: VaultItemBody gained category (enum) + text; GET /vault/items adds `category` filter and searches text too; _vault_public + save persist category/text; VAULT_SEED restructured to dicts with categories + text items.
+- Curl-verified: all 6 category filters return correct items (Artwork 3, Logos/Memes/GIFs 1 each, Jokes/Quotes 2 each), text vs image tagging correct, text search ("boiler") hits meme, saving a Quote lands in Quotes (count 2→3). Lint clean, backend + Expo restarted. Tests/screenshots skipped per user.
+- Files: backend/server.py (category+text on model/seed/public/save/list); frontend app/vault/index.tsx (category chips, CATEGORIES, TextCard, text-tile in VaultTile, textLayout render), app/frankenstein-lab/visual.tsx (category by kind), src/api/client.ts (category/text on vaultItems+vaultSave, VaultItem type).
+
 ### 2026-06 (Vault — visual organization hub, Pinterest-style; user self-testing)
 - ✅ **Vault hub** (new district, /vault, "Open the Vault"): Pinterest-style two-column masonry grid of saved item tiles (image + source badge + title; varied tile heights). Source badges: Bazaar, Frankenstein Lab, Bluepaint, Saved. Search bar filters saved items by title/subtitle.
 - ✅ **Collections (boards)**: horizontal collection cards (cover = first item image + count) at top of hub; tap → /vault/collection/[id] (masonry of that board's items + delete board). Create via header folder+ button (inline modal). Long-press any tile → actions (Add to a collection… / Remove from Vault); item tap opens its source route (or actions if none).

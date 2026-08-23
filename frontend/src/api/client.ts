@@ -695,6 +695,8 @@ export type VaultItem = {
   subtitle: string;
   image_url: string;
   route: string;
+  category: string;
+  text: string;
   collection_id: string | null;
   created_at: string;
 };
@@ -1179,9 +1181,9 @@ export const api = {
     request<{ trip: any; event_id: string }>("/waypoint/trips", { method: "POST", body: JSON.stringify(body) }),
 
   // ---- Vault (visual organization hub) ----
-  vaultItems: (q = "", collection = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}`),
+  vaultItems: (q = "", collection = "", category = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}&category=${encodeURIComponent(category)}`),
   vaultSavedCheck: (source: string, refId: string) => request<{ saved: boolean; id: string | null }>(`/vault/saved-check?source=${encodeURIComponent(source)}&ref_id=${encodeURIComponent(refId)}`),
-  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; collection_id?: string | null }) =>
+  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; category?: string; text?: string; collection_id?: string | null }) =>
     request<{ saved: boolean; item: VaultItem }>("/vault/items", { method: "POST", body: JSON.stringify(body) }),
   vaultDeleteItem: (id: string) => request<{ deleted: boolean }>(`/vault/items/${id}`, { method: "DELETE" }),
   vaultMoveItem: (id: string, collectionId: string | null) => request<{ moved: boolean }>(`/vault/items/${id}/move`, { method: "POST", body: JSON.stringify({ collection_id: collectionId }) }),

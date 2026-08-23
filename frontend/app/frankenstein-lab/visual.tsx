@@ -57,9 +57,10 @@ export default function VisualStudio() {
     setSaving(true);
     try {
       await api.frankVaultSave({ kind, prompt: prompt.trim(), image_path: imagePath });
-      // Also surface it in the app-wide Vault organization hub.
+      // Also surface it in the app-wide Vault organization hub, tagged by category.
+      const vaultCat = kind === "logo" ? "Logos" : kind === "gif" ? "GIFs" : kind === "meme" ? "Memes" : "Artwork";
       await api.vaultSave({ source: "frankenstein", ref_id: imagePath, title: prompt.trim() || `Frankenstein ${kind}`,
-        image_url: fileUrl(imagePath), subtitle: `Frankenstein Lab · ${meta.label}`, route: "/frankenstein-lab/visual" }).catch(() => {});
+        image_url: fileUrl(imagePath), subtitle: `Frankenstein Lab · ${meta.label}`, category: vaultCat, route: "/frankenstein-lab/visual" }).catch(() => {});
       setSaved(true);
     } catch {
       setError("Couldn't save to your Vault. Try again.");

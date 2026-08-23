@@ -695,6 +695,8 @@ class VaultItemBody(BaseModel):
     image_url: str = Field(default="", max_length=600)
     subtitle: str = Field(default="", max_length=160)
     route: str = Field(default="", max_length=200)
+    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|)$")
+    text: str = Field(default="", max_length=2000)
     collection_id: str | None = Field(default=None, max_length=40)
 
 
@@ -6296,13 +6298,18 @@ async def wp_create_trip(body: WPTripBody, user: dict = Depends(require_user)):
 
 # ----------------------------- Vault (visual organization hub) -----------------------------
 _VAULT_IMG = "https://images.unsplash.com/photo-"
+# Visual & Creative Hub seed: mix of visual tiles and text-based cards across categories.
 VAULT_SEED = [
-    ("bazaar", "b1", "Brass Marine Chronometer", "Bazaar find", IMG_WATCH, "/bazaar/booth/b1"),
-    ("bazaar", "b5", "Hand-Bound Parchment Journal", "Bazaar find", IMG_PARCH, "/bazaar/booth/b5"),
-    ("frankenstein", "seed-fr-1", "Aether City Skyline", "Frankenstein Lab · GenoPic", f"{_VAULT_IMG}1451187580459-43490279c0fa?w=800&q=80", "/frankenstein-lab/visual"),
-    ("frankenstein", "seed-fr-2", "Clockwork Owl Emblem", "Frankenstein Lab · GenoLogo", f"{_VAULT_IMG}1518709268805-4e9042af9f23?w=800&q=80", "/frankenstein-lab/visual"),
-    ("bluepaint", "seed-bp-1", "Loft Studio Layout", "Bluepaint design", f"{_VAULT_IMG}1618221195710-dd6b41faaea6?w=800&q=80", "/bluepaint"),
-    ("other", "seed-dec-1", "Brass-Forward Reading Nook", "Decor inspiration", f"{_VAULT_IMG}1493809842364-78817add7ffb?w=800&q=80", ""),
+    {"source": "bazaar", "ref_id": "b1", "title": "Brass Marine Chronometer", "subtitle": "Bazaar find", "image_url": IMG_WATCH, "route": "/bazaar/booth/b1", "category": "Artwork"},
+    {"source": "frankenstein", "ref_id": "seed-fr-1", "title": "Aether City Skyline", "subtitle": "Frankenstein Lab · GenoPic", "image_url": f"{_VAULT_IMG}1451187580459-43490279c0fa?w=800&q=80", "route": "/frankenstein-lab/visual", "category": "Artwork"},
+    {"source": "frankenstein", "ref_id": "seed-fr-2", "title": "Clockwork Owl Emblem", "subtitle": "Frankenstein Lab · GenoLogo", "image_url": f"{_VAULT_IMG}1518709268805-4e9042af9f23?w=800&q=80", "route": "/frankenstein-lab/visual", "category": "Logos"},
+    {"source": "frankenstein", "ref_id": "seed-fr-3", "title": "When the boiler finally works", "subtitle": "Frankenstein Lab · GenoMeme", "image_url": f"{_VAULT_IMG}1546776310-eef45dd6d63c?w=800&q=80", "route": "/frankenstein-lab/visual", "category": "Memes"},
+    {"source": "frankenstein", "ref_id": "seed-fr-4", "title": "Airship Cat, Waving", "subtitle": "Frankenstein Lab · GenoGIF", "image_url": f"{_VAULT_IMG}1425082661705-1834bfd09dca?w=800&q=80", "route": "/frankenstein-lab/visual", "category": "GIFs"},
+    {"source": "other", "ref_id": "seed-art-1", "title": "Brass-Forward Reading Nook", "subtitle": "Artwork", "image_url": f"{_VAULT_IMG}1493809842364-78817add7ffb?w=800&q=80", "route": "", "category": "Artwork"},
+    {"source": "other", "ref_id": "seed-joke-1", "title": "The Engineer's Joke", "subtitle": "Joke", "text": "Why did the steam engineer keep a spare valve in his hat?\n\nBecause he always liked to let off a little pressure up top.", "category": "Jokes"},
+    {"source": "other", "ref_id": "seed-joke-2", "title": "Gears", "subtitle": "Joke", "text": "I told my clockmaker friend a joke about gears.\n\nHe didn't laugh — I think it went right over his head, tick by tick.", "category": "Jokes"},
+    {"source": "other", "ref_id": "seed-quote-1", "title": "On Craft", "subtitle": "Quote", "text": "\u201cThe best inventions are not the newest — they are the ones that outlive the hands that made them.\u201d", "category": "Quotes"},
+    {"source": "other", "ref_id": "seed-quote-2", "title": "On Patience", "subtitle": "Quote", "text": "\u201cAnyone can go fast and be wrong. The art is in the pause.\u201d\n\n— A wire operator", "category": "Quotes"},
 ]
 
 
@@ -6317,10 +6324,11 @@ async def _vault_seed_if_empty(user_id: str) -> None:
         "id": coll_id, "user_id": user_id, "name": "Inspiration",
         "created_at": now.isoformat(),
     })
-    for i, (source, ref_id, title, subtitle, image_url, route) in enumerate(VAULT_SEED):
+    for i, s in enumerate(VAULT_SEED):
         await db.vault_items.insert_one({
-            "id": uuid.uuid4().hex[:12], "user_id": user_id, "source": source, "ref_id": ref_id,
-            "title": title, "subtitle": subtitle, "image_url": image_url, "route": route,
+            "id": uuid.uuid4().hex[:12], "user_id": user_id, "source": s["source"], "ref_id": s["ref_id"],
+            "title": s["title"], "subtitle": s.get("subtitle", ""), "image_url": s.get("image_url", ""),
+            "route": s.get("route", ""), "category": s.get("category", ""), "text": s.get("text", ""),
             "collection_id": coll_id if i < 3 else None, "seeded": True,
             "created_at": (now - timedelta(minutes=i)).isoformat(),
         })
@@ -6331,20 +6339,23 @@ def _vault_public(v: dict) -> dict:
         "id": v["id"], "source": v.get("source", "other"), "ref_id": v.get("ref_id", ""),
         "title": v.get("title", ""), "subtitle": v.get("subtitle", ""),
         "image_url": v.get("image_url", ""), "route": v.get("route", ""),
+        "category": v.get("category", ""), "text": v.get("text", ""),
         "collection_id": v.get("collection_id"), "created_at": v.get("created_at", ""),
     }
 
 
 @api_router.get("/vault/items")
-async def vault_list_items(q: str = "", collection: str = "", user: dict = Depends(require_user)):
+async def vault_list_items(q: str = "", collection: str = "", category: str = "", user: dict = Depends(require_user)):
     await _vault_seed_if_empty(user["id"])
     query: dict = {"user_id": user["id"]}
     if collection:
         query["collection_id"] = collection
+    if category:
+        query["category"] = category
     rows = await db.vault_items.find(query, {"_id": 0}).to_list(2000)
     if q.strip():
         term = q.strip().lower()
-        rows = [r for r in rows if term in r.get("title", "").lower() or term in r.get("subtitle", "").lower()]
+        rows = [r for r in rows if term in r.get("title", "").lower() or term in r.get("subtitle", "").lower() or term in r.get("text", "").lower()]
     rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return [_vault_public(r) for r in rows]
 
@@ -6363,7 +6374,8 @@ async def vault_save_item(body: VaultItemBody, user: dict = Depends(require_user
     item = {
         "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": body.source, "ref_id": body.ref_id,
         "title": body.title.strip(), "subtitle": body.subtitle.strip(), "image_url": body.image_url.strip(),
-        "route": body.route.strip(), "collection_id": body.collection_id, "seeded": False,
+        "route": body.route.strip(), "category": body.category, "text": body.text.strip(),
+        "collection_id": body.collection_id, "seeded": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.vault_items.insert_one(dict(item))

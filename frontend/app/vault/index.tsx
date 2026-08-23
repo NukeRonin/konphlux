@@ -24,6 +24,16 @@ const HEIGHTS = [190, 150, 230, 170, 210, 160, 200, 240];
 export function VaultTile({ item, colors, onPress, onLong }: { item: VaultItem; colors: any; onPress: () => void; onLong: () => void }) {
   const meta = SOURCE_META[item.source] || SOURCE_META.other;
   const h = HEIGHTS[(parseInt(item.id.slice(-2), 16) || 0) % HEIGHTS.length];
+  const isText = !item.image_url && !!item.text;
+  if (isText) {
+    return (
+      <Pressable testID={`vault-tile-${item.id}`} onPress={onPress} onLongPress={onLong} delayLongPress={250} style={[styles.textTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <MaterialCommunityIcons name={item.category === "Quotes" ? "format-quote-open" : "emoticon-happy-outline"} size={20} color={colors.brand} />
+        <Text style={[styles.textBody, { color: colors.onSurface }]}>{item.text}</Text>
+        <Text style={[styles.textCat, { color: colors.muted }]}>{item.category || item.subtitle}</Text>
+      </Pressable>
+    );
+  }
   return (
     <Pressable testID={`vault-tile-${item.id}`} onPress={onPress} onLongPress={onLong} delayLongPress={250} style={[styles.tile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
       {item.image_url ? (
@@ -36,10 +46,30 @@ export function VaultTile({ item, colors, onPress, onLong }: { item: VaultItem; 
       <View style={styles.tileBody}>
         <View style={styles.sourceRow}>
           <MaterialCommunityIcons name={meta.icon} size={12} color={colors.brand} />
-          <Text style={[styles.sourceText, { color: colors.brand }]} numberOfLines={1}>{meta.label}</Text>
+          <Text style={[styles.sourceText, { color: colors.brand }]} numberOfLines={1}>{item.category || meta.label}</Text>
         </View>
         <Text numberOfLines={2} style={[styles.tileTitle, { color: colors.onSurface }]}>{item.title}</Text>
       </View>
+    </Pressable>
+  );
+}
+
+const CATEGORIES: { key: string; icon: IconName }[] = [
+  { key: "All", icon: "view-grid-outline" },
+  { key: "Jokes", icon: "emoticon-lol-outline" },
+  { key: "GIFs", icon: "animation-play-outline" },
+  { key: "Logos", icon: "shield-star-outline" },
+  { key: "Memes", icon: "emoticon-happy-outline" },
+  { key: "Artwork", icon: "palette-outline" },
+  { key: "Quotes", icon: "format-quote-close" },
+];
+
+function TextCard({ item, colors, onPress, onLong }: { item: VaultItem; colors: any; onPress: () => void; onLong: () => void }) {
+  return (
+    <Pressable testID={`vault-card-${item.id}`} onPress={onPress} onLongPress={onLong} delayLongPress={250} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+      <MaterialCommunityIcons name={item.category === "Quotes" ? "format-quote-open" : "emoticon-lol-outline"} size={22} color={colors.brand} />
+      <Text style={[styles.cardBody, { color: colors.onSurface }]}>{item.text || item.title}</Text>
+      {item.title && item.text ? <Text style={[styles.cardTitle, { color: colors.muted }]}>{item.title}</Text> : null}
     </Pressable>
   );
 }
@@ -49,6 +79,7 @@ export default function VaultHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState("");
+  const [cat, setCat] = useState("All");
   const [items, setItems] = useState<VaultItem[]>([]);
   const [collections, setCollections] = useState<VaultCollection[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -58,10 +89,10 @@ export default function VaultHub() {
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      const [its, colls] = await Promise.all([api.vaultItems(q.trim()), api.vaultCollections()]);
+      const [its, colls] = await Promise.all([api.vaultItems(q.trim(), "", cat === "All" ? "" : cat), api.vaultCollections()]);
       setItems(its); setCollections(colls); setStatus("ready");
     } catch { setStatus("error"); }
-  }, [q]);
+  }, [q, cat]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -95,6 +126,7 @@ export default function VaultHub() {
 
   const cols: VaultItem[][] = [[], []];
   items.forEach((it, i) => cols[i % 2].push(it));
+  const textLayout = cat === "Jokes" || cat === "Quotes";
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -119,10 +151,24 @@ export default function VaultHub() {
         </View>
       </View>
 
+      <View style={styles.catRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}>
+          {CATEGORIES.map((c) => {
+            const active = cat === c.key;
+            return (
+              <Pressable key={c.key} testID={`vault-cat-${c.key}`} onPress={() => setCat(c.key)} style={[styles.catChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
+                <MaterialCommunityIcons name={c.icon} size={15} color={active ? colors.onBrandPrimary : colors.muted} />
+                <Text style={[styles.catText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{c.key}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {status === "loading" ? <Loading label="Opening the Vault…" /> :
        status === "error" ? <ErrorState onRetry={load} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} showsVerticalScrollIndicator={false}>
-          {collections.length > 0 && !q ? (
+          {collections.length > 0 && !q && cat === "All" ? (
             <>
               <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Collections</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collRow}>
@@ -139,9 +185,13 @@ export default function VaultHub() {
             </>
           ) : null}
 
-          <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{q ? "Results" : "All saved"}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{q ? "Results" : cat === "All" ? "All saved" : cat}</Text>
           {items.length === 0 ? (
-            <EmptyState icon="bookmark-multiple-outline" title={q ? "Nothing found" : "Your Vault is empty"} subtitle={q ? "Try a different search." : "Save items from the Bazaar, Frankenstein Lab and Bluepaint to see them here."} />
+            <EmptyState icon="bookmark-multiple-outline" title={q ? "Nothing found" : `No ${cat === "All" ? "saved items" : cat.toLowerCase()} yet`} subtitle={q ? "Try a different search." : "Save items from the Bazaar, Frankenstein Lab and Bluepaint to see them here."} />
+          ) : textLayout ? (
+            <View style={styles.cardList}>
+              {items.map((it) => <TextCard key={it.id} item={it} colors={colors} onPress={() => itemActions(it)} onLong={() => itemActions(it)} />)}
+            </View>
           ) : (
             <View style={styles.masonry}>
               {cols.map((col, ci) => (
@@ -180,6 +230,16 @@ const styles = StyleSheet.create({
   searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   searchBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
+  catRow: { paddingTop: spacing.md },
+  catChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  catText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  cardList: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  card: { borderRadius: radius.md, borderWidth: 1, padding: spacing.lg, gap: spacing.sm },
+  cardBody: { fontFamily: fonts.body, fontSize: 16, lineHeight: 24 },
+  cardTitle: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
+  textTile: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: spacing.sm },
+  textBody: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
+  textCat: { fontFamily: fonts.bodyBold, fontSize: 10.5, letterSpacing: 0.3 },
   sectionTitle: { fontFamily: fonts.displaySemi, fontSize: 18, paddingHorizontal: spacing.lg, marginTop: spacing.lg, marginBottom: spacing.sm },
   collRow: { gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   collCard: { width: 120 },
