@@ -655,7 +655,45 @@ export type TGComment = {
   author_handle: string;
   created_at: string;
   is_mine: boolean;
+  likes: number;
+  liked: boolean;
   replies?: TGComment[];
+};
+
+export type WPStay = {
+  id: string;
+  title: string;
+  place_type: string;
+  location: string;
+  price_cents: number;
+  max_guests: number;
+  bedrooms: number;
+  description: string;
+  image_url: string;
+  amenities: string[];
+  rating: number;
+  reviews: number;
+  lat: number | null;
+  lng: number | null;
+  host_id: string;
+  host_name: string;
+  created_at: string;
+};
+
+export type WPBooking = {
+  id: string;
+  stay_id: string;
+  stay_title: string;
+  host_name: string;
+  location: string;
+  image_url: string;
+  check_in: string;
+  check_out: string;
+  nights: number;
+  guests: number;
+  total_cents: number;
+  status: string;
+  created_at: string;
 };
 
 export type TGAuthor = {
@@ -1096,4 +1134,18 @@ export const api = {
   tgAddComment: (id: string, body: string, parentId?: string) =>
     request<TGComment>(`/telegraph/articles/${id}/comments`, { method: "POST", body: JSON.stringify({ body, parent_id: parentId ?? null }) }),
   tgDeleteComment: (commentId: string) => request<{ deleted: boolean }>(`/telegraph/comments/${commentId}`, { method: "DELETE" }),
+  tgLikeComment: (commentId: string) => request<{ liked: boolean; likes: number }>(`/telegraph/comments/${commentId}/like`, { method: "POST" }),
+  tgFollowingUnseen: () => request<{ count: number }>("/telegraph/following/unseen"),
+  tgFollowingSeen: () => request<{ count: number }>("/telegraph/following/seen", { method: "POST" }),
+
+  // ---- Waypoint (stays & bookings) ----
+  wpStays: (q: string, type: string) => request<WPStay[]>(`/waypoint/stays?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
+  wpMyStays: () => request<WPStay[]>("/waypoint/my-stays"),
+  wpStay: (id: string) => request<WPStay & { is_host: boolean }>(`/waypoint/stays/${id}`),
+  wpCreateStay: (body: { title: string; place_type: string; location: string; price_cents: number; max_guests: number; bedrooms: number; description?: string; image_url?: string; amenities?: string[]; lat?: number | null; lng?: number | null }) =>
+    request<WPStay>("/waypoint/stays", { method: "POST", body: JSON.stringify(body) }),
+  wpDeleteStay: (id: string) => request<{ deleted: boolean }>(`/waypoint/stays/${id}`, { method: "DELETE" }),
+  wpBookStay: (id: string, body: { check_in: string; nights: number; guests: number }) =>
+    request<{ booking: WPBooking }>(`/waypoint/stays/${id}/book`, { method: "POST", body: JSON.stringify(body) }),
+  wpBookings: () => request<WPBooking[]>("/waypoint/bookings"),
 };

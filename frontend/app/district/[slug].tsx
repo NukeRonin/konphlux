@@ -35,6 +35,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   treasury: { route: "/treasury", label: "Open Konphlux Balance" },
   "entrepreneur-lobby": { route: "/lobby", label: "Open Workspaces" },
   telegraph: { route: "/telegraph", label: "Enter the Telegraph" },
+  waypoint: { route: "/waypoint", label: "Open the Booking Engine" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -222,6 +223,21 @@ const TELEGRAPH_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Reading lists": { route: "/telegraph?filter=all", icon: "bookmark-multiple-outline" },
 };
 
+const WAYPOINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Search stays": { route: "/waypoint", icon: "home-search-outline" },
+  "Book a stay": { route: "/waypoint", icon: "calendar-check-outline" },
+  "Host your place": { route: "/waypoint/host", icon: "home-plus-outline" },
+  "Vacation houses": { route: "/waypoint", icon: "home-city-outline" },
+  "Condos & apartments": { route: "/waypoint", icon: "office-building-outline" },
+  "Cabins & cottages": { route: "/waypoint", icon: "home-outline" },
+  "Places for sale": { route: "/waypoint", icon: "tag-outline" },
+  "Saved stays & wish lists": { route: "/waypoint", icon: "heart-outline" },
+  "Guest & host reviews": { route: "/waypoint", icon: "star-outline" },
+  "Trip planner": { route: "/waypoint/bookings", icon: "map-clock-outline" },
+  "Map search": { route: "/waypoint", icon: "map-outline" },
+  "Your bookings": { route: "/waypoint/bookings", icon: "bag-suitcase-outline" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
   retrospections: RETRO_ACTIONS,
   treasury: TREASURY_ACTIONS,
@@ -245,6 +261,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   "profession-plaza": PROFESSION_ACTIONS,
   "evention-center": EVENTION_ACTIONS,
   telegraph: TELEGRAPH_ACTIONS,
+  waypoint: WAYPOINT_ACTIONS,
 };
 
 export default function DistrictDetail() {

@@ -149,6 +149,10 @@ function RootNavigator() {
         <Stack.Screen name="telegraph/drafts" />
         <Stack.Screen name="telegraph/author/[id]" />
         <Stack.Screen name="telegraph/[id]" />
+        <Stack.Screen name="waypoint/index" />
+        <Stack.Screen name="waypoint/host" />
+        <Stack.Screen name="waypoint/bookings" />
+        <Stack.Screen name="waypoint/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />

@@ -29,6 +29,7 @@ export default function TelegraphNew() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState<"" | "draft" | "publish">("");
   const [loading, setLoading] = useState(!!editingId);
+  const [origStatus, setOrigStatus] = useState<string>("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -37,10 +38,13 @@ export default function TelegraphNew() {
       try {
         const a = await api.tgArticle(editingId);
         setTitle(a.title); setCategory(a.category); setBody(a.body); setCover(a.cover_url);
+        setOrigStatus(a.status);
       } catch { setError("Couldn't load that draft."); }
       finally { setLoading(false); }
     })();
   }, [editingId]);
+
+  const isEditingPublished = origStatus === "published";
 
   const canPost = title.trim().length >= 3 && body.trim().length >= 20;
 
@@ -87,7 +91,7 @@ export default function TelegraphNew() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>{editingId ? "Edit Draft" : "Post an Article"}</Text>
+          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>{editingId ? (isEditingPublished ? "Edit Article" : "Edit Draft") : "Post an Article"}</Text>
           <Eyebrow>Send it down the wire</Eyebrow>
         </View>
         <Pressable testID="tg-open-drafts" onPress={() => router.push("/telegraph/drafts")} hitSlop={10}>
@@ -141,17 +145,19 @@ export default function TelegraphNew() {
       </KeyboardAwareScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <Pressable
-          testID="tg-save-draft"
-          onPress={() => submit("draft")}
-          disabled={!!saving}
-          style={[styles.draftBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary, opacity: saving ? 0.6 : 1 }]}
-        >
-          <MaterialCommunityIcons name="content-save-outline" size={18} color={colors.onSurface} />
-          <Text style={[styles.draftBtnText, { color: colors.onSurface }]}>{saving === "draft" ? "Saving…" : "Save draft"}</Text>
-        </Pressable>
+        {!isEditingPublished ? (
+          <Pressable
+            testID="tg-save-draft"
+            onPress={() => submit("draft")}
+            disabled={!!saving}
+            style={[styles.draftBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary, opacity: saving ? 0.6 : 1 }]}
+          >
+            <MaterialCommunityIcons name="content-save-outline" size={18} color={colors.onSurface} />
+            <Text style={[styles.draftBtnText, { color: colors.onSurface }]}>{saving === "draft" ? "Saving…" : "Save draft"}</Text>
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }}>
-          <ForgeButton label={saving === "publish" ? "Publishing…" : "Publish"} fullWidth size="lg" disabled={!canPost || !!saving} testID="tg-publish" onPress={() => submit("published")} icon={<MaterialCommunityIcons name="send" size={18} color={colors.onBrandPrimary} />} />
+          <ForgeButton label={saving === "publish" ? (isEditingPublished ? "Updating…" : "Publishing…") : (isEditingPublished ? "Update article" : "Publish")} fullWidth size="lg" disabled={!canPost || !!saving} testID="tg-publish" onPress={() => submit("published")} icon={<MaterialCommunityIcons name={isEditingPublished ? "check" : "send"} size={18} color={colors.onBrandPrimary} />} />
         </View>
       </View>
     </View>

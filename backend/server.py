@@ -650,6 +650,30 @@ class TGCommentBody(BaseModel):
     parent_id: str | None = Field(default=None, max_length=40)
 
 
+# ---- Waypoint (stays & bookings) ----
+WP_PLACE_TYPES = ["Cabin", "Cottage", "Loft", "Airship", "Manor", "Studio", "Houseboat", "Tower"]
+
+
+class WPStayBody(BaseModel):
+    title: str = Field(min_length=3, max_length=140)
+    place_type: str = Field(default="Cabin", max_length=40)
+    location: str = Field(min_length=2, max_length=120)
+    price_cents: int = Field(gt=0, le=100_000_00)
+    max_guests: int = Field(default=2, ge=1, le=32)
+    bedrooms: int = Field(default=1, ge=0, le=20)
+    description: str = Field(default="", max_length=4000)
+    image_url: str = Field(default="", max_length=600)
+    amenities: list[str] = Field(default_factory=list)
+    lat: float | None = Field(default=None)
+    lng: float | None = Field(default=None)
+
+
+class WPBookingBody(BaseModel):
+    check_in: str = Field(min_length=8, max_length=10)  # YYYY-MM-DD
+    nights: int = Field(ge=1, le=60)
+    guests: int = Field(default=1, ge=1, le=32)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -967,6 +991,48 @@ TG_ARTICLES = [
      "excerpt": "Brass tarnishes because it is alive to the air. The question is not how to stop it, but how to live alongside it.",
      "days_ago": 12, "base_likes": 97, "recent_likes": 5,
      "body": "People ask me constantly how to keep their brass from tarnishing, and I have come to dread the question, because the honest answer disappoints them: you cannot, not really, and you should not want to.\n\nBrass tarnishes because it reacts with the world — with the oils of your hands, the moisture in the air, the sulphur of the city. That patina is a record of use, and a well-loved instrument wears it like a good coat wears its creases.\n\nIf you must polish, use a soft cloth and the mildest paste you can find, and stop the moment the shine returns. Lacquer if you truly cannot bear the change, but know that lacquer, too, will one day yellow and peel, and then you will be scraping it off with far more effort than a little tarnish ever cost you.\n\nMy own workshop fittings are the colour of old honey now. I would not trade them for anything that gleams."},
+]
+
+
+# Waypoint — seeded stays for the Booking Engine. lat/lng cluster around the
+# district centre so the Map Search view has spread. price_cents = per night.
+_WP_IMG = "https://images.unsplash.com/photo-"
+WP_STAYS = [
+    {"id": "wp-1", "host_id": "wp-host-1", "host_name": "Cordelia Finch", "title": "The Copperline Cabin",
+     "place_type": "Cabin", "location": "Copperline Woods", "price_cents": 12000, "max_guests": 4, "bedrooms": 2,
+     "image_url": f"{_WP_IMG}1449158743715-0a90ebb6d2d8?w=1000&q=80", "rating": 4.9, "reviews": 128,
+     "amenities": ["Wood stove", "Aether lamps", "Brass kitchenette", "Forest views"], "lat": 40.7580, "lng": -73.9855,
+     "description": "A snug timber cabin on the edge of the Copperline Woods, warmed by a cast-iron stove and lit by gentle aether lamps. Wake to birdsong and the smell of pine."},
+    {"id": "wp-2", "host_id": "wp-host-2", "host_name": "Barnaby Sloot", "title": "Skyloft over the Steamworks",
+     "place_type": "Loft", "location": "Steamworks Quarter", "price_cents": 18500, "max_guests": 2, "bedrooms": 1,
+     "image_url": f"{_WP_IMG}1502672260266-1c1ef2d93688?w=1000&q=80", "rating": 4.8, "reviews": 96,
+     "amenities": ["Rooftop terrace", "Copper bathtub", "Fast telegraph", "City skyline"], "lat": 40.7520, "lng": -73.9770,
+     "description": "An industrial-chic loft perched above the humming Steamworks, all exposed pipes, warm brick and a terrace made for watching the airships come in."},
+    {"id": "wp-3", "host_id": "wp-host-3", "host_name": "Imogen Vale", "title": "The Airship Berth No. 7",
+     "place_type": "Airship", "location": "Vale Skyport", "price_cents": 26000, "max_guests": 3, "bedrooms": 1,
+     "image_url": f"{_WP_IMG}1520250497591-112f2f40a3f4?w=1000&q=80", "rating": 5.0, "reviews": 54,
+     "amenities": ["Moored airship", "Panoramic gondola", "Sunrise deck", "Complimentary goggles"], "lat": 40.7610, "lng": -73.9900,
+     "description": "Spend the night aboard a lovingly restored passenger airship, moored at the Vale Skyport. Fall asleep to the creak of rigging and wake above the clouds."},
+    {"id": "wp-4", "host_id": "wp-host-1", "host_name": "Cordelia Finch", "title": "Ivywall Cottage",
+     "place_type": "Cottage", "location": "Old Gaslight Row", "price_cents": 9800, "max_guests": 5, "bedrooms": 3,
+     "image_url": f"{_WP_IMG}1568605114967-8130f3a36994?w=1000&q=80", "rating": 4.7, "reviews": 211,
+     "amenities": ["Walled garden", "Reading nook", "Cast-iron range", "Pet friendly"], "lat": 40.7490, "lng": -73.9820,
+     "description": "A storybook cottage smothered in ivy, with a walled garden and a reading nook by the fire. Perfect for a slow family weekend on Old Gaslight Row."},
+    {"id": "wp-5", "host_id": "wp-host-4", "host_name": "Thaddeus Crane", "title": "The Clockmaker's Studio",
+     "place_type": "Studio", "location": "Ticktock Lane", "price_cents": 7400, "max_guests": 2, "bedrooms": 0,
+     "image_url": f"{_WP_IMG}1554995207-c18c203602cb?w=1000&q=80", "rating": 4.6, "reviews": 173,
+     "amenities": ["Vintage workbench", "Espresso pot", "Big skylight", "Central location"], "lat": 40.7555, "lng": -73.9805,
+     "description": "A compact, characterful studio above a working clockmaker's shop. The gentle ticking below is oddly soothing — guests swear they sleep like the dead."},
+    {"id": "wp-6", "host_id": "wp-host-5", "host_name": "Ottoline Marsh", "title": "Marsh Manor Guest Wing",
+     "place_type": "Manor", "location": "Highfen Estate", "price_cents": 34000, "max_guests": 8, "bedrooms": 4,
+     "image_url": f"{_WP_IMG}1512917774080-9991f1c4c750?w=1000&q=80", "rating": 4.9, "reviews": 67,
+     "amenities": ["Private wing", "Billiards room", "Butler service", "Grand grounds"], "lat": 40.7650, "lng": -73.9750,
+     "description": "The entire guest wing of a grand fen-side manor, complete with billiards, a library and grounds to wander. Ideal for a gathering of the whole company."},
+    {"id": "wp-7", "host_id": "wp-host-6", "host_name": "Piers Hollow", "title": "The Little Houseboat",
+     "place_type": "Houseboat", "location": "Cogwater Canal", "price_cents": 8600, "max_guests": 2, "bedrooms": 1,
+     "image_url": f"{_WP_IMG}1543458040-6b8e0e0f0f0f?w=1000&q=80", "rating": 4.8, "reviews": 142,
+     "amenities": ["Canal-side deck", "Tiny wood stove", "Rowboat included", "Lantern light"], "lat": 40.7460, "lng": -73.9880,
+     "description": "A charming little houseboat rocking gently on the Cogwater Canal. Sip cocoa on the deck and watch the lamplighters make their rounds at dusk."},
 ]
 
 
@@ -1680,6 +1746,14 @@ async def seed():
             {"$set": {**{k: v for k, v in a.items() if k != "days_ago"},
                       "user_id": a["author_id"], "seeded": True},
              "$setOnInsert": {"created_at": created}},
+            upsert=True,
+        )
+    # Waypoint seeded stays (idempotent).
+    for s in WP_STAYS:
+        await db.wp_stays.update_one(
+            {"id": s["id"]},
+            {"$set": {**s, "user_id": s["host_id"], "status": "active", "seeded": True},
+             "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
 
@@ -5739,7 +5813,7 @@ async def tg_follow_author(author_id: str, user: dict = Depends(require_user)):
 
 
 # ----- Telegraph comments (top-level + one level of replies) -----
-def _tg_comment_public(c: dict, user_id: str) -> dict:
+def _tg_comment_public(c: dict, user_id: str, *, like_counts: dict | None = None, liked_ids: set | None = None) -> dict:
     return {
         "id": c["id"],
         "article_id": c["article_id"],
@@ -5750,21 +5824,32 @@ def _tg_comment_public(c: dict, user_id: str) -> dict:
         "author_handle": c.get("author_handle", ""),
         "created_at": c.get("created_at", ""),
         "is_mine": c.get("user_id") == user_id,
+        "likes": int((like_counts or {}).get(c["id"], 0)),
+        "liked": c["id"] in (liked_ids or set()),
     }
 
 
 @api_router.get("/telegraph/articles/{article_id}/comments")
 async def tg_list_comments(article_id: str, user: dict = Depends(require_user)):
     rows = await db.tg_comments.find({"article_id": article_id}, {"_id": 0}).to_list(5000)
-    rows.sort(key=lambda c: c.get("created_at", ""))
-    pub = [_tg_comment_public(c, user["id"]) for c in rows]
+    cids = [c["id"] for c in rows]
+    like_counts: dict = {}
+    liked_ids: set = set()
+    if cids:
+        for lk in await db.tg_comment_likes.find({"comment_id": {"$in": cids}}, {"_id": 0}).to_list(50000):
+            like_counts[lk["comment_id"]] = like_counts.get(lk["comment_id"], 0) + 1
+            if lk.get("user_id") == user["id"]:
+                liked_ids.add(lk["comment_id"])
+    pub = [_tg_comment_public(c, user["id"], like_counts=like_counts, liked_ids=liked_ids) for c in rows]
     tops = [c for c in pub if not c["parent_id"]]
     replies_by_parent: dict = {}
     for c in pub:
         if c["parent_id"]:
             replies_by_parent.setdefault(c["parent_id"], []).append(c)
-    # newest top-level threads first; replies stay chronological
-    tops.sort(key=lambda c: c["created_at"], reverse=True)
+    for k in replies_by_parent:
+        replies_by_parent[k].sort(key=lambda c: c["created_at"])  # replies chronological
+    # Best responses rise to the top: most-liked threads first, then newest.
+    tops.sort(key=lambda c: (c["likes"], c["created_at"]), reverse=True)
     return [{**t, "replies": replies_by_parent.get(t["id"], [])} for t in tops]
 
 
@@ -5805,7 +5890,192 @@ async def tg_delete_comment(comment_id: str, user: dict = Depends(require_user))
     # Deleting a top-level comment removes its replies too.
     await db.tg_comments.delete_one({"id": comment_id})
     await db.tg_comments.delete_many({"parent_id": comment_id})
+    await db.tg_comment_likes.delete_many({"comment_id": comment_id})
     return {"deleted": True}
+
+
+@api_router.post("/telegraph/comments/{comment_id}/like")
+async def tg_like_comment(comment_id: str, user: dict = Depends(require_user)):
+    c = await db.tg_comments.find_one({"id": comment_id}, {"_id": 0, "id": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    existing = await db.tg_comment_likes.find_one({"comment_id": comment_id, "user_id": user["id"]})
+    if existing:
+        await db.tg_comment_likes.delete_one({"comment_id": comment_id, "user_id": user["id"]})
+        liked = False
+    else:
+        await db.tg_comment_likes.insert_one({"comment_id": comment_id, "user_id": user["id"],
+                                              "created_at": datetime.now(timezone.utc).isoformat()})
+        liked = True
+    count = await db.tg_comment_likes.count_documents({"comment_id": comment_id})
+    return {"liked": liked, "likes": count}
+
+
+@api_router.get("/telegraph/following/unseen")
+async def tg_following_unseen(user: dict = Depends(require_user)):
+    """Count published articles from followed writers posted since the reader last
+    opened the Following tab — powers the little badge."""
+    follow_set = await _tg_follow_set(user["id"])
+    if not follow_set:
+        return {"count": 0}
+    seen = await db.tg_seen.find_one({"user_id": user["id"]}, {"_id": 0, "following_seen_at": 1})
+    since = (seen or {}).get("following_seen_at", "1970-01-01T00:00:00+00:00")
+    count = await db.tg_articles.count_documents({
+        "author_id": {"$in": list(follow_set)},
+        "status": {"$ne": "draft"},
+        "created_at": {"$gt": since},
+    })
+    return {"count": count}
+
+
+@api_router.post("/telegraph/following/seen")
+async def tg_following_seen(user: dict = Depends(require_user)):
+    await db.tg_seen.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"following_seen_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"count": 0}
+
+
+# ----------------------------- Waypoint (stays & bookings) -----------------------------
+def _wp_public(s: dict, *, saved_ids: set | None = None) -> dict:
+    return {
+        "id": s["id"],
+        "title": s.get("title", ""),
+        "place_type": s.get("place_type", "Cabin"),
+        "location": s.get("location", ""),
+        "price_cents": int(s.get("price_cents", 0)),
+        "max_guests": int(s.get("max_guests", 1)),
+        "bedrooms": int(s.get("bedrooms", 0)),
+        "description": s.get("description", ""),
+        "image_url": s.get("image_url", ""),
+        "amenities": s.get("amenities", []),
+        "rating": float(s.get("rating", 0) or 0),
+        "reviews": int(s.get("reviews", 0) or 0),
+        "lat": s.get("lat"),
+        "lng": s.get("lng"),
+        "host_id": s.get("host_id", s.get("user_id", "")),
+        "host_name": s.get("host_name", "A host"),
+        "created_at": s.get("created_at", ""),
+    }
+
+
+@api_router.get("/waypoint/stays")
+async def wp_list_stays(q: str = "", type: str = "", user: dict = Depends(require_user)):
+    query: dict = {"status": "active"}
+    if type:
+        query["place_type"] = type
+    stays = await db.wp_stays.find(query, {"_id": 0}).to_list(2000)
+    if q.strip():
+        term = q.strip().lower()
+        stays = [s for s in stays if term in s.get("title", "").lower()
+                 or term in s.get("location", "").lower()
+                 or term in s.get("place_type", "").lower()]
+    stays.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    return [_wp_public(s) for s in stays]
+
+
+@api_router.get("/waypoint/my-stays")
+async def wp_my_stays(user: dict = Depends(require_user)):
+    stays = await db.wp_stays.find({"host_id": user["id"], "status": "active"}, {"_id": 0}).to_list(500)
+    stays.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    return [_wp_public(s) for s in stays]
+
+
+@api_router.get("/waypoint/stays/{stay_id}")
+async def wp_get_stay(stay_id: str, user: dict = Depends(require_user)):
+    s = await db.wp_stays.find_one({"id": stay_id, "status": "active"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    return {**_wp_public(s), "is_host": s.get("host_id", s.get("user_id")) == user["id"]}
+
+
+@api_router.post("/waypoint/stays", status_code=201)
+async def wp_create_stay(body: WPStayBody, user: dict = Depends(require_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    stay = {
+        "id": uuid.uuid4().hex[:12],
+        "title": body.title.strip(),
+        "place_type": body.place_type.strip() or "Cabin",
+        "location": body.location.strip(),
+        "price_cents": body.price_cents,
+        "max_guests": body.max_guests,
+        "bedrooms": body.bedrooms,
+        "description": body.description.strip(),
+        "image_url": body.image_url.strip(),
+        "amenities": [a.strip() for a in body.amenities if a.strip()][:12],
+        "rating": 0.0,
+        "reviews": 0,
+        "lat": body.lat,
+        "lng": body.lng,
+        "host_id": user["id"],
+        "user_id": user["id"],
+        "host_name": user["display_name"],
+        "status": "active",
+        "seeded": False,
+        "created_at": now,
+    }
+    await db.wp_stays.insert_one(dict(stay))
+    return _wp_public(stay)
+
+
+@api_router.delete("/waypoint/stays/{stay_id}")
+async def wp_delete_stay(stay_id: str, user: dict = Depends(require_user)):
+    s = await db.wp_stays.find_one({"id": stay_id})
+    if not s:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    if s.get("host_id", s.get("user_id")) != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only remove your own listings")
+    await db.wp_stays.update_one({"id": stay_id}, {"$set": {"status": "removed"}})
+    return {"deleted": True}
+
+
+@api_router.post("/waypoint/stays/{stay_id}/book", status_code=201)
+async def wp_book_stay(stay_id: str, body: WPBookingBody, user: dict = Depends(require_user)):
+    s = await db.wp_stays.find_one({"id": stay_id, "status": "active"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    if s.get("host_id", s.get("user_id")) == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't book your own listing")
+    if body.guests > int(s.get("max_guests", 1)):
+        raise HTTPException(status_code=400, detail=f"This place sleeps up to {s.get('max_guests', 1)} guests")
+    total = int(s.get("price_cents", 0)) * body.nights
+    try:
+        check_in = datetime.fromisoformat(body.check_in).date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid check-in date")
+    check_out = (check_in + timedelta(days=body.nights)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    booking = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "stay_id": stay_id,
+        "stay_title": s.get("title", ""), "host_name": s.get("host_name", ""),
+        "location": s.get("location", ""), "image_url": s.get("image_url", ""),
+        "check_in": check_in.isoformat(), "check_out": check_out, "nights": body.nights,
+        "guests": body.guests, "total_cents": total, "status": "confirmed", "created_at": now,
+    }
+    await db.wp_bookings.insert_one(dict(booking))
+
+    # --- Automatically record the transaction in the Treasury district ---
+    await _ensure_wallet(user)
+    subtitle = f"{body.nights} night{'s' if body.nights != 1 else ''} · check-in {check_in.isoformat()}"
+    await _record_txn(user["id"], "payment", "debit", total,
+                      f"Waypoint stay — {s.get('title', '')}", "Waypoint", "Travel", subtitle)
+    await db.district_ledger.insert_one({
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": "waypoint",
+        "title": s.get("title", ""), "subtitle": subtitle, "amount_cents": total,
+        "link": "/waypoint/bookings", "seeded": False, "created_at": now,
+    })
+
+    booking.pop("_id", None)
+    return {"booking": booking}
+
+
+@api_router.get("/waypoint/bookings")
+async def wp_my_bookings(user: dict = Depends(require_user)):
+    rows = await db.wp_bookings.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
+    rows.sort(key=lambda b: b.get("created_at", ""), reverse=True)
+    return rows
 
 
 

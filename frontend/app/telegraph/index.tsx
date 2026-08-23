@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -49,6 +49,7 @@ export default function TelegraphGallery() {
   const [tab, setTab] = useState<string>(params.filter && TABS.some((t) => t.key === params.filter) ? params.filter : "all");
   const [articles, setArticles] = useState<TGArticle[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [unseen, setUnseen] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -61,7 +62,18 @@ export default function TelegraphGallery() {
     }
   }, [tab]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const refreshBadge = useCallback(async () => {
+    try { setUnseen((await api.tgFollowingUnseen()).count); } catch { /* ignore */ }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); refreshBadge(); }, [load, refreshBadge]));
+
+  // Opening the Following tab clears the "new posts" badge.
+  useEffect(() => {
+    if (tab === "following" && unseen > 0) {
+      api.tgFollowingSeen().then(() => setUnseen(0)).catch(() => {});
+    }
+  }, [tab, unseen]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
@@ -97,6 +109,11 @@ export default function TelegraphGallery() {
                 style={[styles.tabChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}
               >
                 <Text style={[styles.tabText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{item.label}</Text>
+                {item.key === "following" && unseen > 0 ? (
+                  <View style={[styles.badge, { backgroundColor: active ? colors.onBrandPrimary : colors.brand }]}>
+                    <Text style={[styles.badgeText, { color: active ? colors.brand : colors.onBrandPrimary }]}>{unseen > 9 ? "9+" : unseen}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             );
           }}
@@ -162,8 +179,10 @@ const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   iconGhost: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   tabRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  tabChip: { height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  tabChip: { flexDirection: "row", alignItems: "center", gap: 6, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
   tabText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
+  badgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   card: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   cover: { width: "100%", height: 150 },

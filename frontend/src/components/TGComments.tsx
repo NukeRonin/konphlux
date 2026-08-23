@@ -17,7 +17,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function Bubble({ c, colors, onReply, onDelete }: { c: TGComment; colors: any; onReply: (c: TGComment) => void; onDelete: (id: string) => void }) {
+function Bubble({ c, colors, onReply, onDelete, onLike }: { c: TGComment; colors: any; onReply: (c: TGComment) => void; onDelete: (id: string) => void; onLike: (c: TGComment) => void }) {
   return (
     <View style={styles.bubble}>
       <View style={[styles.avatar, { backgroundColor: colors.surfaceTertiary }]}>
@@ -30,6 +30,10 @@ function Bubble({ c, colors, onReply, onDelete }: { c: TGComment; colors: any; o
         </View>
         <Text style={[styles.body, { color: colors.onSurface }]}>{c.body}</Text>
         <View style={styles.actionsRow}>
+          <Pressable onPress={() => onLike(c)} hitSlop={8} style={styles.likeBtn} testID={`tg-comment-like-${c.id}`}>
+            <MaterialCommunityIcons name={c.liked ? "heart" : "heart-outline"} size={15} color={c.liked ? colors.brand : colors.muted} />
+            {c.likes > 0 ? <Text style={[styles.likeCount, { color: c.liked ? colors.brand : colors.muted }]}>{c.likes}</Text> : null}
+          </Pressable>
           <Pressable onPress={() => onReply(c)} hitSlop={8} testID={`tg-reply-${c.id}`}>
             <Text style={[styles.action, { color: colors.brand }]}>Reply</Text>
           </Pressable>
@@ -84,6 +88,15 @@ export function TGComments({ articleId, onCountChange }: { articleId: string; on
     ]);
   };
 
+  const like = async (target: TGComment) => {
+    // optimistic toggle across top-level + replies
+    const flip = (c: TGComment): TGComment => c.id === target.id
+      ? { ...c, liked: !c.liked, likes: c.likes + (c.liked ? -1 : 1) }
+      : { ...c, replies: c.replies?.map(flip) };
+    setComments((prev) => prev.map(flip));
+    try { await api.tgLikeComment(target.id); } catch { load(); }
+  };
+
   return (
     <View style={styles.wrap}>
       <Text style={[styles.heading, { color: colors.onSurface }]}>Responses{total ? ` · ${total}` : ""}</Text>
@@ -127,10 +140,10 @@ export function TGComments({ articleId, onCountChange }: { articleId: string; on
       ) : (
         comments.map((c) => (
           <View key={c.id} style={[styles.thread, { borderTopColor: colors.border }]}>
-            <Bubble c={c} colors={colors} onReply={setReplyTo} onDelete={remove} />
+            <Bubble c={c} colors={colors} onReply={setReplyTo} onDelete={remove} onLike={like} />
             {(c.replies || []).map((r) => (
               <View key={r.id} style={[styles.replyIndent, { borderLeftColor: colors.border }]}>
-                <Bubble c={r} colors={colors} onReply={() => setReplyTo(c)} onDelete={remove} />
+                <Bubble c={r} colors={colors} onReply={() => setReplyTo(c)} onDelete={remove} onLike={like} />
               </View>
             ))}
           </View>
@@ -159,7 +172,9 @@ const styles = StyleSheet.create({
   name: { fontFamily: fonts.bodyBold, fontSize: 14, flexShrink: 1 },
   time: { fontFamily: fonts.body, fontSize: 12 },
   body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, marginTop: 2 },
-  actionsRow: { flexDirection: "row", gap: spacing.lg, marginTop: 6 },
+  actionsRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: 6 },
   action: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
+  likeBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  likeCount: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
   replyIndent: { marginLeft: spacing.lg, marginTop: spacing.md, paddingLeft: spacing.md, borderLeftWidth: 2 },
 });
