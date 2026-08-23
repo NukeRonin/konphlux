@@ -24,7 +24,7 @@ function entryDate(iso: string) {
   try { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; }
 }
 
-export default function Trackers() {
+export default function TrackersScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
