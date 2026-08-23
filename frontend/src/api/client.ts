@@ -231,7 +231,11 @@ export type SparkCard = {
   bio: string;
   photo: string;
   matched_at?: string;
+  liked_at?: string;
+  liked?: boolean;
+  matched?: boolean;
 };
+export type SparkMessage = { id: string; sender_id: string; body: string; kind: string; created_at: string; mine: boolean };
 
 export type BazaarResponse = { categories: string[]; listings: Listing[] };
 
@@ -958,6 +962,11 @@ export const api = {
       body: JSON.stringify({ target_id, action }),
     }),
   datingMatches: () => request<SparkCard[]>("/dating/matches"),
+  datingProfile: (id: string) => request<SparkCard>(`/dating/profile/${id}`),
+  datingLikes: () => request<SparkCard[]>("/dating/likes"),
+  datingThread: (id: string) => request<{ profile: SparkCard; messages: SparkMessage[] }>(`/dating/thread/${id}`),
+  datingThreadSend: (id: string, body: string, kind: "message" | "flirt" | "sex_request") =>
+    request<{ message: SparkMessage; reply: SparkMessage | null }>(`/dating/thread/${id}`, { method: "POST", body: JSON.stringify({ body, kind }) }),
 
   // BrainBoost (learning district)
   bbHub: () => request<BBHub>("/brainboost"),

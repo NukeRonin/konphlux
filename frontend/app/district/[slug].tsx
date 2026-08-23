@@ -256,7 +256,46 @@ const VAULT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Tutorials": { route: "/vault?category=Tutorials", icon: "school-outline" },
 };
 
+// Streamora — the live-streaming district.
+const STREAMORA_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Go live": { route: "/pictureshow/streamora/golive", icon: "video-plus" },
+  "Live Now": { route: "/pictureshow/streamora", icon: "access-point" },
+  "Upcoming Live Streams": { route: "/pictureshow/streamora", icon: "calendar-clock" },
+  "Recent Live Streams": { route: "/pictureshow/streamora", icon: "history" },
+  "Follow streamers": { route: "/pictureshow/streamora", icon: "account-heart" },
+  "Clips & highlights": { route: "/pictureshow/streamora", icon: "movie-star-outline" },
+};
+
+// Library — purchased/downloaded books district.
+const LIBRARY_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Your Library": { route: "/library", icon: "bookshelf" },
+  "eBooks": { route: "/library", icon: "book-open-page-variant" },
+  "Audio Books": { route: "/library", icon: "headphones" },
+  "Buy eBooks": { route: "/(tabs)/bazaar?category=eBooks", icon: "cart-plus" },
+  "Buy Audio Books": { route: "/(tabs)/bazaar?category=Audio Books", icon: "cart-plus" },
+};
+
+// Home — the social hub district; each feature opens the matching destination.
+const HOME_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "News Feed": { route: "/(tabs)", icon: "newspaper-variant-outline" },
+  "Posts & Comments": { route: "/(tabs)", icon: "comment-text-outline" },
+  "Reactions & Sharing": { route: "/(tabs)", icon: "heart-outline" },
+  "Photo Albums": { route: "/(tabs)/profile", icon: "image-multiple-outline" },
+  "Stories": { route: "/compose", icon: "camera-plus-outline" },
+  "Groups": { route: "/roundtable/communities?filter=all", icon: "account-group" },
+  "Events": { route: "/evention", icon: "calendar-star" },
+  "Pages": { route: "/(tabs)/profile", icon: "file-account-outline" },
+  "Marketplace shortcuts": { route: "/(tabs)/bazaar", icon: "storefront-outline" },
+  "Trending topics": { route: "/roundtable", icon: "fire" },
+  "Friend suggestions": { route: "/chatterbox", icon: "account-plus-outline" },
+  "Messaging shortcuts": { route: "/chatterbox", icon: "message-text-outline" },
+  "Profile pages": { route: "/(tabs)/profile", icon: "account-circle-outline" },
+};
+
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
+  home: HOME_ACTIONS,
+  streamora: STREAMORA_ACTIONS,
+  library: LIBRARY_ACTIONS,
   retrospections: RETRO_ACTIONS,
   treasury: TREASURY_ACTIONS,
   "entrepreneur-lobby": {
@@ -382,43 +421,32 @@ export default function DistrictDetail() {
           {/* Features */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Inside {district.name}</Text>
-            {ACTIONS_BY_SLUG[district.slug] ? (
-              <View style={{ gap: spacing.sm }}>
-                {district.features.map((f) => {
-                  const action = ACTIONS_BY_SLUG[district.slug][f];
-                  if (!action) return null;
-                  return (
-                    <Pressable
-                      key={f}
-                      testID={`feature-${f}`}
-                      onPress={() => router.push(action.route as any)}
-                      style={({ pressed }) => [
-                        styles.featureRow,
-                        { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
-                      ]}
-                    >
-                      <View style={[styles.featureRowIcon, { backgroundColor: colors.surfaceTertiary }]}>
-                        <MaterialCommunityIcons name={action.icon} size={18} color={colors.brand} />
-                      </View>
-                      <Text style={[styles.featureRowText, { color: colors.onSurface }]}>{f}</Text>
-                      <MaterialCommunityIcons name="chevron-right" size={20} color={colors.muted} />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.featureGrid}>
-                {district.features.map((f) => (
-                  <View
+            <View style={{ gap: spacing.sm }}>
+              {district.features.map((f) => {
+                const mapped = ACTIONS_BY_SLUG[district.slug]?.[f];
+                const route = mapped?.route
+                  ?? DISTRICT_HUBS[district.slug]?.route
+                  ?? `/chatmonger/${district.slug}`;
+                const icon: IconName = mapped?.icon ?? "arrow-right-circle-outline";
+                return (
+                  <Pressable
                     key={f}
-                    style={[styles.feature, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+                    testID={`feature-${f}`}
+                    onPress={() => router.push(route as any)}
+                    style={({ pressed }) => [
+                      styles.featureRow,
+                      { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+                    ]}
                   >
-                    <MaterialCommunityIcons name="cog" size={13} color={colors.brandPrimary} />
-                    <Text style={[styles.featureText, { color: colors.onSurface }]}>{f}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+                    <View style={[styles.featureRowIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                      <MaterialCommunityIcons name={icon} size={18} color={colors.brand} />
+                    </View>
+                    <Text style={[styles.featureRowText, { color: colors.onSurface }]}>{f}</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={colors.muted} />
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
 
           {/* Chatmonger */}

@@ -1,4 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useAudioPlayer } from "expo-audio";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Easing, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -59,6 +61,7 @@ export default function StreamWatch() {
   const [confetti, setConfetti] = useState(false);
   const [milestoneLabel, setMilestoneLabel] = useState<number | null>(null);
   const milestoneRef = useRef<number | null>(null);
+  const chime = useAudioPlayer(require("@/assets/sounds/chime.wav"));
 
   // Celebrate when the show crosses a cheer milestone (skips pre-existing totals on first load).
   useEffect(() => {
@@ -71,6 +74,8 @@ export default function StreamWatch() {
       milestoneRef.current = reached;
       setConfetti(true);
       setMilestoneLabel(reached);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      try { chime.seekTo(0); chime.play(); } catch { /* ignore */ }
       setTimeout(() => setMilestoneLabel(null), 3200);
     }
   }, [recap.total]);

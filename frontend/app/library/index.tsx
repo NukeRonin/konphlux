@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Modal, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, LibraryBook } from "@/src/api/client";
@@ -60,6 +60,16 @@ export default function Library() {
   const goal = stats?.monthly_goal ?? 0;
   const finished = stats?.books_finished_this_month ?? 0;
   const goalPct = goal > 0 ? Math.min(1, finished / goal) : 0;
+  const goalReached = goal > 0 && finished >= goal;
+
+  const shareBadge = async () => {
+    const month = new Date().toLocaleString("default", { month: "long" });
+    try {
+      await Share.share({
+        message: `🏆 I hit my ${month} reading goal on Konphlux — ${finished} book${finished === 1 ? "" : "s"} finished! 📚✨`,
+      });
+    } catch { /* ignore */ }
+  };
 
   const Header = () => (
     <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
@@ -108,13 +118,29 @@ export default function Library() {
               <View style={[styles.fill, { width: `${goalPct * 100}%`, backgroundColor: goalPct >= 1 ? "#27AE60" : colors.brand }]} />
             </View>
             <Text style={[styles.goalSub, { color: colors.muted }]}>
-              {finished >= goal ? `Goal reached — ${finished}/${goal} books! 🎉` : `${finished} of ${goal} books finished this month`}
+              {goalReached ? `Goal reached — ${finished}/${goal} books! 🎉` : `${finished} of ${goal} books finished this month`}
             </Text>
           </>
         ) : (
           <Text style={[styles.goalSub, { color: colors.muted }]}>Set a target and track your progress each month.</Text>
         )}
       </Pressable>
+
+      {goalReached ? (
+        <View style={[styles.badgeCard, { backgroundColor: "rgba(39,174,96,0.12)", borderColor: "#27AE60" }]} testID="goal-badge">
+          <View style={[styles.badgeMedal, { backgroundColor: "#27AE60" }]}>
+            <MaterialCommunityIcons name="trophy" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.badgeTitle, { color: colors.onSurface }]}>Goal Achiever</Text>
+            <Text style={[styles.badgeSub, { color: colors.muted }]}>You finished {finished} book{finished === 1 ? "" : "s"} this month!</Text>
+          </View>
+          <Pressable testID="goal-share" onPress={shareBadge} style={[styles.badgeShare, { backgroundColor: "#27AE60" }]}>
+            <MaterialCommunityIcons name="share-variant" size={16} color="#fff" />
+            <Text style={styles.badgeShareText}>Share</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {marks.length ? (
         <View style={{ gap: spacing.sm }}>
@@ -243,6 +269,12 @@ const styles = StyleSheet.create({
   goalSub: { fontFamily: fonts.body, fontSize: 12.5 },
   track: { height: 8, borderRadius: 4, overflow: "hidden" },
   fill: { height: 8, borderRadius: 4 },
+  badgeCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  badgeMedal: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  badgeTitle: { fontFamily: fonts.display, fontSize: 16 },
+  badgeSub: { fontFamily: fonts.body, fontSize: 12.5, marginTop: 1 },
+  badgeShare: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill },
+  badgeShareText: { fontFamily: fonts.bodyBold, fontSize: 13, color: "#fff" },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: spacing.xl },
   goalSheet: { width: "100%", maxWidth: 340, borderRadius: radius.lg, padding: spacing.xl, gap: spacing.md, alignItems: "center" },
   goalSheetTitle: { fontFamily: fonts.display, fontSize: 20, textAlign: "center" },

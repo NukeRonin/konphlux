@@ -171,10 +171,14 @@ export default function WatchParty() {
               style={{ maxHeight: 360 }}
               renderItem={({ item }) => {
                 const invited = invitedIds.includes(item.id);
+                const isGroup = item.type === "group";
                 return (
                   <Pressable testID={`invite-${item.id}`} onPress={() => inviteTo(item)} disabled={invited} style={[styles.convRow, { borderBottomColor: colors.border }]}>
-                    <MaterialCommunityIcons name={item.type === "group" ? "account-group" : "account"} size={20} color={colors.brand} />
-                    <Text numberOfLines={1} style={[styles.convName, { color: colors.onSurface }]}>{item.title}</Text>
+                    <MaterialCommunityIcons name={isGroup ? "account-group" : "account"} size={20} color={colors.brand} />
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={[styles.convName, { color: colors.onSurface }]}>{item.title}</Text>
+                      {isGroup ? <Text style={[styles.convSub, { color: colors.muted }]}>Invite everyone in this group</Text> : null}
+                    </View>
                     {invited ? (
                       <View style={[styles.invitedChip, { backgroundColor: colors.surfaceSecondary }]}>
                         <MaterialCommunityIcons name="check" size={13} color="#27AE60" />
@@ -217,6 +221,7 @@ const styles = StyleSheet.create({
   inviteSheetSub: { fontFamily: fonts.body, fontSize: 13, marginTop: 2, marginBottom: spacing.md },
   convRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1 },
   convName: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 15 },
+  convSub: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
   invitedChip: { flexDirection: "row", alignItems: "center", gap: 3, height: 26, paddingHorizontal: 10, borderRadius: radius.pill },
   invitedText: { fontFamily: fonts.bodyBold, fontSize: 12 },
   chat: { flex: 1, borderTopWidth: 1 },

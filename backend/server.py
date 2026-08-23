@@ -2147,6 +2147,87 @@ async def dating_matches(user: dict = Depends(require_user)):
     return out
 
 
+@api_router.get("/dating/profile/{target_id}")
+async def dating_profile_detail(target_id: str, user: dict = Depends(require_user)):
+    card = await _dating_card_for(target_id)
+    swipe = await db.dating_swipes.find_one({"user_id": user["id"], "target_id": target_id}, {"_id": 0})
+    card["liked"] = bool(swipe and swipe.get("action") == "like")
+    card["matched"] = bool(await db.dating_matches.find_one({"key": _match_key(user["id"], target_id)}))
+    return card
+
+
+@api_router.get("/dating/likes")
+async def dating_likes(user: dict = Depends(require_user)):
+    likes = await db.dating_swipes.find({"user_id": user["id"], "action": "like"}, {"_id": 0}).to_list(2000)
+    likes.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    matched_keys = {m["key"] for m in await db.dating_matches.find({"users": user["id"]}, {"_id": 0, "key": 1}).to_list(2000)}
+    out = []
+    for s in likes:
+        card = await _dating_card_for(s["target_id"])
+        card["matched"] = _match_key(user["id"], s["target_id"]) in matched_keys
+        card["liked_at"] = s.get("created_at")
+        out.append(card)
+    return out
+
+
+_SPARK_REPLIES = {
+    "message": [
+        "Oh, hello there — you have my attention.",
+        "A fine opening. Tell me more about yourself.",
+        "I was hoping you'd write. What are you up to this evening?",
+    ],
+    "flirt": [
+        "My, you're bold — I rather like it. 😏",
+        "Careful, sparks like that start fires. 🔥",
+        "Flattery will get you everywhere with me.",
+    ],
+    "sex_request": [
+        "Straight to the point! Let's get to know each other first. 😉",
+        "Bold move — buy me a drink at the Roundtable first?",
+        "Ha! Slow down, tiger. Charm me a little.",
+    ],
+}
+
+
+@api_router.get("/dating/thread/{other_id}")
+async def dating_thread(other_id: str, user: dict = Depends(require_user)):
+    key = _match_key(user["id"], other_id)
+    msgs = await db.dating_messages.find({"thread_key": key}, {"_id": 0}).to_list(2000)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    for m in msgs:
+        m["mine"] = m.get("sender_id") == user["id"]
+    profile = await _dating_card_for(other_id)
+    return {"profile": profile, "messages": msgs}
+
+
+@api_router.post("/dating/thread/{other_id}", status_code=201)
+async def dating_thread_send(other_id: str, body: dict, user: dict = Depends(require_user)):
+    text = (body.get("body") or "").strip()
+    kind = body.get("kind") if body.get("kind") in ("message", "flirt", "sex_request") else "message"
+    if not text:
+        raise HTTPException(status_code=400, detail="Say something first.")
+    key = _match_key(user["id"], other_id)
+    now = datetime.now(timezone.utc)
+    msg = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": user["id"],
+           "body": text[:600], "kind": kind, "created_at": now.isoformat()}
+    await db.dating_messages.insert_one(dict(msg))
+    msg.pop("_id", None)
+    msg["mine"] = True
+
+    # Seeded sparks reply so the thread feels alive.
+    reply = None
+    target = await db.dating_profiles.find_one({"user_id": other_id})
+    if target and target.get("seed"):
+        pool = _SPARK_REPLIES.get(kind, _SPARK_REPLIES["message"])
+        reply = {"id": uuid.uuid4().hex[:12], "thread_key": key, "sender_id": other_id,
+                 "body": random.choice(pool), "kind": "message",
+                 "created_at": (now + timedelta(seconds=1)).isoformat()}
+        await db.dating_messages.insert_one(dict(reply))
+        reply.pop("_id", None)
+        reply["mine"] = False
+    return {"message": msg, "reply": reply}
+
+
 
 # ---------- Bazaar (browse + sell + auctions) ----------
 BID_INCREMENT_CENTS = 100  # minimum raise between bids

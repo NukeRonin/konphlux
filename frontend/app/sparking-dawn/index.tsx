@@ -155,6 +155,9 @@ export default function SparkingDawn() {
         <Pressable testID="edit-dating-profile" onPress={() => router.push("/sparking-dawn/profile")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="account-cog" size={19} color={colors.brand} />
         </Pressable>
+        <Pressable testID="view-liked" onPress={() => router.push("/sparking-dawn/likes")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="cards-heart-outline" size={19} color={colors.brand} />
+        </Pressable>
         <Pressable testID="view-matches" onPress={() => router.push("/sparking-dawn/matches")} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="heart-multiple" size={19} color={colors.brandSecondary} />
         </Pressable>
@@ -193,6 +196,9 @@ export default function SparkingDawn() {
           <GestureDetector gesture={pan}>
             <Animated.View style={[styles.stackFront, topStyle]}>
               <Card spark={top} colors={colors} front />
+              <Pressable testID="spark-info" onPress={() => router.push(`/sparking-dawn/spark/${top.id}`)} hitSlop={8} style={styles.infoBtn}>
+                <MaterialCommunityIcons name="information-outline" size={22} color="#F6F1E7" />
+              </Pressable>
               <Animated.View style={[styles.stampLike, likeBadge]}>
                 <Text style={styles.stampLikeText}>SPARK</Text>
               </Animated.View>
@@ -271,6 +277,7 @@ const styles = StyleSheet.create({
   cardTagline: { fontFamily: fonts.bodyBold, fontSize: 15, color: "#E7CD94", marginTop: 4 },
   cardBio: { fontFamily: fonts.body, fontSize: 14, color: "#E8E0D2", marginTop: 6 },
   stampLike: { position: "absolute", top: 28, left: 24, borderWidth: 4, borderColor: "#4A7C59", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 4, transform: [{ rotate: "-16deg" }] },
+  infoBtn: { position: "absolute", top: 16, right: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" },
   stampLikeText: { fontFamily: fonts.display, fontSize: 26, color: "#4A7C59" },
   stampPass: { position: "absolute", top: 28, right: 24, borderWidth: 4, borderColor: "#8B3A3A", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 4, transform: [{ rotate: "16deg" }] },
   stampPassText: { fontFamily: fonts.display, fontSize: 26, color: "#8B3A3A" },

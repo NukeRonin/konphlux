@@ -324,6 +324,48 @@ const rtStyles = StyleSheet.create({
   meta: { fontFamily: fonts.bodyMedium, fontSize: 12 },
 });
 
+function StreakReminder() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const [streak, setStreak] = useState(0);
+  const [show, setShow] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      api.libraryStats()
+        .then((s) => { if (alive) { setStreak(s.streak_days); setShow(s.streak_days > 0 && !s.listened_today); } })
+        .catch(() => {});
+      return () => { alive = false; };
+    }, []),
+  );
+
+  if (!show || dismissed) return null;
+  return (
+    <Pressable
+      testID="home-streak-reminder"
+      onPress={() => router.push("/library")}
+      style={[srStyles.banner, { backgroundColor: "rgba(230,126,34,0.12)", borderColor: "rgba(230,126,34,0.4)" }]}
+    >
+      <MaterialCommunityIcons name="fire" size={22} color="#E67E22" />
+      <View style={{ flex: 1 }}>
+        <Text style={[srStyles.title, { color: colors.onSurface }]}>Keep your {streak}-day streak alive!</Text>
+        <Text style={[srStyles.sub, { color: colors.muted }]}>Listen or read a little today so you don't lose it.</Text>
+      </View>
+      <Pressable hitSlop={10} onPress={() => setDismissed(true)} testID="streak-dismiss">
+        <MaterialCommunityIcons name="close" size={18} color={colors.muted} />
+      </Pressable>
+    </Pressable>
+  );
+}
+
+const srStyles = StyleSheet.create({
+  banner: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  title: { fontFamily: fonts.displaySemi, fontSize: 15 },
+  sub: { fontFamily: fonts.body, fontSize: 12.5, marginTop: 1 },
+});
+
 export default function FeedScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -417,6 +459,7 @@ export default function FeedScreen() {
           }
           ListHeaderComponent={
             <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+              <StreakReminder />
               <Eyebrow style={{ marginTop: spacing.sm }}>Stories from your circle</Eyebrow>
               <Stories names={data?.stories ?? []} />
               <Composer />

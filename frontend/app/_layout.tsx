@@ -53,6 +53,9 @@ function RootNavigator() {
         <Stack.Screen name="bazaar/new-booth" options={{ presentation: "modal" }} />
         <Stack.Screen name="sparking-dawn/index" />
         <Stack.Screen name="sparking-dawn/matches" />
+        <Stack.Screen name="sparking-dawn/likes" />
+        <Stack.Screen name="sparking-dawn/spark/[id]" />
+        <Stack.Screen name="sparking-dawn/chat/[id]" />
         <Stack.Screen name="sparking-dawn/profile" options={{ presentation: "modal" }} />
         <Stack.Screen name="anvil/index" />
         <Stack.Screen name="anvil/work/[id]" />
