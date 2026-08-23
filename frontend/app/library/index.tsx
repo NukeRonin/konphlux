@@ -55,7 +55,7 @@ export default function Library() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <Pressable testID={`lib-book-${item.id}`} onPress={() => router.push(`/library/read/${item.id}`)} onLongPress={() => remove(item)} delayLongPress={280} style={[styles.book, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <Pressable testID={`lib-book-${item.id}`} onPress={() => router.push(item.format === "Audio Book" ? `/library/audio/${item.id}` : `/library/read/${item.id}`)} onLongPress={() => remove(item)} delayLongPress={280} style={[styles.book, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             {item.cover_url ? <Image source={{ uri: item.cover_url }} style={styles.cover} contentFit="cover" transition={180} /> : (
               <View style={[styles.cover, { backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" }]}>
                 <MaterialCommunityIcons name="book-open-page-variant" size={30} color={colors.muted} />

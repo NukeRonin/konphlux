@@ -442,7 +442,7 @@ export type CBConvSummary = {
   last_at: string;
   unread: number;
 };
-export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string; kind?: string; meta?: Record<string, any> };
+export type CBMessage = { id: string; conversation_id: string; sender_id: string; sender_name: string; text: string; created_at: string; kind?: string; meta?: Record<string, any>; reactions?: Record<string, string[]>; reply_to?: string; reply_text?: string; reply_sender?: string };
 export type CBConvDetail = CBConvSummary & { messages: CBMessage[]; me: string; other_id?: string };
 
 // Bluepaint Space Designer
@@ -1053,7 +1053,8 @@ export const api = {
     request<CBConvSummary>("/chatterbox/conversations/group", { method: "POST", body: JSON.stringify({ title, member_ids }) }),
   cbConversation: (id: string) => request<CBConvDetail>(`/chatterbox/conversations/${id}`),
   cbPoll: (id: string, after: string) => request<{ messages: CBMessage[] }>(`/chatterbox/conversations/${id}/messages?after=${encodeURIComponent(after)}`),
-  cbSend: (id: string, text: string) => request<{ message: CBMessage }>(`/chatterbox/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+  cbSend: (id: string, text: string, replyTo?: string) => request<{ message: CBMessage }>(`/chatterbox/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ text, reply_to: replyTo }) }),
+  cbReact: (msgId: string, emoji: string) => request<{ reactions: Record<string, string[]> }>(`/chatterbox/messages/${msgId}/react`, { method: "POST", body: JSON.stringify({ emoji }) }),
 
   // Bluepaint Space Designer
   bpDesigns: () => request<BPDesignSummary[]>("/bluepaint/designs"),
@@ -1225,6 +1226,15 @@ export const api = {
   libraryEbooks: () => request<LibraryBook[]>("/library/ebooks"),
   libraryGetEbook: (id: string) => request<LibraryBook>(`/library/ebooks/${id}`),
   libraryProgress: (id: string, page: number) => request<{ ok: boolean; page: number }>(`/library/ebooks/${id}/progress`, { method: "POST", body: JSON.stringify({ page }) }),
+  libraryAudioProgress: (id: string, audio_position: number) => request<{ ok: boolean }>(`/library/ebooks/${id}/progress`, { method: "POST", body: JSON.stringify({ audio_position }) }),
+  libraryBookmarks: (id: string) => request<{ id: string; page: number; note: string; created_at: string }[]>(`/library/ebooks/${id}/bookmarks`),
+  libraryAddBookmark: (id: string, page: number, note?: string) => request<{ added: boolean }>(`/library/ebooks/${id}/bookmarks`, { method: "POST", body: JSON.stringify({ page, note }) }),
+  libraryDeleteBookmark: (id: string, bmId: string) => request<{ deleted: boolean }>(`/library/ebooks/${id}/bookmarks/${bmId}`, { method: "DELETE" }),
+  partyCreate: (video_id: string) => request<{ code: string; video_url: string; video_title: string; host_id: string; host_name: string; position: number; playing: boolean; is_host?: boolean }>(`/pictureshow/party`, { method: "POST", body: JSON.stringify({ video_id }) }),
+  partyState: (code: string) => request<{ code: string; video_id: string; video_url: string; video_title: string; host_id: string; host_name: string; position: number; playing: boolean; is_host: boolean }>(`/pictureshow/party/${code}`),
+  partySync: (code: string, position: number, playing: boolean) => request<{ ok: boolean }>(`/pictureshow/party/${code}/sync`, { method: "POST", body: JSON.stringify({ position, playing }) }),
+  partyChat: (code: string) => request<StreamChatMsg[]>(`/pictureshow/party/${code}/chat`),
+  partyChatPost: (code: string, body: string) => request<StreamChatMsg>(`/pictureshow/party/${code}/chat`, { method: "POST", body: JSON.stringify({ body }) }),
   libraryAddEbook: (b: { ref_id?: string; title: string; author?: string; cover_url?: string; format?: string; pages?: number }) =>
     request<{ added: boolean; item: LibraryBook }>("/library/ebooks", { method: "POST", body: JSON.stringify(b) }),
   libraryDeleteEbook: (id: string) => request<{ deleted: boolean }>(`/library/ebooks/${id}`, { method: "DELETE" }),

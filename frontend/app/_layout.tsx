@@ -166,6 +166,8 @@ function RootNavigator() {
         <Stack.Screen name="vault/board-chat/[id]" />
         <Stack.Screen name="library/index" />
         <Stack.Screen name="library/read/[id]" />
+        <Stack.Screen name="library/audio/[id]" />
+        <Stack.Screen name="pictureshow/party/[code]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />

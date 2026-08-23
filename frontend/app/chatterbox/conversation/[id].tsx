@@ -21,6 +21,8 @@ export default function Conversation() {
   const [messages, setMessages] = useState<CBMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState<{ id: string; text: string; sender: string } | null>(null);
+  const [reactFor, setReactFor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sheet, setSheet] = useState<"" | "offer" | "interview">("");
   const [fTitle, setFTitle] = useState("");
@@ -71,21 +73,29 @@ export default function Conversation() {
     if (!t || sending || !id) return;
     setText("");
     setSending(true);
-    const optimistic: CBMessage = { id: `tmp-${Date.now()}`, conversation_id: id, sender_id: conv?.me ?? "me", sender_name: "You", text: t, created_at: new Date().toISOString() };
+    const rt = replyTo;
+    setReplyTo(null);
+    const optimistic: CBMessage = { id: `tmp-${Date.now()}`, conversation_id: id, sender_id: conv?.me ?? "me", sender_name: "You", text: t, created_at: new Date().toISOString(), reply_text: rt?.text, reply_sender: rt?.sender };
     setMessages((m) => [...m, optimistic]);
     try {
-      await api.cbSend(id, t);
-      // Replace the optimistic bubble with the canonical server state (real message + any auto-reply).
+      await api.cbSend(id, t, rt?.id);
       const res = await api.cbConversation(id);
       setConv(res);
       setMessages(res.messages);
     } catch {
-      // Roll back the optimistic bubble and restore the text so nothing is lost.
       setMessages((m) => m.filter((x) => x.id !== optimistic.id));
       setText(t);
     } finally {
       setSending(false);
     }
+  };
+
+  const react = async (msgId: string, emoji: string) => {
+    setReactFor(null);
+    try {
+      const res = await api.cbReact(msgId, emoji);
+      setMessages((m) => m.map((x) => (x.id === msgId ? { ...x, reactions: res.reactions } : x)));
+    } catch { /* ignore */ }
   };
 
   const startCall = (mode: "voice" | "video") => {
@@ -218,9 +228,41 @@ export default function Conversation() {
             }
             return (
               <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
-                <View style={[styles.bubble, mine ? { backgroundColor: colors.brand, borderTopRightRadius: 4 } : { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderTopLeftRadius: 4 }]}>
-                  {!mine && conv?.type === "group" ? <Text style={[styles.sender, { color: colors.brand }]}>{item.sender_name}</Text> : null}
-                  <Text style={[styles.bubbleText, { color: mine ? colors.onBrandPrimary : colors.onSurface }]}>{item.text}</Text>
+                <View style={{ maxWidth: "80%", alignItems: mine ? "flex-end" : "flex-start" }}>
+                  <Pressable
+                    onLongPress={() => setReactFor(reactFor === item.id ? null : item.id)}
+                    delayLongPress={250}
+                    testID={`msg-${item.id}`}
+                    style={[styles.bubble, mine ? { backgroundColor: colors.brand, borderTopRightRadius: 4 } : { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderTopLeftRadius: 4 }]}
+                  >
+                    {!mine && conv?.type === "group" ? <Text style={[styles.sender, { color: colors.brand }]}>{item.sender_name}</Text> : null}
+                    {item.reply_text ? (
+                      <View style={[styles.replyQuote, { borderLeftColor: mine ? colors.onBrandPrimary : colors.brand }]}>
+                        <Text numberOfLines={1} style={[styles.replySender, { color: mine ? colors.onBrandPrimary : colors.brand }]}>{item.reply_sender}</Text>
+                        <Text numberOfLines={1} style={[styles.replyText, { color: mine ? colors.onBrandPrimary : colors.muted }]}>{item.reply_text}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={[styles.bubbleText, { color: mine ? colors.onBrandPrimary : colors.onSurface }]}>{item.text}</Text>
+                  </Pressable>
+                  {item.reactions && Object.keys(item.reactions).length > 0 ? (
+                    <View style={styles.reactRow}>
+                      {Object.entries(item.reactions).map(([e, us]) => (
+                        <Pressable key={e} onPress={() => react(item.id, e)} style={[styles.reactChip, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+                          <Text style={{ fontSize: 12 }}>{e} {us.length}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                  {reactFor === item.id ? (
+                    <View style={[styles.reactPicker, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      {["❤️", "😂", "👍", "🔥", "😮", "😢"].map((e) => (
+                        <Pressable key={e} onPress={() => react(item.id, e)} testID={`react-${item.id}-${e}`} hitSlop={6}><Text style={{ fontSize: 22 }}>{e}</Text></Pressable>
+                      ))}
+                      <Pressable onPress={() => { setReplyTo({ id: item.id, text: item.text, sender: item.sender_name }); setReactFor(null); }} testID={`reply-${item.id}`} hitSlop={6}>
+                        <MaterialCommunityIcons name="reply" size={22} color={colors.brand} />
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             );
@@ -230,6 +272,16 @@ export default function Conversation() {
       )}
 
       <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+        {replyTo ? (
+          <View style={[styles.replyBanner, { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border }]}>
+            <MaterialCommunityIcons name="reply" size={16} color={colors.brand} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.replySender, { color: colors.brand }]}>Replying to {replyTo.sender}</Text>
+              <Text numberOfLines={1} style={[styles.replyText, { color: colors.muted }]}>{replyTo.text}</Text>
+            </View>
+            <Pressable onPress={() => setReplyTo(null)} hitSlop={8}><MaterialCommunityIcons name="close" size={18} color={colors.muted} /></Pressable>
+          </View>
+        ) : null}
         <View style={[styles.composer, { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.sm }]}>
           <TextInput testID="conv-input" value={text} onChangeText={setText} placeholder="Message…" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.onSurface, backgroundColor: colors.surface, borderColor: colors.border }]} multiline />
           <Pressable onPress={send} disabled={!text.trim() || sending} testID="conv-send" style={[styles.sendBtn, { backgroundColor: text.trim() ? colors.brand : colors.surfaceTertiary }]}>
@@ -283,6 +335,13 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: "80%", borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   sender: { fontFamily: fonts.bodyBold, fontSize: 11, marginBottom: 2 },
   bubbleText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21 },
+  replyQuote: { borderLeftWidth: 3, paddingLeft: spacing.sm, marginBottom: 4, opacity: 0.9 },
+  replySender: { fontFamily: fonts.bodyBold, fontSize: 11.5 },
+  replyText: { fontFamily: fonts.body, fontSize: 12.5 },
+  reactRow: { flexDirection: "row", gap: 4, marginTop: 3 },
+  reactChip: { flexDirection: "row", borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 1 },
+  reactPicker: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: 4, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  replyBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderTopWidth: 1 },
   empty: { fontFamily: fonts.body, fontSize: 13, textAlign: "center", marginTop: spacing.xxl },
   composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontFamily: fonts.body, fontSize: 15 },

@@ -453,3 +453,13 @@ No seeded account — register fresh (see /app/memory/test_credentials.md). Use 
 - **Streamora functional + Live Chat**: `stream_chat` collection; `GET/POST /pictureshow/streamora/{id}/chat` (ambient seed). Watch screen rewritten: live chat panel (polls 5s while live), Follow button, passes stream id/channelId/following from hub.
 - **Continue Watching**: `ps_progress`; `POST /pictureshow/videos/{id}/progress` (VideoPlayer reports position every 5s + on unmount), `GET /pictureshow/continue`. Row with resume badge + progress bar at top of PictureShow hub.
 - Verified (agent smoke): reader pages+progress; board chat post/read/owner; digest; stream chat seed+post; continue watching (progress 0.25). Lint clean. Buy-to-Library code-only.
+
+
+## Bookmarks + Stream Reactions + Watch Party + Audiobooks + Chatterbox React/Reply + Bluepaint Labels (2026-06)
+- **eBook Bookmarks**: reader can bookmark a page / add page+line notes; persisted per-user; bookmark list to jump back. `frontend/app/library/read/[id].tsx` + backend endpoints.
+- **Stream Reactions**: tap-to-cheer emoji controls with floating overlay on Streamora watch screen (`frontend/app/pictureshow/streamora/watch.tsx`).
+- **Watch Party**: backend party create/join/state-sync/shared-chat; host advances playback, guests receive sync. Share invite via RN `Share` (no expo-clipboard). New `frontend/app/pictureshow/party/[code].tsx`; "Watch together" entry on video detail.
+- **Audiobook Player**: `expo-audio`; play/pause + saved/resumed listening position. New `frontend/app/library/audio/[id].tsx`; Library item navigation branches by eBook/audiobook format.
+- **Chatterbox React/Reply**: message reactions (emoji map on message) + reply-to-message with reply snapshot/banner. `frontend/app/chatterbox/conversation/[id].tsx`.
+- **Bluepaint**: added per-wall length labels on drawing canvas (export/print/share via captureRef + feet/metres + floor-area via fmtLen/fmtArea already existed). Bazaar one-tap material→cart already existed in estimator.
+- Verified (agent smoke + lint clean): bookmark add/list; audiobook resume position; Chatterbox reply snapshot + emoji reaction; Watch Party create/join/guest-sees-host-position/shared chat. Screenshots + testing-agent skipped per user request; awaiting user Preview verification. Native audio/real video sync require device/build QA.

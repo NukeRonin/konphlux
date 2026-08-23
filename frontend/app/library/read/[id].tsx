@@ -1,13 +1,15 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Dimensions, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Dimensions, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, LibraryBook } from "@/src/api/client";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
-import { fonts, spacing } from "@/src/theme/tokens";
+import { fonts, radius, spacing } from "@/src/theme/tokens";
+
+type Bookmark = { id: string; page: number; note: string; created_at: string };
 
 export default function EbookReader() {
   const { colors } = useTheme();
@@ -20,12 +22,15 @@ export default function EbookReader() {
   const [width, setWidth] = useState(Dimensions.get("window").width);
   const listRef = useRef<FlatList>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [showMarks, setShowMarks] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      const b = await api.libraryGetEbook(id!);
+      const [b, marks] = await Promise.all([api.libraryGetEbook(id!), api.libraryBookmarks(id!)]);
       setBook(b);
+      setBookmarks(marks);
       setPage(Math.min(b.progress_page ?? 0, (b.content?.length ?? 1) - 1));
       setStatus("ready");
     } catch { setStatus("error"); }
@@ -50,6 +55,17 @@ export default function EbookReader() {
   };
 
   const total = book?.content?.length ?? 1;
+  const isMarked = bookmarks.some((b) => b.page === page && !b.note);
+
+  const toggleBookmark = async () => {
+    await api.libraryAddBookmark(id!, page).catch(() => {});
+    setBookmarks(await api.libraryBookmarks(id!).catch(() => bookmarks));
+  };
+  const jumpTo = (p: number) => {
+    setShowMarks(false);
+    listRef.current?.scrollToOffset({ offset: p * width, animated: true });
+    setPage(p);
+  };
 
   if (status === "loading") return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><Loading label="Opening your book…" /></View>;
   if (status === "error" || !book) return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><ErrorState onRetry={load} /></View>;
@@ -61,6 +77,12 @@ export default function EbookReader() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.onSurface }]}>{book.title}</Text>
+        <Pressable onPress={toggleBookmark} hitSlop={10} testID="reader-bookmark">
+          <MaterialCommunityIcons name={isMarked ? "bookmark" : "bookmark-outline"} size={22} color={isMarked ? colors.brand : colors.onSurface} />
+        </Pressable>
+        <Pressable onPress={() => setShowMarks(true)} hitSlop={10} testID="reader-marks">
+          <MaterialCommunityIcons name="bookmark-multiple-outline" size={22} color={colors.onSurface} />
+        </Pressable>
       </View>
 
       <FlatList
@@ -92,6 +114,25 @@ export default function EbookReader() {
           <MaterialCommunityIcons name="chevron-right-circle-outline" size={30} color={page >= total - 1 ? colors.border : colors.brand} />
         </Pressable>
       </View>
+
+      <Modal visible={showMarks} transparent animationType="slide" onRequestClose={() => setShowMarks(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setShowMarks(false)}>
+          <Pressable style={[styles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.lg }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>Bookmarks</Text>
+            {bookmarks.length === 0 ? (
+              <Text style={[styles.sheetEmpty, { color: colors.muted }]}>Tap the bookmark icon to save your spot.</Text>
+            ) : bookmarks.map((b) => (
+              <Pressable key={b.id} onPress={() => jumpTo(b.page)} style={[styles.markRow, { borderBottomColor: colors.border }]} testID={`mark-${b.id}`}>
+                <MaterialCommunityIcons name="bookmark" size={18} color={colors.brand} />
+                <Text style={[styles.markText, { color: colors.onSurface }]}>Page {b.page + 1}{b.note ? ` — ${b.note}` : ""}</Text>
+                <Pressable hitSlop={8} onPress={async () => { await api.libraryDeleteBookmark(id!, b.id).catch(() => {}); setBookmarks((p) => p.filter((x) => x.id !== b.id)); }}>
+                  <MaterialCommunityIcons name="close" size={16} color={colors.muted} />
+                </Pressable>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -100,6 +141,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.displaySemi, fontSize: 17, flex: 1 },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, maxHeight: "60%" },
+  sheetTitle: { fontFamily: fonts.displaySemi, fontSize: 18, marginBottom: spacing.md },
+  sheetEmpty: { fontFamily: fonts.body, fontSize: 14, paddingVertical: spacing.lg },
+  markRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, borderBottomWidth: 1 },
+  markText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14.5 },
   pageText: { fontFamily: fonts.body, fontSize: 18, lineHeight: 30 },
   footer: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1 },
   track: { height: 6, borderRadius: 3, overflow: "hidden" },

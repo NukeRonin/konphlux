@@ -89,6 +89,15 @@ export default function PSVideoDetailScreen() {
             </View>
             {savedMsg ? <Text style={[styles.savedMsg, { color: colors.brand }]}>{savedMsg}</Text> : null}
 
+            <Pressable
+              testID="psvd-watch-party"
+              onPress={async () => { try { const p = await api.partyCreate(video.id); router.push(`/pictureshow/party/${p.code}`); } catch { /* ignore */ } }}
+              style={[styles.partyBtn, { borderColor: colors.brand, backgroundColor: colors.surfaceSecondary }]}
+            >
+              <MaterialCommunityIcons name="account-multiple-plus-outline" size={18} color={colors.brand} />
+              <Text style={[styles.partyText, { color: colors.brand }]}>Watch together</Text>
+            </Pressable>
+
             {/* Channel */}
             <Pressable testID="psvd-channel" onPress={() => router.push(`/pictureshow/channel/${video.channel_id}`)} style={[styles.channelRow, { borderColor: colors.border }]}>
               <Image source={{ uri: video.channel_avatar }} style={styles.channelAvatar} contentFit="cover" />
@@ -160,6 +169,8 @@ const styles = StyleSheet.create({
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, height: 40, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1 },
   actionText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   savedMsg: { fontFamily: fonts.bodyMedium, fontSize: 12, marginTop: spacing.sm },
+  partyBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 46, borderRadius: radius.md, borderWidth: 1.5, marginTop: spacing.md },
+  partyText: { fontFamily: fonts.bodyBold, fontSize: 14.5 },
   channelRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, marginTop: spacing.md },
   channelAvatar: { width: 44, height: 44, borderRadius: 22 },
   channelName: { fontFamily: fonts.displaySemi, fontSize: 15 },

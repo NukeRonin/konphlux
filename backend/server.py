@@ -608,6 +608,7 @@ class CBCreateGroup(BaseModel):
 
 class CBSendMessage(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+    reply_to: str | None = Field(default=None, max_length=40)
 
 
 # ---- Bluepaint Space Designer ----
@@ -3697,6 +3698,67 @@ async def pictureshow_continue(user: dict = Depends(require_user)):
     return {"videos": out}
 
 
+# ----- Watch Party (sync playback + shared chat) -----
+@api_router.post("/pictureshow/party", status_code=201)
+async def party_create(body: dict, user: dict = Depends(require_user)):
+    video_id = (body.get("video_id") or "").strip()
+    v = await db.ps_videos.find_one({"id": video_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Video not found")
+    code = uuid.uuid4().hex[:6].upper()
+    party = {
+        "code": code, "video_id": video_id, "video_url": v.get("video_url", ""), "video_title": v.get("title", ""),
+        "host_id": user["id"], "host_name": user["display_name"], "position": 0.0, "playing": True,
+        "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.watch_parties.insert_one(dict(party))
+    party.pop("_id", None)
+    return party
+
+
+@api_router.get("/pictureshow/party/{code}")
+async def party_state(code: str, user: dict = Depends(require_user)):
+    p = await db.watch_parties.find_one({"code": code.upper()}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Party not found")
+    p["is_host"] = p["host_id"] == user["id"]
+    return p
+
+
+@api_router.post("/pictureshow/party/{code}/sync")
+async def party_sync(code: str, body: dict, user: dict = Depends(require_user)):
+    p = await db.watch_parties.find_one({"code": code.upper()}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Party not found")
+    if p["host_id"] != user["id"]:
+        return {"ok": True}  # only the host drives playback
+    await db.watch_parties.update_one({"code": code.upper()}, {"$set": {
+        "position": max(0.0, float(body.get("position", 0))),
+        "playing": bool(body.get("playing", True)),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    return {"ok": True}
+
+
+@api_router.get("/pictureshow/party/{code}/chat")
+async def party_chat(code: str, user: dict = Depends(require_user)):
+    msgs = await db.stream_chat.find({"stream_id": f"party:{code.upper()}"}, {"_id": 0}).to_list(500)
+    msgs.sort(key=lambda m: m.get("created_at", ""))
+    return msgs[-200:]
+
+
+@api_router.post("/pictureshow/party/{code}/chat", status_code=201)
+async def party_chat_post(code: str, body: dict, user: dict = Depends(require_user)):
+    text = (body.get("body") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message")
+    msg = {"id": uuid.uuid4().hex[:12], "stream_id": f"party:{code.upper()}", "user_id": user["id"],
+           "author": user["display_name"], "body": text[:400], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.stream_chat.insert_one(dict(msg))
+    msg.pop("_id", None)
+    return msg
+
+
 @api_router.get("/pictureshow/videos")
 async def pictureshow_videos(user: dict = Depends(require_user), category: str | None = None, sort: str = "recent"):
     query: dict = {}
@@ -6621,11 +6683,45 @@ async def library_get_ebook(item_id: str, user: dict = Depends(require_user)):
 
 @api_router.post("/library/ebooks/{item_id}/progress")
 async def library_progress(item_id: str, body: dict, user: dict = Depends(require_user)):
-    page = max(0, int(body.get("page", 0)))
-    res = await db.library_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": {"progress_page": page}})
+    updates: dict = {}
+    if "page" in body:
+        updates["progress_page"] = max(0, int(body.get("page", 0)))
+    if "audio_position" in body:
+        updates["audio_position"] = max(0.0, float(body.get("audio_position", 0)))
+    if not updates:
+        return {"ok": True}
+    res = await db.library_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": updates})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not in your library")
-    return {"ok": True, "page": page}
+    return {"ok": True, **updates}
+
+
+@api_router.get("/library/ebooks/{item_id}/bookmarks")
+async def library_bookmarks(item_id: str, user: dict = Depends(require_user)):
+    rows = await db.book_bookmarks.find({"user_id": user["id"], "book_id": item_id}, {"_id": 0}).to_list(500)
+    rows.sort(key=lambda r: r.get("page", 0))
+    return rows
+
+
+@api_router.post("/library/ebooks/{item_id}/bookmarks", status_code=201)
+async def library_add_bookmark(item_id: str, body: dict, user: dict = Depends(require_user)):
+    page = max(0, int(body.get("page", 0)))
+    note = (body.get("note") or "").strip()[:400]
+    existing = await db.book_bookmarks.find_one({"user_id": user["id"], "book_id": item_id, "page": page, "note": note})
+    if existing:
+        await db.book_bookmarks.delete_one({"id": existing["id"]})
+        return {"added": False}
+    bm = {"id": uuid.uuid4().hex[:12], "user_id": user["id"], "book_id": item_id, "page": page,
+          "note": note, "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.book_bookmarks.insert_one(dict(bm))
+    bm.pop("_id", None)
+    return {"added": True, "bookmark": bm}
+
+
+@api_router.delete("/library/ebooks/{item_id}/bookmarks/{bm_id}")
+async def library_delete_bookmark(item_id: str, bm_id: str, user: dict = Depends(require_user)):
+    await db.book_bookmarks.delete_one({"id": bm_id, "user_id": user["id"], "book_id": item_id})
+    return {"deleted": True}
 
 
 async def _add_ebooks_from_order(order: dict) -> None:
@@ -7517,7 +7613,13 @@ async def chatterbox_send(conv_id: str, body: CBSendMessage, user: dict = Depend
         raise HTTPException(status_code=404, detail="Conversation not found")
     now = datetime.now(timezone.utc).isoformat()
     msg = {"id": uuid.uuid4().hex[:12], "conversation_id": conv_id, "sender_id": user["id"],
-           "sender_name": user["display_name"], "text": body.text.strip(), "created_at": now}
+           "sender_name": user["display_name"], "text": body.text.strip(), "created_at": now, "reactions": {}}
+    if body.reply_to:
+        orig = await db.cb_messages.find_one({"id": body.reply_to, "conversation_id": conv_id}, {"_id": 0})
+        if orig:
+            msg["reply_to"] = orig["id"]
+            msg["reply_text"] = orig.get("text", "")[:140]
+            msg["reply_sender"] = orig.get("sender_name", "")
     await db.cb_messages.insert_one(dict(msg))
     await db.cb_conversations.update_one(
         {"id": conv_id}, {"$set": {"last_message": body.text.strip()[:120], "last_at": now, f"reads.{user['id']}": now}}
@@ -7536,6 +7638,31 @@ async def chatterbox_send(conv_id: str, body: CBSendMessage, user: dict = Depend
             {"id": conv_id}, {"$set": {"last_message": reply_text[:120], "last_at": reply_at}}
         )
     return {"message": msg}
+
+
+@api_router.post("/chatterbox/messages/{msg_id}/react")
+async def chatterbox_react(msg_id: str, body: dict, user: dict = Depends(require_user)):
+    emoji = (body.get("emoji") or "").strip()[:8]
+    if not emoji:
+        raise HTTPException(status_code=400, detail="Missing emoji")
+    m = await db.cb_messages.find_one({"id": msg_id}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Message not found")
+    conv = await db.cb_conversations.find_one({"id": m["conversation_id"], "participants": user["id"]}, {"_id": 0, "id": 1})
+    if not conv:
+        raise HTTPException(status_code=403, detail="Not in this conversation")
+    reactions = m.get("reactions", {}) or {}
+    users = set(reactions.get(emoji, []))
+    if user["id"] in users:
+        users.discard(user["id"])
+    else:
+        users.add(user["id"])
+    if users:
+        reactions[emoji] = list(users)
+    else:
+        reactions.pop(emoji, None)
+    await db.cb_messages.update_one({"id": msg_id}, {"$set": {"reactions": reactions}})
+    return {"reactions": reactions}
 
 
 # ---------- Bluepaint Space Designer (2D floor plans + room planning) ----------

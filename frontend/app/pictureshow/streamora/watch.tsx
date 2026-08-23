@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, Easing, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,6 +12,21 @@ import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 const LIVE = "#C0392B";
+const CHEERS = ["❤️", "🔥", "👏", "😂", "😮", "⚙️"];
+
+function FloatingCheer({ emoji, onDone }: { emoji: string; onDone: () => void }) {
+  const y = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const x = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(y, { toValue: -220, duration: 2200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(x, { toValue: (Math.random() - 0.5) * 80, duration: 2200, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 2200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start(onDone);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <Animated.Text style={{ position: "absolute", bottom: 0, fontSize: 30, transform: [{ translateY: y }, { translateX: x }], opacity }}>{emoji}</Animated.Text>;
+}
 
 function fmtDate(iso: string) {
   if (!iso) return "";
@@ -36,6 +51,12 @@ export default function StreamWatch() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const [cheers, setCheers] = useState<{ id: string; emoji: string }[]>([]);
+
+  const cheer = (emoji: string) => {
+    const cid = Math.random().toString(36).slice(2);
+    setCheers((c) => [...c, { id: cid, emoji }]);
+  };
 
   const loadChat = useCallback(async () => {
     if (!showChat) return;
@@ -104,6 +125,19 @@ export default function StreamWatch() {
         ) : null}
       </View>
 
+      {showChat ? (
+        <View style={styles.cheerBar}>
+          <View style={styles.cheerFloat} pointerEvents="none">
+            {cheers.map((c) => <FloatingCheer key={c.id} emoji={c.emoji} onDone={() => setCheers((list) => list.filter((x) => x.id !== c.id))} />)}
+          </View>
+          {CHEERS.map((e) => (
+            <Pressable key={e} onPress={() => cheer(e)} testID={`cheer-${e}`} style={[styles.cheerBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <Text style={{ fontSize: 20 }}>{e}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {isUpcoming && when ? (
         <View style={{ paddingHorizontal: spacing.lg }}>
           <View style={[styles.schedCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -164,6 +198,9 @@ const styles = StyleSheet.create({
   channel: { fontFamily: fonts.body, fontSize: 14, marginTop: 4 },
   followBtn: { flexDirection: "row", alignItems: "center", gap: 5, height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
   followText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  cheerBar: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  cheerFloat: { position: "absolute", bottom: 40, left: 0, right: 0, alignItems: "center", height: 0 },
+  cheerBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   schedCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
   schedText: { fontFamily: fonts.bodyMedium, fontSize: 14 },
   chat: { flex: 1, borderTopWidth: 1 },

@@ -1,0 +1,142 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Pressable, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { api, StreamChatMsg } from "@/src/api/client";
+import { VideoPlayer } from "@/src/components/VideoPlayer";
+import { ErrorState, Loading } from "@/src/components/States";
+import { useAuth } from "@/src/auth/AuthContext";
+import { useTheme } from "@/src/theme/ThemeContext";
+import { fonts, radius, spacing } from "@/src/theme/tokens";
+
+export default function WatchParty() {
+  const { code } = useLocalSearchParams<{ code?: string }>();
+  const { colors } = useTheme();
+  const { user } = useAuth();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [party, setParty] = useState<any>(null);
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [messages, setMessages] = useState<StreamChatMsg[]>([]);
+  const [text, setText] = useState("");
+  const [syncPos, setSyncPos] = useState<number | undefined>(undefined);
+  const [copied, setCopied] = useState(false);
+  const listRef = useRef<FlatList>(null);
+
+  const load = useCallback(async () => {
+    try { setStatus("loading"); setParty(await api.partyState(code!)); setStatus("ready"); }
+    catch { setStatus("error"); }
+  }, [code]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const isHost = party?.is_host;
+
+  // Guests poll the host's position; the shared chat polls for everyone.
+  useEffect(() => {
+    if (!code) return;
+    const t = setInterval(async () => {
+      try {
+        setMessages(await api.partyChat(code));
+        if (!isHost) {
+          const p = await api.partyState(code);
+          setSyncPos(p.position);
+        }
+      } catch { /* ignore */ }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [code, isHost]);
+
+  useEffect(() => { if (code) api.partyChat(code).then(setMessages).catch(() => {}); }, [code]);
+
+  const copyCode = async () => {
+    try { await Share.share({ message: `Join my Konphlux Watch Party! Open PictureShow → Watch Party and enter code ${code}` }); } catch { /* ignore */ }
+    setCopied(true); setTimeout(() => setCopied(false), 1500);
+  };
+
+  const send = async () => {
+    const b = text.trim();
+    if (!b || !code) return;
+    setText("");
+    try { const m = await api.partyChatPost(code, b); setMessages((p) => [...p, m]); } catch { setText(b); }
+  };
+
+  if (status === "loading") return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><Loading label="Joining the party…" /></View>;
+  if (status === "error" || !party) return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><ErrorState onRetry={load} /></View>;
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.surface }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + spacing.xs }]}>
+        <Pressable onPress={() => router.back()} hitSlop={12} testID="party-back" style={[styles.roundBtn, { backgroundColor: colors.surfaceSecondary }]}>
+          <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
+        </Pressable>
+      </View>
+
+      <VideoPlayer
+        uri={party.video_url}
+        style={{ borderRadius: 0 }}
+        onProgress={isHost ? (pos, _dur) => { api.partySync(code!, pos, true).catch(() => {}); } : undefined}
+        syncPosition={isHost ? undefined : syncPos}
+      />
+
+      <View style={styles.meta}>
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={2} style={[styles.title, { color: colors.onSurface }]}>{party.video_title}</Text>
+          <Text style={[styles.host, { color: colors.muted }]}>{isHost ? "You're hosting" : `Hosted by ${party.host_name}`} · in sync</Text>
+        </View>
+        <Pressable onPress={copyCode} testID="party-code" style={[styles.codeChip, { backgroundColor: colors.surfaceSecondary, borderColor: colors.brand }]}>
+          <MaterialCommunityIcons name={copied ? "check" : "share-variant"} size={14} color={colors.brand} />
+          <Text style={[styles.codeText, { color: colors.brand }]}>{copied ? "Copied" : party.code}</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.chat, { borderTopColor: colors.border }]}>
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ padding: spacing.md, gap: spacing.sm, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          renderItem={({ item }) => (
+            <View style={styles.msgRow}>
+              <Text style={[styles.msgAuthor, { color: item.user_id === user?.id ? colors.brand : colors.brandSecondary }]}>{item.author}</Text>
+              <Text style={[styles.msgBody, { color: colors.onSurface }]}> {item.body}</Text>
+            </View>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, { color: colors.muted }]}>Share the code and chat while you watch together.</Text>}
+        />
+        <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+          <View style={[styles.composer, { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.sm }]}>
+            <TextInput value={text} onChangeText={setText} placeholder="Chat with the party…" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.onSurface }]} testID="party-input" onSubmitEditing={send} returnKeyType="send" />
+            <Pressable onPress={send} disabled={!text.trim()} style={[styles.sendBtn, { backgroundColor: text.trim() ? colors.brand : colors.surfaceTertiary }]} testID="party-send">
+              <MaterialCommunityIcons name="send" size={17} color={text.trim() ? colors.onBrandPrimary : colors.muted} />
+            </Pressable>
+          </View>
+        </KeyboardStickyView>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  topBar: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, paddingHorizontal: spacing.md },
+  roundBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", opacity: 0.92 },
+  meta: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
+  title: { fontFamily: fonts.displaySemi, fontSize: 17, lineHeight: 22 },
+  host: { fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
+  codeChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  codeText: { fontFamily: fonts.bodyBold, fontSize: 13, letterSpacing: 1 },
+  chat: { flex: 1, borderTopWidth: 1 },
+  msgRow: { flexDirection: "row", flexWrap: "wrap" },
+  msgAuthor: { fontFamily: fonts.bodyBold, fontSize: 13.5 },
+  msgBody: { fontFamily: fonts.body, fontSize: 13.5, lineHeight: 19, flexShrink: 1 },
+  empty: { fontFamily: fonts.body, fontSize: 13, textAlign: "center", marginTop: spacing.xl },
+  composer: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1 },
+  input: { flex: 1, height: 44, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md, fontFamily: fonts.body, fontSize: 15 },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+});

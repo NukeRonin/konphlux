@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Line } from "react-native-svg";
+import Svg, { Line, Text as SvgText } from "react-native-svg";
 import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 
@@ -282,8 +282,22 @@ export default function SpaceDesigner() {
                     {walls.map((w, i) => (
                       <Line key={i} x1={w.x1 * size} y1={w.y1 * size} x2={w.x2 * size} y2={w.y2 * size} stroke={colors.brand} strokeWidth={5} strokeLinecap="round" />
                     ))}
+                    {walls.map((w, i) => {
+                      const m = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) * scale;
+                      if (m < 0.3) return null;
+                      return (
+                        <SvgText key={`l${i}`} x={((w.x1 + w.x2) / 2) * size} y={((w.y1 + w.y2) / 2) * size - 6} fill={colors.onSurface} fontSize={11} fontWeight="bold" textAnchor="middle">
+                          {`${m.toFixed(1)}m · ${Math.round(m * 3.28084)}ft`}
+                        </SvgText>
+                      );
+                    })}
                     {preview ? (
                       <Line x1={preview.x1 * size} y1={preview.y1 * size} x2={preview.x2 * size} y2={preview.y2 * size} stroke={colors.brandSecondary} strokeWidth={5} strokeDasharray="6 6" strokeLinecap="round" />
+                    ) : null}
+                    {preview ? (
+                      <SvgText x={((preview.x1 + preview.x2) / 2) * size} y={((preview.y1 + preview.y2) / 2) * size - 6} fill={colors.brandSecondary} fontSize={11} fontWeight="bold" textAnchor="middle">
+                        {`${(Math.hypot(preview.x2 - preview.x1, preview.y2 - preview.y1) * scale).toFixed(1)}m`}
+                      </SvgText>
                     ) : null}
                   </Svg>
 

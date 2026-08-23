@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 
 import { radius } from "@/src/theme/tokens";
 
-export function VideoPlayer({ uri, style, onProgress }: { uri: string; style?: any; onProgress?: (position: number, duration: number) => void }) {
+export function VideoPlayer({ uri, style, onProgress, syncPosition }: { uri: string; style?: any; onProgress?: (position: number, duration: number) => void; syncPosition?: number }) {
   const player = useVideoPlayer(uri || null, (p) => {
     p.loop = false;
   });
@@ -24,6 +24,14 @@ export function VideoPlayer({ uri, style, onProgress }: { uri: string; style?: a
     const t = setInterval(report, 5000);
     return () => { report(); clearInterval(t); };
   }, [player, onProgress]);
+
+  // Watch Party guests: seek to the host's position when it drifts too far.
+  useEffect(() => {
+    if (syncPosition == null) return;
+    try {
+      if (Math.abs((player.currentTime ?? 0) - syncPosition) > 3) player.currentTime = syncPosition;
+    } catch { /* ignore */ }
+  }, [player, syncPosition]);
 
   return (
     <View style={[styles.wrap, style]}>
