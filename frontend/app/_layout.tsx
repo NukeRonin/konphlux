@@ -152,7 +152,11 @@ function RootNavigator() {
         <Stack.Screen name="waypoint/index" />
         <Stack.Screen name="waypoint/host" />
         <Stack.Screen name="waypoint/bookings" />
+        <Stack.Screen name="waypoint/saved" />
+        <Stack.Screen name="waypoint/trip" />
         <Stack.Screen name="waypoint/[id]" />
+        <Stack.Screen name="vault/index" />
+        <Stack.Screen name="vault/collection/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="achievements" />
         <Stack.Screen name="frankenstein-lab/audio" />

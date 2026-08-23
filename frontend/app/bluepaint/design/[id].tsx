@@ -9,6 +9,7 @@ import { captureRef } from "react-native-view-shot";
 
 import { api, BPItem, BPWall } from "@/src/api/client";
 import { ErrorState, Loading } from "@/src/components/States";
+import { SaveToVaultButton } from "@/src/components/SaveToVaultButton";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { computeEstimate, fmtArea, fmtLen } from "@/src/utils/bpEstimate";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -240,6 +241,9 @@ export default function SpaceDesigner() {
         <Pressable testID="designer-share" onPress={shareImage} hitSlop={8} style={[styles.shareBtn, { borderColor: colors.border }]}>
           <MaterialCommunityIcons name="share-variant" size={18} color={colors.brand} />
         </Pressable>
+        <View style={{ marginHorizontal: spacing.xs }}>
+          <SaveToVaultButton source="bluepaint" refId={id!} title={name || "Bluepaint design"} subtitle="Bluepaint design" route={`/bluepaint/design/${id}`} compact />
+        </View>
         <Pressable testID="designer-save" onPress={save} disabled={saving} style={[styles.saveBtn, { backgroundColor: dirty ? colors.brand : colors.surfaceSecondary, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="content-save" size={16} color={dirty ? colors.onBrandPrimary : colors.muted} />
           <Text style={[styles.saveText, { color: dirty ? colors.onBrandPrimary : colors.muted }]}>{savedMsg || "Save"}</Text>

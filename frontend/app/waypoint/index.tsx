@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { Dimensions, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,14 +17,22 @@ const MAP_SIZE = Math.min(Dimensions.get("window").width - spacing.lg * 2, 360);
 const HALF = MAP_SIZE / 2;
 const PAD = 30;
 
-function StayCard({ item, colors, onPress }: { item: WPStay; colors: any; onPress: () => void }) {
+function StayCard({ item, colors, onPress, onSave, forSale }: { item: WPStay; colors: any; onPress: () => void; onSave: () => void; forSale: boolean }) {
   return (
     <Pressable testID={`wp-stay-${item.id}`} onPress={onPress} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-      {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.cover} contentFit="cover" transition={200} /> : (
-        <View style={[styles.cover, { backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" }]}>
-          <MaterialCommunityIcons name="home-city-outline" size={40} color={colors.muted} />
-        </View>
-      )}
+      <View>
+        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.cover} contentFit="cover" transition={200} /> : (
+          <View style={[styles.cover, { backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" }]}>
+            <MaterialCommunityIcons name="home-city-outline" size={40} color={colors.muted} />
+          </View>
+        )}
+        <Pressable onPress={onSave} hitSlop={8} style={[styles.heart, { backgroundColor: colors.surface }]} testID={`wp-save-${item.id}`}>
+          <MaterialCommunityIcons name={item.saved ? "heart" : "heart-outline"} size={18} color={item.saved ? colors.brand : colors.onSurface} />
+        </Pressable>
+        {forSale ? (
+          <View style={[styles.saleBadge, { backgroundColor: colors.brand }]}><Text style={[styles.saleBadgeText, { color: colors.onBrandPrimary }]}>FOR SALE</Text></View>
+        ) : null}
+      </View>
       <View style={styles.cardBody}>
         <View style={styles.rowBetween}>
           <View style={[styles.typePill, { backgroundColor: colors.surfaceTertiary }]}>
@@ -36,13 +44,13 @@ function StayCard({ item, colors, onPress }: { item: WPStay; colors: any; onPres
               <Text style={[styles.ratingText, { color: colors.onSurface }]}>{item.rating.toFixed(1)}</Text>
               <Text style={[styles.reviewText, { color: colors.muted }]}>({item.reviews})</Text>
             </View>
-          ) : <Text style={[styles.reviewText, { color: colors.muted }]}>New</Text>}
+          ) : <Text style={[styles.reviewText, { color: colors.muted }]}>{forSale ? "New listing" : "New"}</Text>}
         </View>
         <Text numberOfLines={1} style={[styles.title, { color: colors.onSurface }]}>{item.title}</Text>
         <Text numberOfLines={1} style={[styles.loc, { color: colors.muted }]}>
-          <MaterialCommunityIcons name="map-marker-outline" size={12} color={colors.muted} /> {item.location} · sleeps {item.max_guests}
+          <MaterialCommunityIcons name="map-marker-outline" size={12} color={colors.muted} /> {item.location} · {item.bedrooms} bed{item.bedrooms !== 1 ? "s" : ""}
         </Text>
-        <Text style={[styles.price, { color: colors.brand }]}>{formatPrice(item.price_cents)}<Text style={[styles.night, { color: colors.muted }]}> / night</Text></Text>
+        <Text style={[styles.price, { color: colors.brand }]}>{formatPrice(item.price_cents)}{forSale ? null : <Text style={[styles.night, { color: colors.muted }]}> / night</Text>}</Text>
       </View>
     </Pressable>
   );
@@ -52,6 +60,11 @@ export default function WaypointHome() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ group?: string; kind?: string }>();
+  const group = params.group || "";
+  const kind = params.kind === "sale" ? "sale" : "rent";
+  const forSale = kind === "sale";
+  const scoped = !!group || forSale;
   const [q, setQ] = useState("");
   const [type, setType] = useState("All");
   const [view, setView] = useState<"list" | "map">("list");
@@ -62,12 +75,20 @@ export default function WaypointHome() {
   const load = useCallback(async () => {
     try {
       setStatus("loading");
-      setStays(await api.wpStays(q.trim(), type === "All" ? "" : type));
+      setStays(await api.wpStays(q.trim(), type === "All" ? "" : type, group, kind));
       setStatus("ready");
     } catch { setStatus("error"); }
-  }, [q, type]);
+  }, [q, type, group, kind]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const toggleSave = async (id: string) => {
+    setStays((prev) => prev.map((s) => s.id === id ? { ...s, saved: !s.saved } : s));
+    try { await api.wpSaveStay(id); } catch { load(); }
+  };
+
+  const title = forSale ? "Places for Sale" : group || "Waypoint Stays";
+  const subtitle = forSale ? "Vacation homes & property for purchase" : group ? "Browse this collection" : "Somewhere to stay, somewhere to settle";
 
   // Map placement — normalise stay coords around their bounding box.
   const placed = useMemo(() => {
@@ -96,9 +117,12 @@ export default function WaypointHome() {
           <MaterialCommunityIcons name="chevron-left" size={26} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Waypoint Stays</Text>
-          <Eyebrow>Somewhere to stay, somewhere to settle</Eyebrow>
+          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>{title}</Text>
+          <Eyebrow>{subtitle}</Eyebrow>
         </View>
+        <Pressable testID="wp-saved" onPress={() => router.push("/waypoint/saved")} hitSlop={10} style={styles.iconGhost}>
+          <MaterialCommunityIcons name="heart-outline" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="wp-trips" onPress={() => router.push("/waypoint/bookings")} hitSlop={10} style={styles.iconGhost}>
           <MaterialCommunityIcons name="bag-suitcase-outline" size={22} color={colors.onSurface} />
         </Pressable>
@@ -129,24 +153,26 @@ export default function WaypointHome() {
         </View>
       </View>
 
-      {/* Type filters */}
-      <View>
-        <FlatList
-          horizontal
-          data={TYPES}
-          keyExtractor={(t) => t}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.typeRow}
-          renderItem={({ item }) => {
-            const active = type === item;
-            return (
-              <Pressable testID={`wp-type-${item}`} onPress={() => setType(item)} style={[styles.typeChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
-                <Text style={[styles.typeChipText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{item}</Text>
-              </Pressable>
-            );
-          }}
-        />
-      </View>
+      {/* Type filters — only in the main Search Stays view */}
+      {!scoped ? (
+        <View>
+          <FlatList
+            horizontal
+            data={TYPES}
+            keyExtractor={(t) => t}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.typeRow}
+            renderItem={({ item }) => {
+              const active = type === item;
+              return (
+                <Pressable testID={`wp-type-${item}`} onPress={() => setType(item)} style={[styles.typeChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
+                  <Text style={[styles.typeChipText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{item}</Text>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      ) : <View style={{ height: spacing.md }} />}
 
       {status === "loading" ? <Loading label="Finding places to stay…" /> :
        status === "error" ? <ErrorState onRetry={load} /> :
@@ -182,7 +208,7 @@ export default function WaypointHome() {
                   <View style={{ flex: 1 }}>
                     <Text numberOfLines={1} style={[styles.calloutTitle, { color: colors.onSurface }]}>{sel.title}</Text>
                     <Text numberOfLines={1} style={[styles.calloutMeta, { color: colors.muted }]}>{sel.place_type} · {sel.location}</Text>
-                    <Text style={[styles.calloutPrice, { color: colors.brand }]}>{formatPrice(sel.price_cents)} / night</Text>
+                    <Text style={[styles.calloutPrice, { color: colors.brand }]}>{formatPrice(sel.price_cents)}{forSale ? "" : " / night"}</Text>
                   </View>
                   <MaterialCommunityIcons name="chevron-right" size={22} color={colors.muted} />
                 </Pressable>
@@ -196,8 +222,8 @@ export default function WaypointHome() {
           keyExtractor={(s) => s.id}
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => <StayCard item={item} colors={colors} onPress={() => router.push(`/waypoint/${item.id}`)} />}
-          ListEmptyComponent={<EmptyState icon="home-search-outline" title="No stays found" subtitle="Try a different search or be the first to host here." />}
+          renderItem={({ item }) => <StayCard item={item} colors={colors} forSale={forSale} onSave={() => toggleSave(item.id)} onPress={() => router.push(`/waypoint/${item.id}`)} />}
+          ListEmptyComponent={<EmptyState icon="home-search-outline" title={forSale ? "Nothing for sale here yet" : "No stays found"} subtitle={forSale ? "Check back soon for new property listings." : "Try a different search or be the first to host here."} />}
         />
        )}
 
@@ -224,6 +250,9 @@ const styles = StyleSheet.create({
   typeChipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   card: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   cover: { width: "100%", height: 170 },
+  heart: { position: "absolute", top: 10, right: 10, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 5, elevation: 3 },
+  saleBadge: { position: "absolute", top: 10, left: 10, height: 24, paddingHorizontal: spacing.sm, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  saleBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10.5, letterSpacing: 0.5 },
   cardBody: { padding: spacing.md, gap: 4 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   typePill: { height: 22, paddingHorizontal: spacing.sm, borderRadius: radius.pill, justifyContent: "center" },

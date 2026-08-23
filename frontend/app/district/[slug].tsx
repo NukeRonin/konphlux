@@ -36,6 +36,7 @@ const DISTRICT_HUBS: Record<string, { route: string; label: string }> = {
   "entrepreneur-lobby": { route: "/lobby", label: "Open Workspaces" },
   telegraph: { route: "/telegraph", label: "Enter the Telegraph" },
   waypoint: { route: "/waypoint", label: "Open the Booking Engine" },
+  vault: { route: "/vault", label: "Open the Vault" },
 };
 
 // Author Anvil — every feature opens a real writing/publishing destination.
@@ -227,15 +228,31 @@ const WAYPOINT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Search stays": { route: "/waypoint", icon: "home-search-outline" },
   "Book a stay": { route: "/waypoint", icon: "calendar-check-outline" },
   "Host your place": { route: "/waypoint/host", icon: "home-plus-outline" },
-  "Vacation houses": { route: "/waypoint", icon: "home-city-outline" },
-  "Condos & apartments": { route: "/waypoint", icon: "office-building-outline" },
-  "Cabins & cottages": { route: "/waypoint", icon: "home-outline" },
-  "Places for sale": { route: "/waypoint", icon: "tag-outline" },
-  "Saved stays & wish lists": { route: "/waypoint", icon: "heart-outline" },
+  "Vacation houses": { route: "/waypoint?group=Vacation%20Houses", icon: "home-city-outline" },
+  "Condos & apartments": { route: "/waypoint?group=Condos%20%26%20Apartments", icon: "office-building-outline" },
+  "Cabins & cottages": { route: "/waypoint?group=Cabins%20%26%20Cottages", icon: "home-outline" },
+  "Places for sale": { route: "/waypoint?kind=sale", icon: "tag-outline" },
+  "Saved stays & wish lists": { route: "/waypoint/saved", icon: "heart-outline" },
   "Guest & host reviews": { route: "/waypoint", icon: "star-outline" },
-  "Trip planner": { route: "/waypoint/bookings", icon: "map-clock-outline" },
+  "Trip planner": { route: "/waypoint/trip", icon: "map-clock-outline" },
   "Map search": { route: "/waypoint", icon: "map-outline" },
   "Your bookings": { route: "/waypoint/bookings", icon: "bag-suitcase-outline" },
+};
+
+const VAULT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
+  "Recipes": { route: "/vault", icon: "silverware-fork-knife" },
+  "DIY projects": { route: "/vault", icon: "hammer-screwdriver" },
+  "Magic tricks": { route: "/vault", icon: "auto-fix" },
+  "Life hacks": { route: "/vault", icon: "lightbulb-on-outline" },
+  "Crafts": { route: "/vault", icon: "palette-outline" },
+  "Decor Ideas": { route: "/vault", icon: "sofa-outline" },
+  "Travel Ideas": { route: "/vault", icon: "airplane" },
+  "AI Artwork": { route: "/vault", icon: "image-multiple-outline" },
+  "Fashion": { route: "/vault", icon: "hanger" },
+  "Reading List": { route: "/vault", icon: "book-open-page-variant-outline" },
+  "Quotes": { route: "/vault", icon: "format-quote-close" },
+  "Collections & boards": { route: "/vault", icon: "folder-multiple-image" },
+  "Tutorials": { route: "/vault", icon: "school-outline" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {
@@ -262,6 +279,7 @@ const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: Icon
   "evention-center": EVENTION_ACTIONS,
   telegraph: TELEGRAPH_ACTIONS,
   waypoint: WAYPOINT_ACTIONS,
+  vault: VAULT_ACTIONS,
 };
 
 export default function DistrictDetail() {

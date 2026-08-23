@@ -674,6 +674,38 @@ class WPBookingBody(BaseModel):
     guests: int = Field(default=1, ge=1, le=32)
 
 
+class WPReviewBody(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    text: str = Field(default="", max_length=1500)
+
+
+class WPTripBody(BaseModel):
+    destination: str = Field(min_length=2, max_length=140)
+    start_date: str = Field(min_length=8, max_length=10)  # YYYY-MM-DD
+    nights: int = Field(ge=1, le=90)
+    notes: str = Field(default="", max_length=3000)
+    stay_id: str | None = Field(default=None, max_length=40)
+
+
+# ---- Vault (visual organization hub) ----
+class VaultItemBody(BaseModel):
+    source: str = Field(pattern="^(bazaar|frankenstein|bluepaint|other)$")
+    ref_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=160)
+    image_url: str = Field(default="", max_length=600)
+    subtitle: str = Field(default="", max_length=160)
+    route: str = Field(default="", max_length=200)
+    collection_id: str | None = Field(default=None, max_length=40)
+
+
+class VaultCollectionBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class VaultMoveBody(BaseModel):
+    collection_id: str | None = Field(default=None, max_length=40)
+
+
 # ----------------------------- Seed data -----------------------------
 DISTRICTS = [
     {"slug": "home", "name": "Home", "icon": "home-city",
@@ -1033,6 +1065,41 @@ WP_STAYS = [
      "image_url": f"{_WP_IMG}1543458040-6b8e0e0f0f0f?w=1000&q=80", "rating": 4.8, "reviews": 142,
      "amenities": ["Canal-side deck", "Tiny wood stove", "Rowboat included", "Lantern light"], "lat": 40.7460, "lng": -73.9880,
      "description": "A charming little houseboat rocking gently on the Cogwater Canal. Sip cocoa on the deck and watch the lamplighters make their rounds at dusk."},
+]
+
+# Waypoint — property groups map (rentals grouped for the gallery tabs).
+WP_GROUP_BY_TYPE = {
+    "Manor": "Vacation Houses", "Airship": "Vacation Houses", "Tower": "Vacation Houses",
+    "Loft": "Condos & Apartments", "Studio": "Condos & Apartments",
+    "Cabin": "Cabins & Cottages", "Cottage": "Cabins & Cottages", "Houseboat": "Cabins & Cottages",
+}
+
+
+def _wp_group(place_type: str) -> str:
+    return WP_GROUP_BY_TYPE.get(place_type, "Vacation Houses")
+
+
+# Waypoint — Places for Sale (property purchases, not per-night rentals).
+# price_cents holds the full asking price.
+WP_SALE = [
+    {"id": "wps-1", "host_id": "wp-host-5", "host_name": "Ottoline Marsh", "title": "Highfen Manor House",
+     "place_type": "Manor", "group": "Vacation Houses", "location": "Highfen Estate", "price_cents": 84_500_000,
+     "max_guests": 12, "bedrooms": 6, "image_url": f"{_WP_IMG}1613490493576-7fde63acd811?w=1000&q=80",
+     "rating": 0.0, "reviews": 0, "amenities": ["6 bedrooms", "Walled grounds", "Original brasswork", "Carriage house"],
+     "lat": 40.7648, "lng": -73.9752,
+     "description": "A magnificent fen-side manor for sale — six bedrooms, sweeping grounds and a carriage house begging to be a workshop. A rare chance to own a piece of old Konphlux."},
+    {"id": "wps-2", "host_id": "wp-host-2", "host_name": "Barnaby Sloot", "title": "Steamworks Corner Condo",
+     "place_type": "Loft", "group": "Condos & Apartments", "location": "Steamworks Quarter", "price_cents": 31_900_000,
+     "max_guests": 4, "bedrooms": 2, "image_url": f"{_WP_IMG}1502672260266-1c1ef2d93688?w=1000&q=80",
+     "rating": 0.0, "reviews": 0, "amenities": ["2 bedrooms", "Corner windows", "Concierge", "Roof access"],
+     "lat": 40.7524, "lng": -73.9772,
+     "description": "A bright two-bed corner condo in the heart of the Steamworks Quarter, with wraparound windows and shared roof access. Move-in ready."},
+    {"id": "wps-3", "host_id": "wp-host-1", "host_name": "Cordelia Finch", "title": "Copperline Woodland Cabin",
+     "place_type": "Cabin", "group": "Cabins & Cottages", "location": "Copperline Woods", "price_cents": 18_750_000,
+     "max_guests": 5, "bedrooms": 3, "image_url": f"{_WP_IMG}1449158743715-0a90ebb6d2d8?w=1000&q=80",
+     "rating": 0.0, "reviews": 0, "amenities": ["3 bedrooms", "Half-acre plot", "Wood stove", "Well & spring"],
+     "lat": 40.7585, "lng": -73.9858,
+     "description": "A three-bedroom cabin on a private half-acre at the edge of the Copperline Woods. Off-grid ready with its own well. Your quiet life awaits."},
 ]
 
 
@@ -1752,7 +1819,16 @@ async def seed():
     for s in WP_STAYS:
         await db.wp_stays.update_one(
             {"id": s["id"]},
-            {"$set": {**s, "user_id": s["host_id"], "status": "active", "seeded": True},
+            {"$set": {**s, "user_id": s["host_id"], "status": "active", "seeded": True,
+                      "listing_kind": "rent", "group": _wp_group(s["place_type"])},
+             "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    for s in WP_SALE:
+        await db.wp_stays.update_one(
+            {"id": s["id"]},
+            {"$set": {**s, "user_id": s["host_id"], "status": "active", "seeded": True,
+                      "listing_kind": "sale"},
              "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
@@ -5944,6 +6020,8 @@ def _wp_public(s: dict, *, saved_ids: set | None = None) -> dict:
         "id": s["id"],
         "title": s.get("title", ""),
         "place_type": s.get("place_type", "Cabin"),
+        "group": s.get("group", _wp_group(s.get("place_type", "Cabin"))),
+        "listing_kind": s.get("listing_kind", "rent"),
         "location": s.get("location", ""),
         "price_cents": int(s.get("price_cents", 0)),
         "max_guests": int(s.get("max_guests", 1)),
@@ -5957,15 +6035,23 @@ def _wp_public(s: dict, *, saved_ids: set | None = None) -> dict:
         "lng": s.get("lng"),
         "host_id": s.get("host_id", s.get("user_id", "")),
         "host_name": s.get("host_name", "A host"),
+        "saved": s["id"] in (saved_ids or set()),
         "created_at": s.get("created_at", ""),
     }
 
 
+async def _wp_saved_ids(user_id: str) -> set:
+    rows = await db.wp_saved.find({"user_id": user_id}, {"_id": 0, "stay_id": 1}).to_list(2000)
+    return {r["stay_id"] for r in rows}
+
+
 @api_router.get("/waypoint/stays")
-async def wp_list_stays(q: str = "", type: str = "", user: dict = Depends(require_user)):
-    query: dict = {"status": "active"}
-    if type:
+async def wp_list_stays(q: str = "", type: str = "", group: str = "", kind: str = "rent", user: dict = Depends(require_user)):
+    query: dict = {"status": "active", "listing_kind": "sale" if kind == "sale" else "rent"}
+    if type and type != "All":
         query["place_type"] = type
+    if group:
+        query["group"] = group
     stays = await db.wp_stays.find(query, {"_id": 0}).to_list(2000)
     if q.strip():
         term = q.strip().lower()
@@ -5973,7 +6059,8 @@ async def wp_list_stays(q: str = "", type: str = "", user: dict = Depends(requir
                  or term in s.get("location", "").lower()
                  or term in s.get("place_type", "").lower()]
     stays.sort(key=lambda s: s.get("created_at", ""), reverse=True)
-    return [_wp_public(s) for s in stays]
+    saved = await _wp_saved_ids(user["id"])
+    return [_wp_public(s, saved_ids=saved) for s in stays]
 
 
 @api_router.get("/waypoint/my-stays")
@@ -5983,12 +6070,64 @@ async def wp_my_stays(user: dict = Depends(require_user)):
     return [_wp_public(s) for s in stays]
 
 
+@api_router.get("/waypoint/saved")
+async def wp_saved(user: dict = Depends(require_user)):
+    saved = await _wp_saved_ids(user["id"])
+    if not saved:
+        return []
+    stays = await db.wp_stays.find({"id": {"$in": list(saved)}, "status": "active"}, {"_id": 0}).to_list(500)
+    return [_wp_public(s, saved_ids=saved) for s in stays]
+
+
+@api_router.post("/waypoint/stays/{stay_id}/save")
+async def wp_toggle_save(stay_id: str, user: dict = Depends(require_user)):
+    if not await db.wp_stays.find_one({"id": stay_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="Stay not found")
+    existing = await db.wp_saved.find_one({"user_id": user["id"], "stay_id": stay_id})
+    if existing:
+        await db.wp_saved.delete_one({"user_id": user["id"], "stay_id": stay_id})
+        return {"saved": False}
+    await db.wp_saved.insert_one({"user_id": user["id"], "stay_id": stay_id,
+                                  "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"saved": True}
+
+
+def _wp_retro_business_id(stay_id: str) -> str:
+    return f"wpstay-{stay_id}"
+
+
+async def _wp_rating(stay: dict) -> tuple[float, int]:
+    """Live rating for a stay = seeded base + guest reviews (stored in Retrospections)."""
+    bid = _wp_retro_business_id(stay["id"])
+    base_rating = float(stay.get("rating", 0) or 0)
+    base_reviews = int(stay.get("reviews", 0) or 0)
+    agg = await db.retro_reviews.aggregate([
+        {"$match": {"business_id": bid}},
+        {"$group": {"_id": None, "sum": {"$sum": "$rating"}, "n": {"$sum": 1}}},
+    ]).to_list(1)
+    usum = agg[0]["sum"] if agg else 0
+    un = agg[0]["n"] if agg else 0
+    total = base_reviews + un
+    avg = ((base_rating * base_reviews) + usum) / total if total else 0.0
+    return round(avg, 1), total
+
+
 @api_router.get("/waypoint/stays/{stay_id}")
 async def wp_get_stay(stay_id: str, user: dict = Depends(require_user)):
     s = await db.wp_stays.find_one({"id": stay_id, "status": "active"}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Stay not found")
-    return {**_wp_public(s), "is_host": s.get("host_id", s.get("user_id")) == user["id"]}
+    saved = await _wp_saved_ids(user["id"])
+    pub = _wp_public(s, saved_ids=saved)
+    avg, n = await _wp_rating(s)
+    pub["rating"], pub["reviews"] = avg, n
+    booked = await db.wp_bookings.find_one({"user_id": user["id"], "stay_id": stay_id})
+    reviewed = await db.retro_reviews.find_one({"business_id": _wp_retro_business_id(stay_id), "user_id": user["id"]})
+    is_host = s.get("host_id", s.get("user_id")) == user["id"]
+    pub["is_host"] = is_host
+    pub["can_review"] = bool(booked) and not reviewed and not is_host
+    pub["has_booked"] = bool(booked)
+    return pub
 
 
 @api_router.post("/waypoint/stays", status_code=201)
@@ -6013,6 +6152,8 @@ async def wp_create_stay(body: WPStayBody, user: dict = Depends(require_user)):
         "user_id": user["id"],
         "host_name": user["display_name"],
         "status": "active",
+        "listing_kind": "rent",
+        "group": _wp_group(body.place_type.strip() or "Cabin"),
         "seeded": False,
         "created_at": now,
     }
@@ -6076,6 +6217,207 @@ async def wp_my_bookings(user: dict = Depends(require_user)):
     rows = await db.wp_bookings.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
     rows.sort(key=lambda b: b.get("created_at", ""), reverse=True)
     return rows
+
+
+# ----- Waypoint: Guest & Host Reviews (auto-published to Retrospections) -----
+@api_router.get("/waypoint/stays/{stay_id}/reviews")
+async def wp_stay_reviews(stay_id: str, user: dict = Depends(require_user)):
+    bid = _wp_retro_business_id(stay_id)
+    rows = await db.retro_reviews.find({"business_id": bid}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return rows
+
+
+@api_router.post("/waypoint/stays/{stay_id}/review", status_code=201)
+async def wp_add_review(stay_id: str, body: WPReviewBody, user: dict = Depends(require_user)):
+    s = await db.wp_stays.find_one({"id": stay_id, "status": "active"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    if s.get("host_id", s.get("user_id")) == user["id"]:
+        raise HTTPException(status_code=400, detail="You can't review your own listing")
+    if not await db.wp_bookings.find_one({"user_id": user["id"], "stay_id": stay_id}):
+        raise HTTPException(status_code=403, detail="Only guests who've booked can review a stay")
+    bid = _wp_retro_business_id(stay_id)
+    if await db.retro_reviews.find_one({"business_id": bid, "user_id": user["id"]}):
+        raise HTTPException(status_code=409, detail="You've already reviewed this stay")
+    # Ensure a Retrospections business mirror exists for this stay so the review
+    # is browsable in the Retrospections district too.
+    await db.retro_businesses.update_one(
+        {"id": bid},
+        {"$setOnInsert": {
+            "id": bid, "name": s.get("title", ""), "category": "Services",
+            "address": s.get("location", ""),
+            "description": s.get("description", "")[:600] or f"A Waypoint stay hosted by {s.get('host_name', '')}.",
+            "image": s.get("image_url", ""), "lat": s.get("lat"), "lng": s.get("lng"),
+            "base_rating": 0.0, "base_reviews": 0, "owner_id": s.get("host_id", ""),
+            "source": "waypoint", "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    review = {
+        "id": uuid.uuid4().hex[:12], "business_id": bid, "user_id": user["id"],
+        "author_name": user.get("display_name", "A guest"), "rating": body.rating,
+        "text": body.text.strip(), "source": "waypoint",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.retro_reviews.insert_one(dict(review))
+    return {k: v for k, v in review.items() if k != "_id"}
+
+
+# ----- Waypoint: Trip Planner (final plans land in the Evention calendar) -----
+@api_router.post("/waypoint/trips", status_code=201)
+async def wp_create_trip(body: WPTripBody, user: dict = Depends(require_user)):
+    try:
+        start = datetime.fromisoformat(body.start_date).date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid start date")
+    end = start + timedelta(days=body.nights)
+    when_iso = datetime(start.year, start.month, start.day, 9, 0, tzinfo=timezone.utc).isoformat()
+    note = body.notes.strip()
+    summary = f"{body.nights} night{'s' if body.nights != 1 else ''} · {start.isoformat()} → {end.isoformat()}"
+    full_note = f"{summary}\n\n{note}".strip()
+    # Persist the plan and mirror it into the Evention calendar as a trip ("flight" type).
+    event = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "type": "flight",
+        "title": f"Trip to {body.destination.strip()}", "when": when_iso,
+        "location": body.destination.strip(), "note": full_note,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.calendar_events.insert_one(dict(event))
+    trip = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "destination": body.destination.strip(),
+        "start_date": start.isoformat(), "end_date": end.isoformat(), "nights": body.nights,
+        "notes": note, "stay_id": body.stay_id, "event_id": event["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.wp_trips.insert_one(dict(trip))
+    trip.pop("_id", None)
+    return {"trip": trip, "event_id": event["id"]}
+
+
+# ----------------------------- Vault (visual organization hub) -----------------------------
+_VAULT_IMG = "https://images.unsplash.com/photo-"
+VAULT_SEED = [
+    ("bazaar", "b1", "Brass Marine Chronometer", "Bazaar find", IMG_WATCH, "/bazaar/booth/b1"),
+    ("bazaar", "b5", "Hand-Bound Parchment Journal", "Bazaar find", IMG_PARCH, "/bazaar/booth/b5"),
+    ("frankenstein", "seed-fr-1", "Aether City Skyline", "Frankenstein Lab · GenoPic", f"{_VAULT_IMG}1451187580459-43490279c0fa?w=800&q=80", "/frankenstein-lab/visual"),
+    ("frankenstein", "seed-fr-2", "Clockwork Owl Emblem", "Frankenstein Lab · GenoLogo", f"{_VAULT_IMG}1518709268805-4e9042af9f23?w=800&q=80", "/frankenstein-lab/visual"),
+    ("bluepaint", "seed-bp-1", "Loft Studio Layout", "Bluepaint design", f"{_VAULT_IMG}1618221195710-dd6b41faaea6?w=800&q=80", "/bluepaint"),
+    ("other", "seed-dec-1", "Brass-Forward Reading Nook", "Decor inspiration", f"{_VAULT_IMG}1493809842364-78817add7ffb?w=800&q=80", ""),
+]
+
+
+async def _vault_seed_if_empty(user_id: str) -> None:
+    if await db.vault_items.count_documents({"user_id": user_id}) > 0:
+        return
+    if await db.vault_collections.count_documents({"user_id": user_id}) > 0:
+        return
+    now = datetime.now(timezone.utc)
+    coll_id = uuid.uuid4().hex[:12]
+    await db.vault_collections.insert_one({
+        "id": coll_id, "user_id": user_id, "name": "Inspiration",
+        "created_at": now.isoformat(),
+    })
+    for i, (source, ref_id, title, subtitle, image_url, route) in enumerate(VAULT_SEED):
+        await db.vault_items.insert_one({
+            "id": uuid.uuid4().hex[:12], "user_id": user_id, "source": source, "ref_id": ref_id,
+            "title": title, "subtitle": subtitle, "image_url": image_url, "route": route,
+            "collection_id": coll_id if i < 3 else None, "seeded": True,
+            "created_at": (now - timedelta(minutes=i)).isoformat(),
+        })
+
+
+def _vault_public(v: dict) -> dict:
+    return {
+        "id": v["id"], "source": v.get("source", "other"), "ref_id": v.get("ref_id", ""),
+        "title": v.get("title", ""), "subtitle": v.get("subtitle", ""),
+        "image_url": v.get("image_url", ""), "route": v.get("route", ""),
+        "collection_id": v.get("collection_id"), "created_at": v.get("created_at", ""),
+    }
+
+
+@api_router.get("/vault/items")
+async def vault_list_items(q: str = "", collection: str = "", user: dict = Depends(require_user)):
+    await _vault_seed_if_empty(user["id"])
+    query: dict = {"user_id": user["id"]}
+    if collection:
+        query["collection_id"] = collection
+    rows = await db.vault_items.find(query, {"_id": 0}).to_list(2000)
+    if q.strip():
+        term = q.strip().lower()
+        rows = [r for r in rows if term in r.get("title", "").lower() or term in r.get("subtitle", "").lower()]
+    rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return [_vault_public(r) for r in rows]
+
+
+@api_router.get("/vault/saved-check")
+async def vault_saved_check(source: str, ref_id: str, user: dict = Depends(require_user)):
+    row = await db.vault_items.find_one({"user_id": user["id"], "source": source, "ref_id": ref_id}, {"_id": 0, "id": 1})
+    return {"saved": bool(row), "id": row["id"] if row else None}
+
+
+@api_router.post("/vault/items", status_code=201)
+async def vault_save_item(body: VaultItemBody, user: dict = Depends(require_user)):
+    existing = await db.vault_items.find_one({"user_id": user["id"], "source": body.source, "ref_id": body.ref_id}, {"_id": 0})
+    if existing:
+        return {"saved": True, "item": _vault_public(existing)}
+    item = {
+        "id": uuid.uuid4().hex[:12], "user_id": user["id"], "source": body.source, "ref_id": body.ref_id,
+        "title": body.title.strip(), "subtitle": body.subtitle.strip(), "image_url": body.image_url.strip(),
+        "route": body.route.strip(), "collection_id": body.collection_id, "seeded": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.vault_items.insert_one(dict(item))
+    return {"saved": True, "item": _vault_public(item)}
+
+
+@api_router.delete("/vault/items/{item_id}")
+async def vault_delete_item(item_id: str, user: dict = Depends(require_user)):
+    res = await db.vault_items.delete_one({"id": item_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"deleted": True}
+
+
+@api_router.post("/vault/items/{item_id}/move")
+async def vault_move_item(item_id: str, body: VaultMoveBody, user: dict = Depends(require_user)):
+    if body.collection_id:
+        if not await db.vault_collections.find_one({"id": body.collection_id, "user_id": user["id"]}, {"_id": 0, "id": 1}):
+            raise HTTPException(status_code=404, detail="Collection not found")
+    res = await db.vault_items.update_one({"id": item_id, "user_id": user["id"]}, {"$set": {"collection_id": body.collection_id}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"moved": True, "collection_id": body.collection_id}
+
+
+@api_router.get("/vault/collections")
+async def vault_list_collections(user: dict = Depends(require_user)):
+    await _vault_seed_if_empty(user["id"])
+    colls = await db.vault_collections.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    out = []
+    for c in colls:
+        items = await db.vault_items.find({"user_id": user["id"], "collection_id": c["id"]}, {"_id": 0}).to_list(500)
+        cover = next((i["image_url"] for i in items if i.get("image_url")), "")
+        out.append({"id": c["id"], "name": c["name"], "count": len(items), "cover_url": cover, "created_at": c.get("created_at", "")})
+    out.sort(key=lambda c: c.get("created_at", ""))
+    return out
+
+
+@api_router.post("/vault/collections", status_code=201)
+async def vault_create_collection(body: VaultCollectionBody, user: dict = Depends(require_user)):
+    coll = {"id": uuid.uuid4().hex[:12], "user_id": user["id"], "name": body.name.strip(),
+            "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.vault_collections.insert_one(dict(coll))
+    return {"id": coll["id"], "name": coll["name"], "count": 0, "cover_url": "", "created_at": coll["created_at"]}
+
+
+@api_router.delete("/vault/collections/{coll_id}")
+async def vault_delete_collection(coll_id: str, user: dict = Depends(require_user)):
+    res = await db.vault_collections.delete_one({"id": coll_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    # Items stay in the Vault, just uncollected.
+    await db.vault_items.update_many({"user_id": user["id"], "collection_id": coll_id}, {"$set": {"collection_id": None}})
+    return {"deleted": True}
 
 
 

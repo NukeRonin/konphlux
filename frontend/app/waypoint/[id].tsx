@@ -6,9 +6,10 @@ import React, { useCallback, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, WPStay } from "@/src/api/client";
+import { api, WPStayDetail } from "@/src/api/client";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { ErrorState, Loading } from "@/src/components/States";
+import { WPReviews } from "@/src/components/WPReviews";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
@@ -34,7 +35,7 @@ export default function StayDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [stay, setStay] = useState<(WPStay & { is_host: boolean }) | null>(null);
+  const [stay, setStay] = useState<WPStayDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [checkIn, setCheckIn] = useState(dayjs().add(2, "day").startOf("day"));
   const [nights, setNights] = useState(2);
@@ -53,6 +54,17 @@ export default function StayDetail() {
   }, [id]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const toggleSave = async () => {
+    if (!stay) return;
+    setStay({ ...stay, saved: !stay.saved });
+    try { await api.wpSaveStay(stay.id); } catch { load(); }
+  };
+
+  const enquire = () => {
+    if (!stay) return;
+    Alert.alert("Enquire to buy", `Contact ${stay.host_name} about "${stay.title}". They'll be in touch to arrange a viewing.`, [{ text: "OK" }]);
+  };
 
   const book = async () => {
     if (!stay || booking) return;
@@ -77,6 +89,7 @@ export default function StayDetail() {
   if (status === "error" || !stay) return <View style={[styles.screen, { backgroundColor: colors.surface, paddingTop: insets.top }]}><ErrorState onRetry={load} /></View>;
 
   const total = stay.price_cents * nights;
+  const forSale = stay.listing_kind === "sale";
 
   if (done) {
     return (
@@ -109,6 +122,9 @@ export default function StayDetail() {
           )}
           <Pressable onPress={() => router.back()} style={[styles.backFab, { top: insets.top + spacing.sm, backgroundColor: colors.surface }]} hitSlop={10} testID="wp-detail-back">
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
+          </Pressable>
+          <Pressable onPress={toggleSave} style={[styles.saveFab, { top: insets.top + spacing.sm, backgroundColor: colors.surface }]} hitSlop={10} testID="wp-detail-save">
+            <MaterialCommunityIcons name={stay.saved ? "heart" : "heart-outline"} size={22} color={stay.saved ? colors.brand : colors.onSurface} />
           </Pressable>
         </View>
 
@@ -153,7 +169,15 @@ export default function StayDetail() {
             </>
           ) : null}
 
-          {!stay.is_host ? (
+          {forSale ? (
+            <View style={[styles.saleBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.brand }]}>
+              <View>
+                <Text style={[styles.saleLabel, { color: colors.muted }]}>Asking price</Text>
+                <Text style={[styles.salePrice, { color: colors.brand }]}>{formatPrice(stay.price_cents)}</Text>
+              </View>
+              <MaterialCommunityIcons name="home-city" size={30} color={colors.brand} />
+            </View>
+          ) : !stay.is_host ? (
             <>
               <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Your trip</Text>
               <View style={[styles.bookingBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -180,11 +204,17 @@ export default function StayDetail() {
               <Text style={[styles.hostNoteText, { color: colors.onSurface }]}>This is your listing.</Text>
             </View>
           )}
+
+          {!forSale ? <WPReviews stayId={stay.id} canReview={stay.can_review} onPosted={load} /> : null}
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        {!stay.is_host ? (
+        {forSale ? (
+          <View style={{ flex: 1 }}>
+            <ForgeButton label="Enquire to buy" fullWidth size="lg" testID="wp-enquire" onPress={enquire} icon={<MaterialCommunityIcons name="email-outline" size={18} color={colors.onBrandPrimary} />} />
+          </View>
+        ) : !stay.is_host ? (
           <>
             <View>
               <Text style={[styles.footerPrice, { color: colors.onSurface }]}>{formatPrice(total)}</Text>
@@ -208,6 +238,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   hero: { width: "100%", height: 260 },
   backFab: { position: "absolute", left: spacing.lg, width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 6, elevation: 3 },
+  saveFab: { position: "absolute", right: spacing.lg, width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 6, elevation: 3 },
+  saleBox: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: radius.md, borderWidth: 1.5, padding: spacing.lg, marginTop: spacing.lg },
+  saleLabel: { fontFamily: fonts.body, fontSize: 13 },
+  salePrice: { fontFamily: fonts.display, fontSize: 26, marginTop: 2 },
   content: { padding: spacing.lg },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   typePill: { height: 24, paddingHorizontal: spacing.md, borderRadius: radius.pill, justifyContent: "center" },

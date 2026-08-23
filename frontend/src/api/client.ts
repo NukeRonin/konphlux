@@ -664,6 +664,8 @@ export type WPStay = {
   id: string;
   title: string;
   place_type: string;
+  group: string;
+  listing_kind: string;
   location: string;
   price_cents: number;
   max_guests: number;
@@ -677,8 +679,27 @@ export type WPStay = {
   lng: number | null;
   host_id: string;
   host_name: string;
+  saved: boolean;
   created_at: string;
 };
+
+export type WPStayDetail = WPStay & { is_host: boolean; can_review: boolean; has_booked: boolean };
+
+export type WPReview = { id: string; business_id: string; user_id: string; author_name: string; rating: number; text: string; created_at: string };
+
+export type VaultItem = {
+  id: string;
+  source: string;
+  ref_id: string;
+  title: string;
+  subtitle: string;
+  image_url: string;
+  route: string;
+  collection_id: string | null;
+  created_at: string;
+};
+
+export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
 
 export type WPBooking = {
   id: string;
@@ -1139,13 +1160,32 @@ export const api = {
   tgFollowingSeen: () => request<{ count: number }>("/telegraph/following/seen", { method: "POST" }),
 
   // ---- Waypoint (stays & bookings) ----
-  wpStays: (q: string, type: string) => request<WPStay[]>(`/waypoint/stays?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
+  wpStays: (q: string, type: string, group = "", kind = "rent") =>
+    request<WPStay[]>(`/waypoint/stays?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&group=${encodeURIComponent(group)}&kind=${encodeURIComponent(kind)}`),
   wpMyStays: () => request<WPStay[]>("/waypoint/my-stays"),
-  wpStay: (id: string) => request<WPStay & { is_host: boolean }>(`/waypoint/stays/${id}`),
+  wpSaved: () => request<WPStay[]>("/waypoint/saved"),
+  wpStay: (id: string) => request<WPStayDetail>(`/waypoint/stays/${id}`),
   wpCreateStay: (body: { title: string; place_type: string; location: string; price_cents: number; max_guests: number; bedrooms: number; description?: string; image_url?: string; amenities?: string[]; lat?: number | null; lng?: number | null }) =>
     request<WPStay>("/waypoint/stays", { method: "POST", body: JSON.stringify(body) }),
   wpDeleteStay: (id: string) => request<{ deleted: boolean }>(`/waypoint/stays/${id}`, { method: "DELETE" }),
+  wpSaveStay: (id: string) => request<{ saved: boolean }>(`/waypoint/stays/${id}/save`, { method: "POST" }),
   wpBookStay: (id: string, body: { check_in: string; nights: number; guests: number }) =>
     request<{ booking: WPBooking }>(`/waypoint/stays/${id}/book`, { method: "POST", body: JSON.stringify(body) }),
   wpBookings: () => request<WPBooking[]>("/waypoint/bookings"),
+  wpStayReviews: (id: string) => request<WPReview[]>(`/waypoint/stays/${id}/reviews`),
+  wpAddReview: (id: string, body: { rating: number; text: string }) =>
+    request<WPReview>(`/waypoint/stays/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
+  wpCreateTrip: (body: { destination: string; start_date: string; nights: number; notes?: string; stay_id?: string | null }) =>
+    request<{ trip: any; event_id: string }>("/waypoint/trips", { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- Vault (visual organization hub) ----
+  vaultItems: (q = "", collection = "") => request<VaultItem[]>(`/vault/items?q=${encodeURIComponent(q)}&collection=${encodeURIComponent(collection)}`),
+  vaultSavedCheck: (source: string, refId: string) => request<{ saved: boolean; id: string | null }>(`/vault/saved-check?source=${encodeURIComponent(source)}&ref_id=${encodeURIComponent(refId)}`),
+  vaultSave: (body: { source: string; ref_id: string; title: string; image_url?: string; subtitle?: string; route?: string; collection_id?: string | null }) =>
+    request<{ saved: boolean; item: VaultItem }>("/vault/items", { method: "POST", body: JSON.stringify(body) }),
+  vaultDeleteItem: (id: string) => request<{ deleted: boolean }>(`/vault/items/${id}`, { method: "DELETE" }),
+  vaultMoveItem: (id: string, collectionId: string | null) => request<{ moved: boolean }>(`/vault/items/${id}/move`, { method: "POST", body: JSON.stringify({ collection_id: collectionId }) }),
+  vaultCollections: () => request<VaultCollection[]>("/vault/collections"),
+  vaultCreateCollection: (name: string) => request<VaultCollection>("/vault/collections", { method: "POST", body: JSON.stringify({ name }) }),
+  vaultDeleteCollection: (id: string) => request<{ deleted: boolean }>(`/vault/collections/${id}`, { method: "DELETE" }),
 };
