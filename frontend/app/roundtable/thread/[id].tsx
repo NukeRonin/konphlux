@@ -1,17 +1,38 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, Reply, Thread } from "@/src/api/client";
+import { useAuth } from "@/src/auth/AuthContext";
 import { AvatarInitials } from "@/src/components/AvatarInitials";
 import { Eyebrow, Hairline } from "@/src/components/BrassText";
 import { Panel } from "@/src/components/Panel";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { compactNumber, fonts, radius, spacing, timeAgo } from "@/src/theme/tokens";
+
+function MentionText({ body, names, colors }: { body: string; names?: string[]; colors: any }) {
+  const list = (names ?? []).filter(Boolean);
+  if (list.length === 0) return <Text style={[styles.replyBody, { color: colors.onSurface }]}>{body}</Text>;
+  // Split on "@Name" tokens for the known participant names and highlight them.
+  const escaped = list.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(@(?:${escaped.join("|")}))`, "g");
+  const parts = body.split(re);
+  return (
+    <Text style={[styles.replyBody, { color: colors.onSurface }]}>
+      {parts.map((p, i) =>
+        p.startsWith("@") && list.includes(p.slice(1)) ? (
+          <Text key={i} style={{ color: colors.brand, fontFamily: fonts.bodyBold }}>{p}</Text>
+        ) : (
+          <Text key={i}>{p}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
 
 function ReplyItem({ reply }: { reply: Reply }) {
   const { colors } = useTheme();
@@ -23,7 +44,7 @@ function ReplyItem({ reply }: { reply: Reply }) {
           <Text style={[styles.replyAuthor, { color: colors.onSurface }]}>{reply.author}</Text>
           <Text style={[styles.replyTime, { color: colors.muted }]}>{timeAgo(reply.created_at)}</Text>
         </View>
-        <Text style={[styles.replyBody, { color: colors.onSurface }]}>{reply.body}</Text>
+        <MentionText body={reply.body} names={reply.mention_names} colors={colors} />
       </View>
     </View>
   );
@@ -32,6 +53,7 @@ function ReplyItem({ reply }: { reply: Reply }) {
 export default function ThreadDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [thread, setThread] = useState<Thread | null>(null);
@@ -54,6 +76,22 @@ export default function ThreadDetail() {
     load();
   }, [load]);
 
+  // Unique people in this thread (author + repliers) who are real users, minus yourself.
+  const participants = React.useMemo(() => {
+    if (!thread) return [] as { id: string; name: string }[];
+    const map = new Map<string, string>();
+    const add = (uid?: string, name?: string) => {
+      if (uid && name && uid !== "seed" && uid !== user?.id) map.set(uid, name);
+    };
+    add(thread.user_id, thread.author);
+    (thread.replies ?? []).forEach((r) => add(r.user_id, r.author));
+    return Array.from(map, ([uid, name]) => ({ id: uid, name }));
+  }, [thread, user?.id]);
+
+  const mention = (name: string) => {
+    setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${name} `);
+  };
+
   const vote = async () => {
     if (!thread) return;
     setThread({ ...thread, voted: !thread.voted, upvotes: thread.upvotes + (thread.voted ? -1 : 1) });
@@ -67,10 +105,12 @@ export default function ThreadDetail() {
   const submitReply = async () => {
     const body = text.trim();
     if (!body || sending || !thread) return;
+    // Figure out which participants were actually @mentioned in the text.
+    const mentionIds = participants.filter((p) => body.includes(`@${p.name}`)).map((p) => p.id);
     setText("");
     setSending(true);
     try {
-      const reply = await api.rtReply(thread.id, body);
+      const reply = await api.rtReply(thread.id, body, mentionIds);
       setThread((prev) =>
         prev ? { ...prev, replies: [...(prev.replies ?? []), reply], reply_count: prev.reply_count + 1 } : prev,
       );
@@ -144,6 +184,18 @@ export default function ThreadDetail() {
           />
 
           <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+            {participants.length > 0 ? (
+              <View style={[styles.mentionBar, { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border }]}>
+                <MaterialCommunityIcons name="at" size={16} color={colors.muted} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mentionRow}>
+                  {participants.map((p) => (
+                    <Pressable key={p.id} testID={`mention-${p.id}`} onPress={() => mention(p.name)} style={[styles.mentionChip, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
+                      <Text style={[styles.mentionText, { color: colors.brand }]}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
             <View style={[styles.composer, { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.sm }]}>
               <TextInput
                 testID="reply-input"
@@ -219,4 +271,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  mentionBar: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: spacing.lg, paddingVertical: spacing.sm, borderTopWidth: 1 },
+  mentionRow: { gap: spacing.sm, paddingRight: spacing.lg },
+  mentionChip: { height: 30, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  mentionText: { fontFamily: fonts.bodyBold, fontSize: 12.5 },
 });

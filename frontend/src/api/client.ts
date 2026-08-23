@@ -267,6 +267,7 @@ export type Thread = {
   community_id: string;
   community_name: string;
   category?: string | null;
+  user_id?: string;
   title: string;
   body: string;
   author: string;
@@ -282,6 +283,9 @@ export type Reply = {
   thread_id: string;
   body: string;
   author: string;
+  user_id?: string;
+  mentions?: string[];
+  mention_names?: string[];
   created_at: string;
 };
 
@@ -848,11 +852,12 @@ export const api = {
     request<{ id: string; voted: boolean; upvotes: number }>(`/roundtable/threads/${id}/vote`, {
       method: "POST",
     }),
-  rtReply: (id: string, body: string) =>
+  rtReply: (id: string, body: string, mentions: string[] = []) =>
     request<Reply>(`/roundtable/threads/${id}/replies`, {
       method: "POST",
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, mentions }),
     }),
+  rtTrending: () => request<Thread[]>("/roundtable/trending"),
   rtCategory: (category: string) =>
     request<Community>(`/roundtable/category/${encodeURIComponent(category)}`),
   rtDiscuss: (category: string, title?: string, body?: string) =>

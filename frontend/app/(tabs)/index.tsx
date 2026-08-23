@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 
-import { api, DBProject, District, FeedResponse, Post } from "@/src/api/client";
+import { api, DBProject, District, FeedResponse, Post, Thread } from "@/src/api/client";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AvatarInitials, RingAvatar } from "@/src/components/AvatarInitials";
 import { Eyebrow, Hairline } from "@/src/components/BrassText";
@@ -263,6 +263,63 @@ const dbrStyles = StyleSheet.create({
   meta: { fontFamily: fonts.body, fontSize: 11.5 },
 });
 
+function RoundtableTrending() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const [items, setItems] = useState<Thread[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      api.rtTrending().then((list) => { if (alive) setItems(list.slice(0, 8)); }).catch(() => {});
+      return () => { alive = false; };
+    }, []),
+  );
+
+  if (items.length === 0) return null;
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <View style={dbrStyles.rowHead}>
+        <Eyebrow>🔥 Hot discussions this week</Eyebrow>
+        <Pressable testID="home-rt-all" onPress={() => router.push("/roundtable")} hitSlop={8}>
+          <Text style={[dbrStyles.seeAll, { color: colors.brand }]}>See all</Text>
+        </Pressable>
+      </View>
+      <FlatList
+        horizontal
+        data={items}
+        keyExtractor={(t) => t.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.xs }}
+        renderItem={({ item }) => (
+          <Pressable testID={`home-rt-${item.id}`} onPress={() => router.push(`/roundtable/thread/${item.id}`)} style={[rtStyles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={rtStyles.cardHead}>
+              <MaterialCommunityIcons name="forum" size={14} color={colors.brand} />
+              <Text numberOfLines={1} style={[rtStyles.comm, { color: colors.brand }]}>{item.category || item.community_name}</Text>
+            </View>
+            <Text numberOfLines={3} style={[rtStyles.title, { color: colors.onSurface }]}>{item.title}</Text>
+            <View style={rtStyles.metaRow}>
+              <MaterialCommunityIcons name="arrow-up-bold" size={13} color={colors.muted} />
+              <Text style={[rtStyles.meta, { color: colors.muted }]}>{compactNumber(item.upvotes)}</Text>
+              <MaterialCommunityIcons name="comment-outline" size={13} color={colors.muted} style={{ marginLeft: 8 }} />
+              <Text style={[rtStyles.meta, { color: colors.muted }]}>{item.reply_count}</Text>
+            </View>
+          </Pressable>
+        )}
+      />
+    </View>
+  );
+}
+
+const rtStyles = StyleSheet.create({
+  card: { width: 210, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: 6, justifyContent: "space-between" },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 5 },
+  comm: { fontFamily: fonts.bodyBold, fontSize: 10.5, letterSpacing: 0.3, flex: 1 },
+  title: { fontFamily: fonts.displaySemi, fontSize: 14.5, lineHeight: 19 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
+  meta: { fontFamily: fonts.bodyMedium, fontSize: 12 },
+});
+
 export default function FeedScreen() {
   const { colors } = useTheme();
   const [data, setData] = useState<FeedResponse | null>(null);
@@ -361,6 +418,7 @@ export default function FeedScreen() {
               <Eyebrow>Explore districts</Eyebrow>
               <DistrictStrip districts={districts} />
               <DreambackerRow />
+              <RoundtableTrending />
               <Trending items={data?.trending ?? []} />
               <Eyebrow>Latest dispatches</Eyebrow>
             </View>

@@ -14,7 +14,7 @@ import { Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
-const CATS = ["Recipes", "DIY Projects", "Magic Tricks", "Life Hacks", "Crafts", "Decor Ideas", "Fashion", "Artwork", "Logos", "Memes", "GIFs", "Jokes", "Quotes"];
+const CATS = ["Recipes", "DIY Projects", "Magic Tricks", "Life Hacks", "Crafts", "Decor Ideas", "Fashion", "Travel Ideas", "Reading List", "Tutorials", "Artwork", "Logos", "Memes", "GIFs", "Jokes", "Quotes"];
 const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 export default function VaultAdd() {

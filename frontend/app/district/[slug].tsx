@@ -246,13 +246,13 @@ const VAULT_ACTIONS: Record<string, { route: string; icon: IconName }> = {
   "Life hacks": { route: "/vault?category=Life%20Hacks", icon: "lightbulb-on-outline" },
   "Crafts": { route: "/vault?category=Crafts", icon: "scissors-cutting" },
   "Decor Ideas": { route: "/vault?category=Decor%20Ideas", icon: "sofa-outline" },
-  "Travel Ideas": { route: "/vault", icon: "airplane" },
+  "Travel Ideas": { route: "/vault?category=Travel%20Ideas", icon: "airplane" },
   "AI Artwork": { route: "/vault?category=Artwork", icon: "image-multiple-outline" },
   "Fashion": { route: "/vault?category=Fashion", icon: "hanger" },
-  "Reading List": { route: "/vault", icon: "book-open-page-variant-outline" },
+  "Reading List": { route: "/vault?category=Reading%20List", icon: "book-open-page-variant-outline" },
   "Quotes": { route: "/vault?category=Quotes", icon: "format-quote-close" },
   "Collections & boards": { route: "/vault", icon: "folder-multiple-image" },
-  "Tutorials": { route: "/vault", icon: "school-outline" },
+  "Tutorials": { route: "/vault?category=Tutorials", icon: "school-outline" },
 };
 
 const ACTIONS_BY_SLUG: Record<string, Record<string, { route: string; icon: IconName }>> = {

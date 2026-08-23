@@ -12,6 +12,7 @@ import { AvatarInitials } from "@/src/components/AvatarInitials";
 import { Eyebrow, Hairline } from "@/src/components/BrassText";
 import { ForgeButton } from "@/src/components/ForgeButton";
 import { SaveToVaultButton } from "@/src/components/SaveToVaultButton";
+import { DiscussItemButton } from "@/src/components/DiscussItemButton";
 import { Panel } from "@/src/components/Panel";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -207,8 +208,9 @@ function ProductBody({ item, isAuction, secondsLeft, colors }: any) {
     <View style={styles.body}>
         <Eyebrow>{item.category}</Eyebrow>
         <Text style={[styles.title, { color: colors.onSurface }]}>{item.title}</Text>
-        <View style={{ marginTop: spacing.md, alignSelf: "flex-start" }}>
+        <View style={{ marginTop: spacing.md, flexDirection: "row", gap: spacing.sm, alignSelf: "flex-start" }}>
           <SaveToVaultButton source="bazaar" refId={item.id} title={item.title} imageUrl={item.image} subtitle="Bazaar find" route={`/product/${item.id}`} />
+          <DiscussItemButton category="Bazaar" title={item.title} context={`Let's talk about "${item.title}" from the Bazaar.`} />
         </View>
         {item.listing_type === "booth" && item.booth_name ? (
           <Pressable

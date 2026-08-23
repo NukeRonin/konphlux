@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, WPStayDetail } from "@/src/api/client";
 import { ForgeButton } from "@/src/components/ForgeButton";
+import { DiscussItemButton } from "@/src/components/DiscussItemButton";
 import { ErrorState, Loading } from "@/src/components/States";
 import { WPReviews } from "@/src/components/WPReviews";
 import { useTheme } from "@/src/theme/ThemeContext";
@@ -146,6 +147,9 @@ export default function StayDetail() {
           <Text style={[styles.loc, { color: colors.muted }]}>
             <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.muted} /> {stay.location}
           </Text>
+          <View style={{ marginTop: spacing.md, alignSelf: "flex-start" }}>
+            <DiscussItemButton category="Waypoint" title={stay.title} context={`Anyone stayed at "${stay.title}" in ${stay.location}? Share your thoughts.`} />
+          </View>
 
           <View style={styles.factsRow}>
             <View style={styles.fact}><MaterialCommunityIcons name="account-group-outline" size={18} color={colors.brand} /><Text style={[styles.factText, { color: colors.onSurface }]}>Sleeps {stay.max_guests}</Text></View>

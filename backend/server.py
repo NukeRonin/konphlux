@@ -143,6 +143,7 @@ class ThreadCreate(BaseModel):
 
 class ReplyCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    mentions: list[str] = Field(default_factory=list, max_length=20)
 
 
 class DiscussBody(BaseModel):
@@ -702,7 +703,7 @@ class VaultItemBody(BaseModel):
     image_url: str = Field(default="", max_length=600)
     subtitle: str = Field(default="", max_length=160)
     route: str = Field(default="", max_length=200)
-    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|)$")
+    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
     collection_id: str | None = Field(default=None, max_length=40)
@@ -711,7 +712,7 @@ class VaultItemBody(BaseModel):
 class VaultUpdateBody(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     image_url: str = Field(default="", max_length=600)
-    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|)$")
+    category: str = Field(default="", pattern="^(Jokes|GIFs|Logos|Memes|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
 
@@ -2950,9 +2951,49 @@ async def rt_add_reply(thread_id: str, body: ReplyCreate, user: dict = Depends(r
         "user_id": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Resolve @mentions to real users and notify them.
+    mention_names: list[str] = []
+    for uid in {m for m in body.mentions if m and m != user["id"]}:
+        target = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "display_name": 1})
+        if not target:
+            continue
+        mention_names.append(target["display_name"])
+        await _notify(
+            uid, "roundtable_mention", None,
+            f"{user['display_name']} mentioned you at the Roundtable",
+            f"In \u201c{t.get('title', 'a discussion')}\u201d: {reply['body'][:120]}",
+        )
+    reply["mentions"] = list({m for m in body.mentions if m and m != user["id"]})
+    reply["mention_names"] = mention_names
     await db.rt_replies.insert_one(dict(reply))
     reply.pop("_id", None)
     return reply
+
+
+@api_router.get("/roundtable/trending")
+async def rt_trending(user: dict = Depends(require_user)):
+    """Hottest threads of the week for the home feed (score = upvotes + 3×replies, recency-weighted)."""
+    threads = await db.rt_threads.find({}).to_list(2000)
+    now = datetime.now(timezone.utc)
+    scored = []
+    for t in threads:
+        replies = await db.rt_replies.count_documents({"thread_id": t["id"]})
+        score = t.get("upvotes", 0) + 3 * replies
+        try:
+            created = datetime.fromisoformat(t.get("created_at", ""))
+            age_days = max(0.0, (now - created).total_seconds() / 86400)
+        except (ValueError, TypeError):
+            age_days = 30.0
+        # Gentle recency boost so this-week threads rise without hiding older gems.
+        hot = score / (1 + age_days / 7)
+        scored.append((hot, replies, t))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    out = []
+    for _hot, replies, t in scored[:8]:
+        meta = await _thread_meta(t, user["id"])
+        meta["reply_count"] = replies
+        out.append(meta)
+    return out
 
 
 @api_router.get("/roundtable/category/{category}")
@@ -6418,6 +6459,13 @@ VAULT_SEED = [
     {"source": "other", "ref_id": "seed-recipe-1", "title": "Copperpot Spiced Cocoa", "subtitle": "Recipe", "image_url": f"{_VAULT_IMG}1542990253-0d0f5be5f0ed?w=800&q=80", "category": "Recipes", "text": "1. Warm 2 cups milk in a copper pot.\n2. Whisk in 3 tbsp cocoa, 1 tbsp sugar, a pinch of cinnamon and clove.\n3. Simmer 4 minutes, don't boil.\n4. Pour and top with a curl of orange peel.", "notes": "Doubles well for guests. A splash of vanilla makes it sing."},
     {"source": "other", "ref_id": "seed-diy-1", "title": "Pipe-Fitting Coat Rack", "subtitle": "DIY Project", "image_url": f"{_VAULT_IMG}1503389152951-9f343605f61e?w=800&q=80", "category": "DIY Projects", "text": "1. Gather 4 brass elbows, 2 flanges and a 60cm pipe.\n2. Mount flanges to a reclaimed board.\n3. Thread pipe + elbows to form hooks.\n4. Buff with beeswax.", "notes": "Pre-drill the board to avoid splitting the wood."},
     {"source": "other", "ref_id": "seed-decor-1", "title": "Gaslamp Reading Corner", "subtitle": "Decor Idea", "image_url": f"{_VAULT_IMG}1493809842364-78817add7ffb?w=800&q=80", "category": "Decor Ideas", "text": "Layer a wingback chair, a brass floor lamp and a small side table with a stack of leather books.", "notes": "Warm 2700K bulbs keep the mood cozy."},
+    # ---- Knowledge & Travel hub ----
+    {"source": "other", "ref_id": "seed-travel-1", "title": "A Weekend in the Cabins", "subtitle": "Travel Idea · Waypoint", "image_url": f"{_VAULT_IMG}1449158743715-0a90ebb6d2d8?w=800&q=80", "route": "/waypoint?group=Cabins%20%26%20Cottages", "category": "Travel Ideas", "text": "Book a lakeside cabin for two nights. Pack a thermos of Copperpot cocoa and a deck of cards.", "notes": "Cabins & Cottages fill up fast on Waypoint — reserve early."},
+    {"source": "other", "ref_id": "seed-travel-2", "title": "Vacation House Getaway", "subtitle": "Travel Idea · Waypoint", "image_url": f"{_VAULT_IMG}1512917774080-9991f1c4c750?w=800&q=80", "route": "/waypoint?group=Vacation%20Houses", "category": "Travel Ideas", "text": "A whole house for the family — pool optional, brass fittings mandatory.", "notes": "Browse Vacation Houses on Waypoint and save your favourites."},
+    {"source": "other", "ref_id": "seed-read-1", "title": "The Aetherwright's Handbook", "subtitle": "Reading List", "image_url": f"{_VAULT_IMG}1544716278-ca5e3f4abd8c?w=800&q=80", "category": "Reading List", "text": "A field manual for anyone who has ever wired a lamp to hum in B-flat.", "notes": "Status: To read. Available as an eBook in the Bazaar."},
+    {"source": "other", "ref_id": "seed-read-2", "title": "Clockwork & Consequence", "subtitle": "Reading List", "image_url": f"{_VAULT_IMG}1524578271613-d550eacf6090?w=800&q=80", "category": "Reading List", "text": "A novel of gears, guilt and one very stubborn chronometer.", "notes": "Status: Reading — chapter 7."},
+    {"source": "other", "ref_id": "seed-tut-1", "title": "Retrofit a Lamp with Iris", "subtitle": "Tutorial · BrainBoost", "image_url": f"{_VAULT_IMG}1513475382585-d06e58bcb0e0?w=800&q=80", "route": "/brainboost/repair", "category": "Tutorials", "text": "Step-by-step: strip, clean, rewire and polish a salvaged aether lamp.", "notes": "Follow the full course in BrainBoost's Repair Guy."},
+    {"source": "other", "ref_id": "seed-tut-2", "title": "Basics of Brass Casting", "subtitle": "Tutorial · BrainBoost", "image_url": f"{_VAULT_IMG}1581092160562-40aa08e78837?w=800&q=80", "route": "/brainboost/courses", "category": "Tutorials", "text": "From mould to finish — a beginner's path to casting your own fittings.", "notes": "Open BrainBoost Courses to enrol and track progress."},
 ]
 
 

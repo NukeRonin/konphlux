@@ -69,6 +69,9 @@ const CATEGORIES: { key: string; icon: IconName }[] = [
   { key: "Crafts", icon: "scissors-cutting" },
   { key: "Decor Ideas", icon: "sofa-outline" },
   { key: "Fashion", icon: "hanger" },
+  { key: "Travel Ideas", icon: "airplane" },
+  { key: "Reading List", icon: "book-open-page-variant-outline" },
+  { key: "Tutorials", icon: "school-outline" },
 ];
 const TEXT_CATS = ["Jokes", "Quotes"];
 
