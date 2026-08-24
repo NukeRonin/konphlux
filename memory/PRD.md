@@ -10,6 +10,18 @@
 - **Backend** (`server.py`): FastAPI + MongoDB (motor). Seeds 22 districts, 6 feed posts, 8 bazaar listings. JWT auth (PyJWT + argon2/pwdlib). AI Chatmonger via emergentintegrations (Emergent LLM key, openai `gpt-5.4`). All data routes require Bearer token; under `/api`.
 
 ## Implemented
+### 2026-06 (Profiles Everywhere · Friend Notifications · Mutual Friends · Message Friend + Vault/Retro button fixes + Streamora archive robustness; user self-testing)
+- ✅ **Vault categories fix**: The requested set was mostly present but **"Hints & Walkthrus" was missing** and **"TV Recommendations" mislabeled** — added "Hints & Walkthrus" and renamed to "TV Show Recommendations" in the vault chip list (vault/index.tsx), the add-item picker (vault/add.tsx), and the backend `VaultSaveBody`/`VaultUpdateBody` category regex (both). Verified saving into both new categories → 201.
+- ✅ **Retrospections buttons fix**: "Temporary Closures" and "Closing Soon" existed only as tabs inside the Status screen. Added them as **direct quick-action tiles on the Retrospections home** (retrospections/index.tsx) deep-linking to `/retrospections/status?tab=closures` and `?tab=closing` (status.tsx already reads the `tab` param).
+- ✅ **Streamora archive robustness**: `_archive_stale_streams()` now also runs on `GET /pictureshow/videos` (already ran on hub + streamora). Archived streams surface at the top of PictureShow featured (sorted by created_at). Note: only streams that went live *after* the started_at change can auto-archive.
+- ✅ **Profiles Everywhere**: names are now tappable → open `/u/{id}`. Feed activity gained `actor_id`; feed actor name, feed comment authors, and BrainBoost course review authors all deep-link to the member profile.
+- ✅ **Friend Notifications**: `friends_request` notifies the recipient ("New friend request"); `friends_accept` (and the auto-accept path) notifies the requester ("Friend request accepted"). Appears in the bell.
+- ✅ **Mutual Friends**: `GET /users/{id}` returns `mutual_count` (intersection of both friend lists); shown on the profile under the friend count.
+- ✅ **Message Friend**: friends' profiles now show a "Message" button that calls `cbStartDm` and jumps into `/chatterbox/conversation/{id}`.
+- Files: backend/server.py (vault regex x2, friends_feed actor_id, friends_request/accept notifications, user_profile mutual_count, pictureshow_videos sweep); frontend app/vault/index.tsx, app/vault/add.tsx, app/retrospections/index.tsx, app/u/[id].tsx (mutual + Message), app/friends/index.tsx (tappable actor/comment authors), app/brainboost/course/[id].tsx (tappable review author), src/api/client.ts (actor_id, mutual_count).
+- Verified: backend smoke — vault saves 201 for both new cats; friend request/accept notifications +1 each; mutual/profile ok; start-DM 201 with conv id. Lint clean, iOS entry bundle 200. Backend + Expo restarted.
+
+
 ### 2026-06 (Districts subtitle copy + site-wide public user profile & Friend system; user self-testing)
 - ✅ **Districts subtitle** on the Districts screen changed from "Twenty-two quarters, one ID" → "Twenty quarters, One ID" (app/(tabs)/districts.tsx).
 - ✅ **Public user profile** (new /u/[id].tsx): avatar, name, handle, friend count, a friend-status badge, and a context-aware Friend button — Send friend request (none) / Cancel request (outgoing) / Accept + Reject (incoming) / Remove friend (friends) / "This is you" (self). Reachable by tapping any person on the Friends screen (search results + friend rows now open /u/{id}).

@@ -728,7 +728,7 @@ class VaultItemBody(BaseModel):
     media_type: str = Field(default="", pattern="^(audio|video|)$")
     subtitle: str = Field(default="", max_length=160)
     route: str = Field(default="", max_length=200)
-    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Images|TV Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
+    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Hints & Walkthrus|Images|TV Show Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
     collection_id: str | None = Field(default=None, max_length=40)
@@ -737,7 +737,7 @@ class VaultItemBody(BaseModel):
 class VaultUpdateBody(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     image_url: str = Field(default="", max_length=600)
-    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Images|TV Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
+    category: str = Field(default="", pattern=r"^(Jokes|Video Game Cheats|Hints & Walkthrus|Images|TV Show Recommendations|Movie Recommendations|Music Recommendations|Video Game Recommendations|Logos|GIFs|Memes|Sound Effects|Artwork|Quotes|Recipes|DIY Projects|Magic Tricks|Life Hacks|Crafts|Decor Ideas|Fashion|Travel Ideas|Reading List|Tutorials|)$")
     text: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=2000)
 
@@ -3793,10 +3793,14 @@ async def friends_request(other_id: str, user: dict = Depends(require_user)):
     if existing:
         if existing["status"] == "pending" and existing["from"] == other_id:
             await db.friend_requests.update_one({"from": other_id, "to": uid}, {"$set": {"status": "accepted"}})
+            await _notify(other_id, "friend_accept", uid, "Friend request accepted",
+                          f"{user['display_name']} accepted your friend request. You're now friends!")
             return {"status": "accepted"}
         return {"status": existing["status"]}
     await db.friend_requests.insert_one({"from": uid, "to": other_id, "status": "pending",
                                          "created_at": datetime.now(timezone.utc).isoformat()})
+    await _notify(other_id, "friend_request", uid, "New friend request",
+                  f"{user['display_name']} sent you a friend request.")
     return {"status": "pending"}
 
 
@@ -3806,6 +3810,8 @@ async def friends_accept(other_id: str, user: dict = Depends(require_user)):
                                               {"$set": {"status": "accepted"}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="No pending request")
+    await _notify(other_id, "friend_accept", user["id"], "Friend request accepted",
+                  f"{user['display_name']} accepted your friend request. You're now friends!")
     return {"status": "accepted"}
 
 
@@ -3842,7 +3848,12 @@ async def user_profile(other_id: str, user: dict = Depends(require_user)):
                 relation = "incoming"
     friend_count = await db.friend_requests.count_documents(
         {"status": "accepted", "$or": [{"from": other_id}, {"to": other_id}]})
-    return {**_friend_public(u), "relation": relation, "friend_count": friend_count}
+    mutual_count = 0
+    if other_id != uid:
+        mine = set(await _friend_ids(uid))
+        theirs = set(await _friend_ids(other_id))
+        mutual_count = len(mine & theirs)
+    return {**_friend_public(u), "relation": relation, "friend_count": friend_count, "mutual_count": mutual_count}
 
 
 async def _friend_ids(uid: str) -> list[str]:
@@ -3867,7 +3878,7 @@ async def friends_feed(user: dict = Depends(require_user)):
                    "music": "a track", "sfx": "a sound effect"}
     for it in await db.frank_vault.find({"user_id": {"$in": fids}}, {"_id": 0}).to_list(300):
         activity.append({
-            "id": f"fv-{it['id']}", "actor": names.get(it["user_id"], "A friend"),
+            "id": f"fv-{it['id']}", "actor": names.get(it["user_id"], "A friend"), "actor_id": it["user_id"],
             "verb": "created", "what": _kind_label.get(it.get("kind", ""), "a creation"),
             "title": it.get("title", "") or it.get("prompt", ""),
             "image_path": it.get("image_path", ""), "image_url": it.get("media_url", "") if not it.get("image_path") else "",
@@ -3876,7 +3887,7 @@ async def friends_feed(user: dict = Depends(require_user)):
     # Created — BrainBoost courses.
     for c in await db.bb_courses.find({"user_id": {"$in": fids}, "user_created": True}, {"_id": 0}).to_list(200):
         activity.append({
-            "id": f"bc-{c['id']}", "actor": names.get(c["user_id"], "A friend"),
+            "id": f"bc-{c['id']}", "actor": names.get(c["user_id"], "A friend"), "actor_id": c["user_id"],
             "verb": "published", "what": "a course",
             "title": c.get("title", ""), "image_path": "", "image_url": "",
             "route": f"/brainboost/course/{c['id']}", "created_at": c.get("created_at", ""),
@@ -3884,7 +3895,7 @@ async def friends_feed(user: dict = Depends(require_user)):
     # Saved — Vault items.
     for v in await db.vault_items.find({"user_id": {"$in": fids}}, {"_id": 0}).to_list(400):
         activity.append({
-            "id": f"vi-{v.get('id','')}", "actor": names.get(v["user_id"], "A friend"),
+            "id": f"vi-{v.get('id','')}", "actor": names.get(v["user_id"], "A friend"), "actor_id": v["user_id"],
             "verb": "saved", "what": "to their Vault",
             "title": v.get("title", ""), "image_path": "", "image_url": v.get("image_url", ""),
             "route": v.get("route", "") or "/vault", "created_at": v.get("created_at", ""),
@@ -4290,6 +4301,7 @@ async def party_chat_post(code: str, body: dict, user: dict = Depends(require_us
 
 @api_router.get("/pictureshow/videos")
 async def pictureshow_videos(user: dict = Depends(require_user), category: str | None = None, sort: str = "recent"):
+    await _archive_stale_streams()
     query: dict = {}
     if category and category != "All":
         query["category"] = category

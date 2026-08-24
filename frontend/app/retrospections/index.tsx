@@ -66,6 +66,8 @@ export default function RetrospectionsHub() {
         {[
           { label: "Nearby", icon: "map-search-outline" as const, route: "/retrospections/map" },
           { label: "Status", icon: "clipboard-pulse-outline" as const, route: "/retrospections/status" },
+          { label: "Temporary Closures", icon: "store-clock-outline" as const, route: "/retrospections/status?tab=closures" },
+          { label: "Closing Soon", icon: "store-off-outline" as const, route: "/retrospections/status?tab=closing" },
           { label: "Favorites", icon: "heart-outline" as const, route: "/retrospections/favorites" },
           { label: "For Sale", icon: "storefront-outline" as const, route: "/retrospections/marketplace" },
         ].map((ql) => (

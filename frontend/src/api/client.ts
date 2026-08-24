@@ -775,8 +775,8 @@ export type VaultItem = {
 
 export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
 export type FriendCard = { id: string; display_name: string; handle: string; avatar: string };
-export type UserProfile = FriendCard & { relation: "self" | "none" | "outgoing" | "incoming" | "friends"; friend_count: number };
-export type FriendActivity = { id: string; actor: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string; cheers: number; cheered: boolean; comment_count: number };
+export type UserProfile = FriendCard & { relation: "self" | "none" | "outgoing" | "incoming" | "friends"; friend_count: number; mutual_count: number };
+export type FriendActivity = { id: string; actor: string; actor_id: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string; cheers: number; cheered: boolean; comment_count: number };
 export type FeedComment = { id: string; activity_id: string; user_id: string; author: string; text: string; created_at: string };
 
 export type WPBooking = {

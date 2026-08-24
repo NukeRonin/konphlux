@@ -189,7 +189,7 @@ export default function CourseDetail() {
             reviews.map((r) => (
               <View key={r.id} style={[styles.reviewCard, { borderBottomColor: colors.border }]}>
                 <View style={styles.reviewCardHead}>
-                  <Text style={[styles.reviewAuthor, { color: colors.onSurface }]}>{r.author}</Text>
+                  <Text onPress={() => r.user_id && router.push(`/u/${r.user_id}`)} style={[styles.reviewAuthor, { color: colors.brand }]}>{r.author}</Text>
                   <View style={{ flexDirection: "row" }}>
                     {[1, 2, 3, 4, 5].map((n) => (
                       <MaterialCommunityIcons key={n} name={n <= r.rating ? "star" : "star-outline"} size={14} color={n <= r.rating ? "#E0A500" : colors.muted} />

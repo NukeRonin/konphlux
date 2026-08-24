@@ -142,7 +142,7 @@ export default function Friends() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.feedText, { color: colors.onSurface }]}>
-                      <Text style={{ fontFamily: fonts.bodyBold }}>{item.actor}</Text>
+                      <Text onPress={() => item.actor_id && router.push(`/u/${item.actor_id}`)} style={{ fontFamily: fonts.bodyBold, color: colors.brand }}>{item.actor}</Text>
                       {` ${item.verb} ${item.what}`}
                     </Text>
                     {item.title ? <Text numberOfLines={1} style={[styles.feedTitle, { color: colors.muted }]}>{item.title}</Text> : null}
@@ -164,7 +164,7 @@ export default function Friends() {
                   <View style={styles.commentBox}>
                     {comments.map((c) => (
                       <View key={c.id} style={styles.commentRow}>
-                        <Text style={[styles.commentAuthor, { color: colors.onSurface }]}>{c.author}</Text>
+                        <Text onPress={() => c.user_id && router.push(`/u/${c.user_id}`)} style={[styles.commentAuthor, { color: colors.brand }]}>{c.author}</Text>
                         <Text style={[styles.commentText, { color: colors.muted }]}>{c.text}</Text>
                       </View>
                     ))}

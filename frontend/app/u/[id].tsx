@@ -39,6 +39,15 @@ export default function UserProfileScreen() {
 
   const rel = profile?.relation ?? "none";
 
+  const message = async () => {
+    if (!profile || busy) return;
+    setBusy(true);
+    try {
+      const conv = await api.cbStartDm(profile.id);
+      router.push(`/chatterbox/conversation/${conv.id}`);
+    } catch { /* ignore */ } finally { setBusy(false); }
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, borderBottomColor: colors.border }]}>
@@ -61,6 +70,9 @@ export default function UserProfileScreen() {
           <Text style={[styles.name, { color: colors.onSurface }]}>{profile.display_name}</Text>
           {profile.handle ? <Text style={[styles.handle, { color: colors.muted }]}>{profile.handle}</Text> : null}
           <Text style={[styles.count, { color: colors.muted }]}>{profile.friend_count} friend{profile.friend_count === 1 ? "" : "s"}</Text>
+          {profile.relation !== "self" && profile.mutual_count > 0 ? (
+            <Text style={[styles.mutual, { color: colors.brand }]}>{profile.mutual_count} mutual friend{profile.mutual_count === 1 ? "" : "s"}</Text>
+          ) : null}
 
           {rel !== "none" && rel !== "self" ? (
             <View style={[styles.statusBadge, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -94,10 +106,16 @@ export default function UserProfileScreen() {
                 </Pressable>
               </View>
             ) : (
-              <Pressable testID="user-unfriend" onPress={() => act(() => api.friendRemove(profile.id))} style={[styles.outlineBtn, { borderColor: colors.border }]}>
-                <MaterialCommunityIcons name="account-remove-outline" size={17} color={colors.muted} />
-                <Text style={[styles.outlineText, { color: colors.muted }]}>Remove friend</Text>
-              </Pressable>
+              <View style={{ gap: spacing.sm }}>
+                <Pressable testID="user-message" onPress={message} style={[styles.primaryBtn, { backgroundColor: colors.brand }]}>
+                  <MaterialCommunityIcons name="message-text" size={18} color={colors.onBrandPrimary} />
+                  <Text style={[styles.primaryText, { color: colors.onBrandPrimary }]}>Message</Text>
+                </Pressable>
+                <Pressable testID="user-unfriend" onPress={() => act(() => api.friendRemove(profile.id))} style={[styles.outlineBtn, { borderColor: colors.border }]}>
+                  <MaterialCommunityIcons name="account-remove-outline" size={17} color={colors.muted} />
+                  <Text style={[styles.outlineText, { color: colors.muted }]}>Remove friend</Text>
+                </Pressable>
+              </View>
             )}
           </View>
         </View>
@@ -114,6 +132,7 @@ const styles = StyleSheet.create({
   name: { fontFamily: fonts.display, fontSize: 24, marginTop: spacing.md },
   handle: { fontFamily: fonts.body, fontSize: 14 },
   count: { fontFamily: fonts.bodyMedium, fontSize: 13, marginTop: 2 },
+  mutual: { fontFamily: fonts.bodyBold, fontSize: 12.5, marginTop: 2 },
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, height: 32, borderRadius: radius.pill, borderWidth: 1, marginTop: spacing.md },
   statusText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   actions: { width: "100%", marginTop: spacing.lg },
