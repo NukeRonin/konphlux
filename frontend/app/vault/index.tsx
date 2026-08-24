@@ -179,23 +179,20 @@ export default function VaultHub() {
         </View>
       </View>
 
-      <View style={styles.catRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}>
-          {CATEGORIES.map((c) => {
-            const active = cat === c.key;
-            return (
-              <Pressable key={c.key} testID={`vault-cat-${c.key}`} onPress={() => setCat(c.key)} style={[styles.catChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
-                <MaterialCommunityIcons name={c.icon} size={15} color={active ? colors.onBrandPrimary : colors.muted} />
-                <Text style={[styles.catText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{c.key}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
       {status === "loading" ? <Loading label="Opening the Vault…" /> :
        status === "error" ? <ErrorState onRetry={load} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} showsVerticalScrollIndicator={false}>
+          <View style={styles.catGrid}>
+            {CATEGORIES.map((c) => {
+              const active = cat === c.key;
+              return (
+                <Pressable key={c.key} testID={`vault-cat-${c.key}`} onPress={() => setCat(c.key)} style={[styles.catChip, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
+                  <MaterialCommunityIcons name={c.icon} size={15} color={active ? colors.onBrandPrimary : colors.muted} />
+                  <Text style={[styles.catText, { color: active ? colors.onBrandPrimary : colors.muted }]}>{c.key}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           {collections.length > 0 && !q && cat === "All" ? (
             <>
               <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Collections</Text>
@@ -279,6 +276,7 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
   catRow: { paddingTop: spacing.md },
+  catGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
   catChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
   catText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   cardList: { paddingHorizontal: spacing.lg, gap: spacing.md },

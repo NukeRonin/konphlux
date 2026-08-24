@@ -62,7 +62,7 @@ export default function RetrospectionsHub() {
         </Pressable>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.quick}>
+      <View style={styles.quick}>
         {[
           { label: "Nearby", icon: "map-search-outline" as const, route: "/retrospections/map" },
           { label: "Status", icon: "clipboard-pulse-outline" as const, route: "/retrospections/status" },
@@ -76,7 +76,7 @@ export default function RetrospectionsHub() {
             <Text style={[styles.quickText, { color: colors.onSurface }]}>{ql.label}</Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
 
       <View style={[styles.searchRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
         <MaterialCommunityIcons name="magnify" size={20} color={colors.muted} />
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1 },
   headerTitle: { fontFamily: fonts.display, fontSize: 20 },
   iconBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  quick: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
+  quick: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   quickTile: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, height: 40, borderRadius: radius.md, borderWidth: 1 },
   quickText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   heartOverlay: { position: "absolute", top: 6, left: 6, width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" },

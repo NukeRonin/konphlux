@@ -3856,6 +3856,48 @@ async def user_profile(other_id: str, user: dict = Depends(require_user)):
     return {**_friend_public(u), "relation": relation, "friend_count": friend_count, "mutual_count": mutual_count}
 
 
+@api_router.get("/users/{other_id}/mutual")
+async def user_mutual(other_id: str, user: dict = Depends(require_user)):
+    mine = set(await _friend_ids(user["id"]))
+    theirs = set(await _friend_ids(other_id))
+    ids = list(mine & theirs)
+    rows = await db.users.find({"id": {"$in": ids}}, {"_id": 0}).to_list(2000)
+    return [_friend_public(u) for u in rows]
+
+
+@api_router.get("/users/{other_id}/creations")
+async def user_creations(other_id: str, user: dict = Depends(require_user)):
+    if not await db.users.find_one({"id": other_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="User not found")
+    creations: list[dict] = []
+    for it in await db.frank_vault.find({"user_id": other_id}, {"_id": 0}).to_list(60):
+        creations.append({
+            "id": it["id"], "kind": it.get("kind", "art"),
+            "title": it.get("title", "") or it.get("prompt", ""),
+            "image_path": it.get("image_path", ""),
+            "image_url": it.get("media_url", "") if not it.get("image_path") else "",
+            "route": "/frankenstein-lab/vault", "created_at": it.get("created_at", ""),
+        })
+    for c in await db.bb_courses.find({"user_id": other_id, "user_created": True}, {"_id": 0}).to_list(40):
+        creations.append({
+            "id": c["id"], "kind": "course", "title": c.get("title", ""),
+            "image_path": "", "image_url": "",
+            "route": f"/brainboost/course/{c['id']}", "created_at": c.get("created_at", ""),
+        })
+    creations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    reviews: list[dict] = []
+    for r in await db.bb_reviews.find({"user_id": other_id}, {"_id": 0}).to_list(60):
+        course = await db.bb_courses.find_one({"id": r["course_id"]}, {"_id": 0, "title": 1})
+        reviews.append({
+            "id": r["id"], "rating": r["rating"], "text": r.get("text", ""),
+            "course_id": r["course_id"], "course_title": (course or {}).get("title", "a course"),
+            "created_at": r.get("created_at", ""),
+        })
+    reviews.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return {"creations": creations[:40], "reviews": reviews[:40]}
+
+
 async def _friend_ids(uid: str) -> list[str]:
     reqs = await db.friend_requests.find(
         {"status": "accepted", "$or": [{"from": uid}, {"to": uid}]}, {"_id": 0}).to_list(3000)

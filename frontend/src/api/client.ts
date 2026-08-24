@@ -776,6 +776,8 @@ export type VaultItem = {
 export type VaultCollection = { id: string; name: string; count: number; cover_url: string; created_at: string };
 export type FriendCard = { id: string; display_name: string; handle: string; avatar: string };
 export type UserProfile = FriendCard & { relation: "self" | "none" | "outgoing" | "incoming" | "friends"; friend_count: number; mutual_count: number };
+export type ProfileCreation = { id: string; kind: string; title: string; image_path: string; image_url: string; route: string; created_at: string };
+export type ProfileReview = { id: string; rating: number; text: string; course_id: string; course_title: string; created_at: string };
 export type FriendActivity = { id: string; actor: string; actor_id: string; verb: string; what: string; title: string; image_path: string; image_url: string; route: string; created_at: string; cheers: number; cheered: boolean; comment_count: number };
 export type FeedComment = { id: string; activity_id: string; user_id: string; author: string; text: string; created_at: string };
 
@@ -1338,6 +1340,8 @@ export const api = {
   vaultToggleFavorite: (id: string) => request<{ is_favorite: boolean }>(`/vault/items/${id}/favorite`, { method: "POST" }),
   friends: () => request<{ friends: FriendCard[]; incoming: FriendCard[]; outgoing: FriendCard[] }>("/friends"),
   userProfile: (id: string) => request<UserProfile>(`/users/${id}`),
+  userMutual: (id: string) => request<FriendCard[]>(`/users/${id}/mutual`),
+  userCreations: (id: string) => request<{ creations: ProfileCreation[]; reviews: ProfileReview[] }>(`/users/${id}/creations`),
   friendsFeed: () => request<{ activity: FriendActivity[] }>("/friends/feed"),
   feedCheer: (activityId: string) => request<{ cheered: boolean; cheers: number }>(`/friends/feed/${activityId}/cheer`, { method: "POST" }),
   feedComments: (activityId: string) => request<{ comments: FeedComment[] }>(`/friends/feed/${activityId}/comments`),

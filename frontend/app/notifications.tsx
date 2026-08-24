@@ -12,7 +12,14 @@ import { fonts, radius, spacing, timeAgo } from "@/src/theme/tokens";
 
 const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   outbid: "gavel",
+  friend_request: "account-plus",
+  friend_accept: "account-check",
+  friend_cheer: "hand-clap",
+  friend_comment: "comment-text",
+  retro_reopen: "store-check",
 };
+
+const PROFILE_TYPES = ["friend_request", "friend_accept"];
 
 export default function Notifications() {
   const { colors } = useTheme();
@@ -39,10 +46,17 @@ export default function Notifications() {
     }, [load]),
   );
 
+  const openNotif = (item: AppNotification) => {
+    if (!item.listing_id) return;
+    if (PROFILE_TYPES.includes(item.type)) router.push(`/u/${item.listing_id}`);
+    else if (item.type === "retro_reopen") router.push(`/retrospections/business/${item.listing_id}`);
+    else router.push(`/product/${item.listing_id}`);
+  };
+
   const renderItem = ({ item }: { item: AppNotification }) => (
     <Pressable
       testID={`notif-${item.id}`}
-      onPress={() => item.listing_id && router.push(`/product/${item.listing_id}`)}
+      onPress={() => openNotif(item)}
       style={[styles.row, { backgroundColor: item.read ? colors.surfaceSecondary : colors.surfaceTertiary, borderColor: colors.border }]}
     >
       <View style={[styles.iconWrap, { backgroundColor: colors.surface }]}>
