@@ -10,6 +10,14 @@
 - **Backend** (`server.py`): FastAPI + MongoDB (motor). Seeds 22 districts, 6 feed posts, 8 bazaar listings. JWT auth (PyJWT + argon2/pwdlib). AI Chatmonger via emergentintegrations (Emergent LLM key, openai `gpt-5.4`). All data routes require Bearer token; under `/api`.
 
 ## Implemented
+### 2026-06 (Districts subtitle copy + site-wide public user profile & Friend system; user self-testing)
+- ✅ **Districts subtitle** on the Districts screen changed from "Twenty-two quarters, one ID" → "Twenty quarters, One ID" (app/(tabs)/districts.tsx).
+- ✅ **Public user profile** (new /u/[id].tsx): avatar, name, handle, friend count, a friend-status badge, and a context-aware Friend button — Send friend request (none) / Cancel request (outgoing) / Accept + Reject (incoming) / Remove friend (friends) / "This is you" (self). Reachable by tapping any person on the Friends screen (search results + friend rows now open /u/{id}).
+- ✅ Backend `GET /users/{id}` returns public profile + viewer's relation (self|none|outgoing|incoming|friends) + friend_count. Reuses existing friend_requests + request/accept/decline(=reject)/remove endpoints.
+- Files: backend/server.py (user_profile endpoint), frontend app/u/[id].tsx (new), app/friends/index.tsx (rows link to profile), app/(tabs)/districts.tsx (subtitle), app/_layout.tsx (u/[id] route), src/api/client.ts (UserProfile type + userProfile).
+- Verified: backend smoke — relation transitions none→outgoing/incoming→friends→removed + self. Lint clean, iOS entry bundle 200. Backend + Expo restarted.
+
+
 ### 2026-06 (Reopen Reminders · Cheer/Comment Notifications; user self-testing, tests/screenshots skipped)
 - ✅ **Reopen Reminders**: one-tap "Remind me" bell on temporarily-closed favourites (retrospections/favorites.tsx). Backend `retro_reopen_reminders` collection; POST `/retrospections/reopen-reminder/{id}` toggle; favorites payload now returns `reminding`. `_sweep_reopenings` nudges anyone who favourited OR set a reminder when the reopen date passes, then clears one-shot reminders.
 - ✅ **Cheer/Comment Notifications**: cheering or commenting on a friend's feed item now sends the creator an in-app notification (bell). New `_activity_owner()` resolves the owner from the activity id prefix (fv-/bc-/vi- → frank_vault/bb_courses/vault_items); `friends_feed_cheer` (only on cheer-on) and `friends_feed_add_comment` call `_notify` (types `friend_cheer`/`friend_comment`) when actor ≠ owner.

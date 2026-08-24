@@ -89,11 +89,13 @@ export default function Friends() {
 
   const Row = ({ item, action }: { item: Rel; action: React.ReactNode }) => (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <AvatarInitials name={item.display_name} size={40} />
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={[styles.name, { color: colors.onSurface }]}>{item.display_name}</Text>
-        {item.handle ? <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>{item.handle}</Text> : null}
-      </View>
+      <Pressable testID={`open-${item.id}`} onPress={() => router.push(`/u/${item.id}`)} style={styles.rowTap}>
+        <AvatarInitials name={item.display_name} size={40} />
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={[styles.name, { color: colors.onSurface }]}>{item.display_name}</Text>
+          {item.handle ? <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>{item.handle}</Text> : null}
+        </View>
+      </Pressable>
       {busy === item.id ? <ActivityIndicator size="small" color={colors.brand} /> : action}
     </View>
   );
@@ -253,6 +255,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15 },
   section: { fontFamily: fonts.displaySemi, fontSize: 15, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1 },
+  rowTap: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
   name: { fontFamily: fonts.displaySemi, fontSize: 15 },
   handle: { fontFamily: fonts.body, fontSize: 12, marginTop: 1 },
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4, height: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill },

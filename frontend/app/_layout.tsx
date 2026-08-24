@@ -84,6 +84,7 @@ function RootNavigator() {
         <Stack.Screen name="brainboost/course/[id]" />
         <Stack.Screen name="brainboost/new-course" />
         <Stack.Screen name="friends/index" />
+        <Stack.Screen name="u/[id]" />
         <Stack.Screen name="brainboost/quizzes" />
         <Stack.Screen name="brainboost/quiz/[id]" />
         <Stack.Screen name="brainboost/facts" />

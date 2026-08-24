@@ -75,7 +75,7 @@ export default function DistrictsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface }]}>
-      <AppHeader title="Districts" subtitle="Twenty-two quarters, one ID" />
+      <AppHeader title="Districts" subtitle="Twenty quarters, One ID" />
       {status === "loading" ? (
         <Loading label="Charting the districts…" />
       ) : status === "error" ? (

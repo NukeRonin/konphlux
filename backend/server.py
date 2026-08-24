@@ -3822,6 +3822,29 @@ async def friends_remove(other_id: str, user: dict = Depends(require_user)):
     return {"removed": True}
 
 
+@api_router.get("/users/{other_id}")
+async def user_profile(other_id: str, user: dict = Depends(require_user)):
+    """Public profile of any user + the viewer's friend relation to them."""
+    u = await db.users.find_one({"id": other_id}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    uid = user["id"]
+    relation = "self" if other_id == uid else "none"
+    if other_id != uid:
+        r = await db.friend_requests.find_one({"$or": [
+            {"from": uid, "to": other_id}, {"from": other_id, "to": uid}]}, {"_id": 0})
+        if r:
+            if r["status"] == "accepted":
+                relation = "friends"
+            elif r["from"] == uid:
+                relation = "outgoing"
+            else:
+                relation = "incoming"
+    friend_count = await db.friend_requests.count_documents(
+        {"status": "accepted", "$or": [{"from": other_id}, {"to": other_id}]})
+    return {**_friend_public(u), "relation": relation, "friend_count": friend_count}
+
+
 async def _friend_ids(uid: str) -> list[str]:
     reqs = await db.friend_requests.find(
         {"status": "accepted", "$or": [{"from": uid}, {"to": uid}]}, {"_id": 0}).to_list(3000)
