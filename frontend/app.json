@@ -25,7 +25,7 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.webtomobile.r0ghap",
+      "package": "konphlux.konphlux.app",
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
