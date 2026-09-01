@@ -7,7 +7,7 @@ import requests
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/") or os.environ.get("EXPO_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
     # Fallback to frontend .env constant (kept generic, not a secret)
-    BASE_URL = "https://web-to-mobile-252.preview.emergentagent.com"
+    BASE_URL = "https://friends-feed-preview.preview.emergentagent.com"
 
 API = f"{BASE_URL}/api"
 

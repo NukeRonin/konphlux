@@ -6,7 +6,7 @@ import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-RETURN_BASE = "https://web-to-mobile-252.preview.emergentagent.com"
+RETURN_BASE = "https://friends-feed-preview.preview.emergentagent.com"
 
 
 @pytest.fixture(scope="module")

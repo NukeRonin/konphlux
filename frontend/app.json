@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.webtomobile.r0ghap",
+      "bundleIdentifier": "konphlux.konphlux.app",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
         "NSCameraUsageDescription": "Take a photo for your Bazaar listing",
