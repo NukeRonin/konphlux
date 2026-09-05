@@ -55,6 +55,9 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="privacy" />
+        <Stack.Screen name="terms" />
+        <Stack.Screen name="about" />
+        <Stack.Screen name="delete-account" />
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
         <Stack.Screen name="notifications" />

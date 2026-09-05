@@ -822,6 +822,11 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<AuthUser>("/auth/me"),
+  deleteAccount: (current_password: string) =>
+    request<{ deleted: boolean }>("/account", {
+      method: "DELETE",
+      body: JSON.stringify({ current_password, confirmation: "DELETE" }),
+    }),
 
   getDistricts: () => request<District[]>("/districts"),
   getDistrict: (slug: string) => request<District>(`/districts/${slug}`),

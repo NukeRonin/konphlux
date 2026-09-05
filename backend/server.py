@@ -114,6 +114,11 @@ class LoginBody(BaseModel):
     password: str
 
 
+class DeleteAccountBody(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    confirmation: str = Field(pattern=r"^DELETE$")
+
+
 class SaveBody(BaseModel):
     kind: str  # "post" | "listing" | "district"
     item_id: str
@@ -1949,6 +1954,41 @@ async def login(body: LoginBody):
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(require_user)):
     return public_user(user)
+
+
+# Owner-id fields used across the app's collections. We sweep every collection
+# and remove documents the departing user owns, then delete the account itself.
+_ACCOUNT_OWNER_FIELDS = [
+    "user_id", "owner_id", "author_id", "from_id", "from_user_id", "to_id",
+    "host_id", "creator_id", "seller_id", "uid", "buyer_id", "actor_id",
+    "asker_id", "poster_id", "applicant_id", "backer_id", "reviewer_id",
+]
+
+
+@api_router.delete("/account")
+async def delete_account(body: DeleteAccountBody, user: dict = Depends(require_user)):
+    # Re-verify the current password server-side; never trust the client.
+    if not password_hash.verify(body.current_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Your current password is incorrect.")
+    uid = user["id"]
+    # Best-effort sweep of the user's owned data across all collections
+    # (this MongoDB deployment is standalone, so no multi-doc transaction).
+    try:
+        names = await db.list_collection_names()
+    except Exception:  # noqa: BLE001
+        names = []
+    for name in names:
+        if name == "users":
+            continue
+        try:
+            await db[name].delete_many({"$or": [{f: uid} for f in _ACCOUNT_OWNER_FIELDS]})
+        except Exception:  # noqa: BLE001
+            logger.warning("account delete: sweep failed for collection %s", name)
+    # Finally remove the account itself. Deleting the user row invalidates every
+    # previously issued JWT because require_user() looks the account up on each call.
+    await db.users.delete_one({"id": uid})
+    return {"deleted": True}
+
 
 
 # ---------- Districts ----------

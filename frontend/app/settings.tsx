@@ -131,6 +131,8 @@ export default function Settings() {
           <Row icon="hand-heart-outline" label="My Backings" onPress={() => router.push("/dreambacker/backings")} testID="settings-backings" />
           <Divider />
           <Row icon="lock-check" label="Account security" sub="Managed with your Konphlux login" onPress={() => Alert.alert("Account security", "Your session is secured with an encrypted token on this device. To change your password, sign out and use 'Forgot password' on the login screen.")} testID="settings-security" />
+          <Divider />
+          <Row icon="trash-can-outline" label="Delete account" sub="Permanently remove your account & data" danger onPress={() => router.push("/delete-account")} testID="settings-delete-account" />
         </Panel>
 
         <Eyebrow style={styles.groupLabel}>Assistance</Eyebrow>
@@ -142,11 +144,13 @@ export default function Settings() {
           <Row icon="email-edit-outline" label="Contact Us" sub="Send us a message" onPress={() => router.push("/contact")} testID="settings-contact" />
           <Divider />
           <Row icon="shield-lock-outline" label="Privacy Policy" sub="How we handle your data" onPress={() => router.push("/privacy")} testID="settings-privacy" />
+          <Divider />
+          <Row icon="file-document-outline" label="Terms of Service" sub="The rules of the realm" onPress={() => router.push("/terms")} testID="settings-terms" />
         </Panel>
 
         <Eyebrow style={styles.groupLabel}>About</Eyebrow>
         <Panel padded={false}>
-          <Row icon="information-outline" label="Konphlux" sub="Est. in the age of steam & signal · v1.0" />
+          <Row icon="information-outline" label="Konphlux" sub="Est. in the age of steam & signal · v1.0" onPress={() => router.push("/about")} testID="settings-about" />
         </Panel>
 
         <ForgeButton label="Sign out of Konphlux" variant="outline" fullWidth style={{ marginTop: spacing.xl }} testID="settings-signout" onPress={signOut} icon={<MaterialCommunityIcons name="logout" size={16} color={colors.brand} />} />
