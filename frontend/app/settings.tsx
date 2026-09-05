@@ -140,6 +140,8 @@ export default function Settings() {
           <Row icon="face-agent" label="Contact support" sub="support@konphlux.app" onPress={() => Linking.openURL("mailto:support@konphlux.app?subject=Konphlux%20Support")} testID="settings-support" />
           <Divider />
           <Row icon="email-edit-outline" label="Contact Us" sub="Send us a message" onPress={() => router.push("/contact")} testID="settings-contact" />
+          <Divider />
+          <Row icon="shield-lock-outline" label="Privacy Policy" sub="How we handle your data" onPress={() => router.push("/privacy")} testID="settings-privacy" />
         </Panel>
 
         <Eyebrow style={styles.groupLabel}>About</Eyebrow>

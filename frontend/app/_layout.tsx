@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
-import { LogBox, View } from "react-native";
+import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -11,6 +11,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth/AuthContext";
 import { ThemeProvider, useTheme } from "@/src/theme/ThemeContext";
+import { OnboardingProvider, useOnboarding } from "@/src/onboarding/OnboardingContext";
+import BrandLoader from "@/src/components/BrandLoader";
 import SmartReminders from "@/src/components/SmartReminders";
 
 LogBox.ignoreAllLogs(true);
@@ -18,23 +20,31 @@ LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { mode, colors } = useTheme();
+  const { mode } = useTheme();
   const { user, ready } = useAuth();
+  const { onboarded } = useOnboarding();
   const segments = useSegments();
   const router = useRouter();
 
+  const bootReady = ready && onboarded !== null;
+
   useEffect(() => {
-    if (!ready) return;
+    if (!bootReady) return;
     const inAuthGroup = segments[0] === "(auth)";
-    if (!user && !inAuthGroup) {
+    const inOnboarding = segments[0] === "onboarding";
+    if (!onboarded && !user) {
+      if (!inOnboarding) router.replace("/onboarding");
+      return;
+    }
+    if (!user && !inAuthGroup && !inOnboarding) {
       router.replace("/(auth)/login");
-    } else if (user && inAuthGroup) {
+    } else if (user && (inAuthGroup || inOnboarding)) {
       router.replace("/(tabs)");
     }
-  }, [user, ready, segments, router]);
+  }, [user, bootReady, onboarded, segments, router]);
 
-  if (!ready) {
-    return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
+  if (!bootReady) {
+    return <BrandLoader />;
   }
 
   return (
@@ -43,6 +53,8 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="privacy" />
         <Stack.Screen name="district/[slug]" />
         <Stack.Screen name="product/[id]" />
         <Stack.Screen name="notifications" />
@@ -211,7 +223,9 @@ export default function RootLayout() {
         <KeyboardProvider>
           <ThemeProvider>
             <AuthProvider>
-              <RootNavigator />
+              <OnboardingProvider>
+                <RootNavigator />
+              </OnboardingProvider>
             </AuthProvider>
           </ThemeProvider>
         </KeyboardProvider>
