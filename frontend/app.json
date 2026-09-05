@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "konphlux.konphlux.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Add photos to your Bazaar listings",
         "NSCameraUsageDescription": "Take a photo for your Bazaar listing",
@@ -26,6 +27,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "konphlux.konphlux.app",
+      "versionCode": 1,
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
