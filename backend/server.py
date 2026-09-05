@@ -941,6 +941,16 @@ AUCTION_SEED = [
      "description": "A rare first printing of the Clockwork Atlas, foldout maps intact, bound in oxblood leather. A collector's centrepiece."},
 ]
 
+# Sample seller storefronts (booths) + which seeded listings belong to each.
+BOOTH_SEED = [
+    {"id": "booth-copperline", "name": "Copperline Collective", "owner_id": "", "owner_name": "Copperline Collective",
+     "image": IMG_GEARS, "description": "Aether fixtures, retrofit kits and glowing lamplight for the modern workshop.",
+     "items": ["b2", "b11", "m-paint", "m-primer"]},
+    {"id": "booth-marlowe", "name": "Marlowe & Sons", "owner_id": "", "owner_name": "Marlowe & Sons",
+     "image": IMG_ARCH, "description": "Fine furniture and heirloom goods in mahogany, walnut and warm brass.",
+     "items": ["b4", "b12", "m-floor"]},
+]
+
 # Building materials — surfaced by the Bluepaint Materials Estimator "Purchase in Bazaar" flow.
 MATERIAL_LISTINGS = [
     {"id": "m-paint", "title": "Aether-Grade Wall Paint (2.5L)", "price_cents": 3200, "seller": "Copperline Collective", "rating": 4.7, "reviews": 210, "category": "Building Materials", "image": IMG_GEARS,
@@ -1846,6 +1856,22 @@ async def seed():
             {"$set": doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
+    # Sample seller storefronts (booths) + attach their listings (idempotent).
+    for bth in BOOTH_SEED:
+        booth_doc = {
+            "id": bth["id"], "name": bth["name"], "description": bth["description"],
+            "image": bth["image"], "owner_id": bth["owner_id"], "owner_name": bth["owner_name"],
+        }
+        await db.booths.update_one(
+            {"id": bth["id"]},
+            {"$set": booth_doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        for item_id in bth["items"]:
+            await db.bazaar.update_one(
+                {"id": item_id},
+                {"$set": {"booth_id": bth["id"], "booth_name": bth["name"]}},
+            )
     # Retrospections seeded businesses (idempotent; keep fields synced).
     for b in RETRO_BUSINESSES:
         await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)

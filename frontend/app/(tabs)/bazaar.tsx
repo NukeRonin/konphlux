@@ -201,10 +201,35 @@ export default function BazaarScreen() {
             data={listings}
             keyExtractor={(l) => l.id}
             numColumns={2}
-            columnWrapperStyle={styles.column}
-            contentContainerStyle={styles.list}
+            columnWrapperStyle={listings.length ? styles.column : undefined}
+            contentContainerStyle={listings.length ? styles.list : styles.listEmpty}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => <ProductCard item={item} />}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                  <MaterialCommunityIcons name={search ? "magnify-close" : "storefront-outline"} size={40} color={colors.brand} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.onSurface }]}>
+                  {search ? "No matching wares" : "Nothing here yet"}
+                </Text>
+                <Text style={[styles.emptyBody, { color: colors.muted }]}>
+                  {search
+                    ? `We couldn't find anything for "${search.trim()}"${active !== ALL ? ` in ${active}` : ""}. Try a different search.`
+                    : `There are no items in ${active} right now. Check back soon or explore another category.`}
+                </Text>
+                <Pressable
+                  testID="bazaar-empty-reset"
+                  onPress={() => { setSearch(""); setActive(ALL); }}
+                  style={[styles.emptyBtn, { backgroundColor: colors.brand }]}
+                >
+                  <MaterialCommunityIcons name="refresh" size={16} color={colors.onBrandPrimary} />
+                  <Text style={[styles.emptyBtnText, { color: colors.onBrandPrimary }]}>
+                    {search ? "Clear search" : "Browse all items"}
+                  </Text>
+                </Pressable>
+              </View>
+            }
           />
         </>
       )}
@@ -230,6 +255,13 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
 
   list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+  listEmpty: { flexGrow: 1 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.xxxl, gap: spacing.md },
+  emptyIcon: { width: 88, height: 88, borderRadius: 44, alignItems: "center", justifyContent: "center", marginBottom: spacing.xs },
+  emptyTitle: { fontFamily: fonts.display, fontSize: 20, textAlign: "center" },
+  emptyBody: { fontFamily: fonts.body, fontSize: 14.5, lineHeight: 21, textAlign: "center", maxWidth: 300 },
+  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, height: 44, paddingHorizontal: spacing.lg, borderRadius: radius.md, marginTop: spacing.sm },
+  emptyBtnText: { fontFamily: fonts.bodyBold, fontSize: 14 },
   column: { gap: spacing.md },
   card: { flex: 1, marginBottom: spacing.md },
   cardInner: {

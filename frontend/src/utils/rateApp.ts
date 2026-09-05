@@ -1,3 +1,4 @@
+import { Alert } from "react-native";
 import * as StoreReview from "expo-store-review";
 
 import { storage } from "@/src/utils/storage";
@@ -7,11 +8,13 @@ const ASKED_KEY = "konphlux.rate.asked";
 const THRESHOLD = 3; // ask after the 3rd meaningful visit
 
 /**
- * Best-effort in-app review prompt. Counts Feed visits and, once the user has
- * returned a few times, asks the OS to show the native "Rate this app" sheet
- * (only shown on real device builds — a no-op in Expo Go / web).
+ * Best-effort rating flow. Counts Feed visits and, once the user has returned a
+ * few times, shows a gentle "Enjoying Konphlux?" prompt:
+ *   • "I love it!"  → the native App Store / Play rating sheet (real builds only)
+ *   • "Not really"  → onDecline() so we can offer the in-app Contact form instead
+ * Shown only once. Never disrupts the app if anything fails.
  */
-export async function maybeRequestReview(): Promise<void> {
+export async function maybeRequestReview(onDecline?: () => void): Promise<void> {
   try {
     if ((await storage.getItem<string>(ASKED_KEY, "")) === "1") return;
 
@@ -19,11 +22,33 @@ export async function maybeRequestReview(): Promise<void> {
     await storage.setItem(OPENS_KEY, String(opens));
     if (opens < THRESHOLD) return;
 
-    if (!(await StoreReview.isAvailableAsync())) return;
-    if (!(await StoreReview.hasAction())) return;
-
-    await StoreReview.requestReview();
+    // Only ask once, regardless of the answer.
     await storage.setItem(ASKED_KEY, "1");
+
+    Alert.alert(
+      "Enjoying Konphlux?",
+      "Are you having a good time exploring the districts?",
+      [
+        {
+          text: "Not really",
+          style: "cancel",
+          onPress: () => onDecline?.(),
+        },
+        {
+          text: "I love it!",
+          onPress: async () => {
+            try {
+              if ((await StoreReview.isAvailableAsync()) && (await StoreReview.hasAction())) {
+                await StoreReview.requestReview();
+              }
+            } catch {
+              /* no-op */
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
   } catch {
     /* never disrupt the app for a review prompt */
   }

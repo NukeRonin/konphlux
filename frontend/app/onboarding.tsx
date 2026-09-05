@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { Image, ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Animated, Easing, Image, ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useOnboarding } from "@/src/onboarding/OnboardingContext";
@@ -50,17 +50,28 @@ export default function Onboarding() {
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const progress = useRef(new Animated.Value(0)).current;
 
   const last = index === SLIDES.length - 1;
+  const SLIDE_MS = 3800;
 
-  // Gently auto-advance through the tour until the last slide, unless paused.
+  // Gently auto-advance through the tour (with a filling progress bar) until the
+  // last slide, unless paused.
   useEffect(() => {
-    if (paused || last) return;
+    progress.stopAnimation();
+    progress.setValue(0);
+    if (last) {
+      progress.setValue(1);
+      return;
+    }
+    if (paused) return;
+    const anim = Animated.timing(progress, { toValue: 1, duration: SLIDE_MS, easing: Easing.linear, useNativeDriver: false });
+    anim.start();
     const t = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: (index + 1) * width, animated: true });
-    }, 3800);
-    return () => clearTimeout(t);
-  }, [index, paused, last, width]);
+    }, SLIDE_MS);
+    return () => { anim.stop(); clearTimeout(t); };
+  }, [index, paused, last, width, progress]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -129,7 +140,16 @@ export default function Onboarding() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.xl }]}>
         <View style={styles.dots}>
           {SLIDES.map((_, i) => (
-            <View key={i} style={[styles.dot, { width: i === index ? 22 : 8, backgroundColor: i === index ? GOLD : "#3A4353" }]} />
+            <View key={i} style={styles.pTrack}>
+              <Animated.View
+                style={[
+                  styles.pFill,
+                  {
+                    width: i < index ? "100%" : i === index ? progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) : "0%",
+                  },
+                ]}
+              />
+            </View>
           ))}
         </View>
         <Pressable onPress={next} style={styles.cta} testID="onboarding-next">
@@ -156,7 +176,8 @@ const styles = StyleSheet.create({
   body: { fontFamily: fonts.body, fontSize: 15.5, lineHeight: 24, color: MUTED, textAlign: "center", maxWidth: 340 },
   footer: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   dots: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
-  dot: { height: 8, borderRadius: 4 },
+  pTrack: { flex: 1, maxWidth: 64, height: 4, borderRadius: 2, backgroundColor: "#3A4353", overflow: "hidden" },
+  pFill: { height: "100%", borderRadius: 2, backgroundColor: GOLD },
   cta: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 54, borderRadius: 14, backgroundColor: GOLD },
   ctaText: { fontFamily: fonts.bodyBold, fontSize: 16, color: NAVY, letterSpacing: 0.3 },
 });

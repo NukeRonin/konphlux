@@ -391,9 +391,9 @@ export default function FeedScreen() {
 
   // Ask for an app-store rating after the user has returned a few times.
   useEffect(() => {
-    const t = setTimeout(() => { maybeRequestReview(); }, 4000);
+    const t = setTimeout(() => { maybeRequestReview(() => router.push("/contact")); }, 4000);
     return () => clearTimeout(t);
-  }, []);
+  }, [router]);
 
   useFocusEffect(
     useCallback(() => {
