@@ -20,7 +20,9 @@ export default function NewBooth() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [image, setImage] = useState("");
+  const [logo, setLogo] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,12 +39,25 @@ export default function NewBooth() {
     }
   };
 
+  const pickLogo = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsEditing: true, aspect: [1, 1] });
+    if (res.canceled || !res.assets?.[0]) return;
+    setUploadingLogo(true);
+    try {
+      setLogo(await uploadImage(res.assets[0].uri, Platform.OS === "web"));
+    } catch {
+      setError("Couldn't upload that logo.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const submit = async () => {
     setError("");
     if (name.trim().length < 2) return setError("Give your booth a name.");
     setBusy(true);
     try {
-      const booth = await api.createBooth(name.trim(), description.trim(), image);
+      const booth = await api.createBooth(name.trim(), description.trim(), image, image, logo);
       router.replace(`/bazaar/booth/${booth.id}`);
     } catch (e: any) {
       setError(e?.message ?? "Couldn't create the booth.");
@@ -65,17 +80,29 @@ export default function NewBooth() {
           A booth is your storefront — group your wares under one name. You can still post individual items separately.
         </Text>
 
-        <Eyebrow style={{ marginTop: spacing.lg }}>Banner (optional)</Eyebrow>
+        <Eyebrow style={{ marginTop: spacing.lg }}>Cover banner (optional)</Eyebrow>
         <Pressable testID="nb-image" onPress={pickImage} style={[styles.imageBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           {image ? (
             <Image source={{ uri: image }} style={styles.image} contentFit="cover" />
           ) : (
             <View style={styles.placeholder}>
               <MaterialCommunityIcons name={uploading ? "progress-upload" : "image-plus"} size={34} color={colors.muted} />
-              <Text style={[styles.hint, { color: colors.muted }]}>{uploading ? "Uploading…" : "Add a banner"}</Text>
+              <Text style={[styles.hint, { color: colors.muted }]}>{uploading ? "Uploading…" : "Add a cover banner"}</Text>
             </View>
           )}
         </Pressable>
+
+        <Eyebrow style={{ marginTop: spacing.lg }}>Shop logo (optional)</Eyebrow>
+        <View style={styles.logoRow}>
+          <Pressable testID="nb-logo" onPress={pickLogo} style={[styles.logoBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            {logo ? (
+              <Image source={{ uri: logo }} style={styles.image} contentFit="cover" />
+            ) : (
+              <MaterialCommunityIcons name={uploadingLogo ? "progress-upload" : "camera-plus-outline"} size={26} color={colors.muted} />
+            )}
+          </Pressable>
+          <Text style={[styles.hint, { color: colors.muted, flex: 1 }]}>A square logo shown on your storefront and in the featured row.</Text>
+        </View>
 
         <Eyebrow style={{ marginTop: spacing.lg }}>Booth name</Eyebrow>
         <TextInput testID="nb-name" value={name} onChangeText={setName} placeholder="e.g. Cog & Cauldron" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.onSurface, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} maxLength={80} />
@@ -105,6 +132,8 @@ const styles = StyleSheet.create({
   body: { padding: spacing.lg },
   intro: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21 },
   imageBox: { height: 150, borderRadius: radius.md, borderWidth: 1, overflow: "hidden", marginTop: spacing.sm },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm },
+  logoBox: { width: 76, height: 76, borderRadius: radius.md, borderWidth: 1, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   image: { width: "100%", height: "100%" },
   placeholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
   hint: { fontFamily: fonts.bodyMedium, fontSize: 14 },

@@ -183,12 +183,21 @@ export type Booth = {
   name: string;
   description: string;
   image: string;
+  banner?: string;
+  logo?: string;
   owner_id: string;
   owner_name: string;
   listing_count: number;
   created_at: string;
   is_owner?: boolean;
   listings?: Listing[];
+};
+
+export type SavedSearch = {
+  id: string;
+  query: string;
+  category: string;
+  created_at: string;
 };
 
 export type AppNotification = {
@@ -854,11 +863,19 @@ export const api = {
     request<Listing>(`/bazaar/${id}/bid`, { method: "POST", body: JSON.stringify({ amount_cents }) }),
   listBids: (id: string) => request<Bid[]>(`/bazaar/${id}/bids`),
 
-  createBooth: (name: string, description: string, image: string) =>
-    request<Booth>("/booths", { method: "POST", body: JSON.stringify({ name, description, image }) }),
+  createBooth: (name: string, description: string, image: string, banner?: string, logo?: string) =>
+    request<Booth>("/booths", { method: "POST", body: JSON.stringify({ name, description, image, banner, logo }) }),
+  updateBooth: (id: string, patch: { name?: string; description?: string; banner?: string; logo?: string }) =>
+    request<Booth>(`/booths/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   listBooths: () => request<Booth[]>("/booths"),
   myBooths: () => request<Booth[]>("/booths/mine"),
   boothDetail: (id: string) => request<Booth>(`/booths/${id}`),
+
+  savedSearches: () => request<SavedSearch[]>("/saved-searches"),
+  saveSearch: (query: string, category: string) =>
+    request<SavedSearch>("/saved-searches", { method: "POST", body: JSON.stringify({ query, category }) }),
+  deleteSavedSearch: (id: string) =>
+    request<{ deleted: boolean }>(`/saved-searches/${id}`, { method: "DELETE" }),
 
   notifications: () => request<AppNotification[]>("/notifications"),
   unreadCount: () => request<{ count: number }>("/notifications/unread_count"),

@@ -82,8 +82,8 @@ export default function BoothDetail() {
           ListHeaderComponent={
             <View>
               <View style={styles.hero}>
-                {booth.image ? (
-                  <Image source={{ uri: booth.image }} style={styles.heroImg} contentFit="cover" />
+                {booth.banner || booth.image ? (
+                  <Image source={{ uri: booth.banner || booth.image }} style={styles.heroImg} contentFit="cover" />
                 ) : (
                   <View style={[styles.heroImg, styles.heroFallback, { backgroundColor: colors.surfaceTertiary }]}>
                     <MaterialCommunityIcons name="storefront" size={54} color={colors.brand} />
@@ -92,6 +92,9 @@ export default function BoothDetail() {
                 <Pressable onPress={() => router.back()} hitSlop={12} testID="booth-back" style={[styles.backBtn, { top: insets.top + spacing.sm, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurface} />
                 </Pressable>
+                {booth.logo ? (
+                  <Image source={{ uri: booth.logo }} style={[styles.logo, { borderColor: colors.surface, backgroundColor: colors.surfaceTertiary }]} contentFit="cover" />
+                ) : null}
               </View>
               <View style={styles.info}>
                 <View style={[styles.boothTag, { backgroundColor: colors.surfaceTertiary }]}>
@@ -121,7 +124,8 @@ const styles = StyleSheet.create({
   heroImg: { width: "100%", height: 180 },
   heroFallback: { alignItems: "center", justifyContent: "center" },
   backBtn: { position: "absolute", left: spacing.lg, width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  info: { padding: spacing.lg },
+  logo: { position: "absolute", left: spacing.lg, bottom: -28, width: 72, height: 72, borderRadius: 16, borderWidth: 3 },
+  info: { padding: spacing.lg, paddingTop: spacing.xl + spacing.md },
   boothTag: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
   boothTagText: { fontFamily: fonts.bodyBold, fontSize: 10, letterSpacing: 0.5 },
   name: { fontFamily: fonts.display, fontSize: 24, marginTop: spacing.sm },

@@ -17,6 +17,7 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   friend_cheer: "hand-clap",
   friend_comment: "comment-text",
   retro_reopen: "store-check",
+  bazaar_search: "magnify-plus-outline",
 };
 
 const PROFILE_TYPES = ["friend_request", "friend_accept"];

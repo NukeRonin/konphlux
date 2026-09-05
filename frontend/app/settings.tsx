@@ -151,6 +151,8 @@ export default function Settings() {
         <Eyebrow style={styles.groupLabel}>About</Eyebrow>
         <Panel padded={false}>
           <Row icon="information-outline" label="Konphlux" sub="Est. in the age of steam & signal · v1.0" onPress={() => router.push("/about")} testID="settings-about" />
+          <Divider />
+          <Row icon="gesture-swipe-horizontal" label="Replay the tour" sub="See the welcome walkthrough again" onPress={() => router.push("/onboarding")} testID="settings-replay-tour" />
         </Panel>
 
         <ForgeButton label="Sign out of Konphlux" variant="outline" fullWidth style={{ marginTop: spacing.xl }} testID="settings-signout" onPress={signOut} icon={<MaterialCommunityIcons name="logout" size={16} color={colors.brand} />} />

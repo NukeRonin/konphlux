@@ -245,6 +245,20 @@ class BoothCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     description: str = Field(default="", max_length=600)
     image: str = Field(default="", max_length=600)
+    banner: str = Field(default="", max_length=600)
+    logo: str = Field(default="", max_length=600)
+
+
+class BoothUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    description: str | None = Field(default=None, max_length=600)
+    banner: str | None = Field(default=None, max_length=600)
+    logo: str | None = Field(default=None, max_length=600)
+
+
+class SavedSearchBody(BaseModel):
+    query: str = Field(default="", max_length=120)
+    category: str = Field(default="All", max_length=40)
 
 
 class BidBody(BaseModel):
@@ -944,10 +958,12 @@ AUCTION_SEED = [
 # Sample seller storefronts (booths) + which seeded listings belong to each.
 BOOTH_SEED = [
     {"id": "booth-copperline", "name": "Copperline Collective", "owner_id": "", "owner_name": "Copperline Collective",
-     "image": IMG_GEARS, "description": "Aether fixtures, retrofit kits and glowing lamplight for the modern workshop.",
+     "image": IMG_GEARS, "banner": IMG_GEARS, "logo": IMG_WATCH,
+     "description": "Aether fixtures, retrofit kits and glowing lamplight for the modern workshop.",
      "items": ["b2", "b11", "m-paint", "m-primer"]},
     {"id": "booth-marlowe", "name": "Marlowe & Sons", "owner_id": "", "owner_name": "Marlowe & Sons",
-     "image": IMG_ARCH, "description": "Fine furniture and heirloom goods in mahogany, walnut and warm brass.",
+     "image": IMG_ARCH, "banner": IMG_ARCH, "logo": IMG_PARCH,
+     "description": "Fine furniture and heirloom goods in mahogany, walnut and warm brass.",
      "items": ["b4", "b12", "m-floor"]},
 ]
 
@@ -1860,7 +1876,8 @@ async def seed():
     for bth in BOOTH_SEED:
         booth_doc = {
             "id": bth["id"], "name": bth["name"], "description": bth["description"],
-            "image": bth["image"], "owner_id": bth["owner_id"], "owner_name": bth["owner_name"],
+            "image": bth["image"], "banner": bth.get("banner", ""), "logo": bth.get("logo", ""),
+            "owner_id": bth["owner_id"], "owner_name": bth["owner_name"],
         }
         await db.booths.update_one(
             {"id": bth["id"]},
@@ -2680,6 +2697,7 @@ async def create_listing(body: ListingCreate, user: dict = Depends(require_user)
         listing["booth_id"] = booth["id"]
         listing["booth_name"] = booth["name"]
     await db.bazaar.insert_one(dict(listing))
+    await _notify_saved_searches(listing)
     return _public_listing(listing, user["id"], set())
 
 
@@ -2697,11 +2715,27 @@ async def create_booth(body: BoothCreate, user: dict = Depends(require_user)):
         "name": body.name.strip(),
         "description": body.description.strip(),
         "image": body.image.strip(),
+        "banner": body.banner.strip(),
+        "logo": body.logo.strip(),
         "owner_id": user["id"],
         "owner_name": user["display_name"],
         "created_at": _now().isoformat(),
     }
     await db.booths.insert_one(dict(booth))
+    return await _booth_public(booth)
+
+
+@api_router.put("/booths/{booth_id}")
+async def update_booth(booth_id: str, body: BoothUpdate, user: dict = Depends(require_user)):
+    booth = await db.booths.find_one({"id": booth_id})
+    if not booth:
+        raise HTTPException(status_code=404, detail="Booth not found")
+    if booth.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This booth isn't yours.")
+    updates = {k: v.strip() for k, v in body.model_dump(exclude_none=True).items()}
+    if updates:
+        await db.booths.update_one({"id": booth_id}, {"$set": updates})
+        booth = await db.booths.find_one({"id": booth_id})
     return await _booth_public(booth)
 
 
@@ -2857,6 +2891,68 @@ async def unread_count(user: dict = Depends(require_user)):
 async def mark_all_read(user: dict = Depends(require_user)):
     await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
     return {"ok": True}
+
+
+# ---------- Saved Bazaar searches + new-listing alerts ----------
+def _search_matches(query: str, category: str, listing: dict) -> bool:
+    if category and category != "All" and listing.get("category") != category:
+        return False
+    words = [w for w in (query or "").lower().split() if w]
+    if not words:
+        return True
+    hay = f"{listing.get('title','')} {listing.get('category','')} {listing.get('seller','')}".lower()
+    return all(w in hay for w in words)
+
+
+async def _notify_saved_searches(listing: dict) -> None:
+    """Alert users whose saved Bazaar search matches a freshly-listed item."""
+    seller_id = listing.get("seller_id")
+    searches = await db.bazaar_saved_searches.find({}).to_list(2000)
+    seen: set[str] = set()
+    for s in searches:
+        uid = s.get("user_id")
+        if not uid or uid == seller_id or uid in seen:
+            continue
+        if _search_matches(s.get("query", ""), s.get("category", "All"), listing):
+            label = s.get("query") or s.get("category") or "your saved search"
+            await _notify(uid, "bazaar_search", listing["id"], "New item for your search",
+                          f"\u201c{listing.get('title','A new item')}\u201d matches {label}.")
+            seen.add(uid)
+
+
+@api_router.get("/saved-searches")
+async def list_saved_searches(user: dict = Depends(require_user)):
+    docs = await db.bazaar_saved_searches.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.post("/saved-searches", status_code=201)
+async def create_saved_search(body: SavedSearchBody, user: dict = Depends(require_user)):
+    query = body.query.strip()
+    category = (body.category or "All").strip() or "All"
+    if not query and category == "All":
+        raise HTTPException(status_code=400, detail="Add a search term or pick a category to save.")
+    existing = await db.bazaar_saved_searches.find_one({"user_id": user["id"], "query": query, "category": category})
+    if existing:
+        return {k: v for k, v in existing.items() if k != "_id"}
+    doc = {
+        "id": uuid.uuid4().hex,
+        "user_id": user["id"],
+        "query": query,
+        "category": category,
+        "created_at": _now().isoformat(),
+    }
+    await db.bazaar_saved_searches.insert_one(dict(doc))
+    return doc
+
+
+@api_router.delete("/saved-searches/{search_id}")
+async def delete_saved_search(search_id: str, user: dict = Depends(require_user)):
+    res = await db.bazaar_saved_searches.delete_one({"id": search_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+    return {"deleted": True}
 
 
 # ---------- Saves ----------

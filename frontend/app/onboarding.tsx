@@ -5,6 +5,7 @@ import { Animated, Easing, Image, ImageSourcePropType, NativeScrollEvent, Native
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useOnboarding } from "@/src/onboarding/OnboardingContext";
+import { useAuth } from "@/src/auth/AuthContext";
 import { fonts, spacing } from "@/src/theme/tokens";
 
 const NAVY = "#121A26";
@@ -46,6 +47,7 @@ export default function Onboarding() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { complete } = useOnboarding();
+  const { user } = useAuth();
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
@@ -85,7 +87,8 @@ export default function Onboarding() {
 
   const finish = async () => {
     await complete();
-    router.replace("/(auth)/login");
+    // Replaying while signed in should drop the user back into the app, not the login gate.
+    router.replace(user ? "/(tabs)" : "/(auth)/login");
   };
 
   return (

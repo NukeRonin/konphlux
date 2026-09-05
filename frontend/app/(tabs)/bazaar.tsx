@@ -2,9 +2,9 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { api, BazaarResponse, Listing } from "@/src/api/client";
+import { api, BazaarResponse, Booth, Listing } from "@/src/api/client";
 import { AppHeader } from "@/src/components/AppHeader";
 import { Eyebrow } from "@/src/components/BrassText";
 import { ErrorState, Loading } from "@/src/components/States";
@@ -107,6 +107,8 @@ export default function BazaarScreen() {
   const [search, setSearch] = useState("");
   const [cartCount, setCartCount] = useState(0);
   const [unread, setUnread] = useState(0);
+  const [booths, setBooths] = useState<Booth[]>([]);
+  const [savingSearch, setSavingSearch] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -138,8 +140,25 @@ export default function BazaarScreen() {
       load();
       api.getCart().then((c) => setCartCount(c.count)).catch(() => {});
       api.unreadCount().then((r) => setUnread(r.count)).catch(() => {});
+      api.listBooths().then(setBooths).catch(() => {});
     }, [load]),
   );
+
+  const saveCurrentSearch = async () => {
+    if (savingSearch) return;
+    setSavingSearch(true);
+    try {
+      await api.saveSearch(search.trim(), active);
+      const label = search.trim() || active;
+      Alert.alert("Search saved", `We'll alert you in your notifications when new items match "${label}".`);
+    } catch (e: any) {
+      Alert.alert("Couldn't save", e?.message ?? "Please try again.");
+    } finally {
+      setSavingSearch(false);
+    }
+  };
+
+  const canSaveSearch = search.trim().length > 0 || active !== ALL;
 
   const chips = useMemo(() => [ALL, ...(data?.categories ?? [])], [data]);
   const listings = useMemo(() => {
@@ -196,6 +215,19 @@ export default function BazaarScreen() {
                 <Chip key={c} label={c} active={active === c} onPress={() => setActive(c)} />
               ))}
             </ScrollView>
+            {canSaveSearch ? (
+              <Pressable
+                testID="bazaar-save-search"
+                onPress={saveCurrentSearch}
+                disabled={savingSearch}
+                style={[styles.saveSearch, { borderColor: colors.brand, backgroundColor: `${colors.brand}14` }]}
+              >
+                <MaterialCommunityIcons name="bell-plus-outline" size={15} color={colors.brand} />
+                <Text style={[styles.saveSearchText, { color: colors.brand }]} numberOfLines={1}>
+                  {savingSearch ? "Saving…" : `Save this search — alert me${search.trim() ? ` for "${search.trim()}"` : active !== ALL ? ` in ${active}` : ""}`}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
           <FlatList
             data={listings}
@@ -205,6 +237,38 @@ export default function BazaarScreen() {
             contentContainerStyle={listings.length ? styles.list : styles.listEmpty}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => <ProductCard item={item} />}
+            ListHeaderComponent={
+              active === ALL && !search.trim() && booths.length ? (
+                <View style={styles.featuredWrap}>
+                  <View style={styles.featuredHead}>
+                    <Eyebrow>Featured storefronts</Eyebrow>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
+                    {booths.map((b) => (
+                      <Pressable
+                        key={b.id}
+                        testID={`featured-booth-${b.id}`}
+                        onPress={() => router.push(`/bazaar/booth/${b.id}`)}
+                        style={[styles.boothCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+                      >
+                        <Image source={{ uri: b.banner || b.image }} style={[styles.boothBanner, { backgroundColor: colors.surfaceTertiary }]} contentFit="cover" />
+                        {b.logo ? (
+                          <Image source={{ uri: b.logo }} style={[styles.boothLogo, { borderColor: colors.surfaceSecondary, backgroundColor: colors.surfaceTertiary }]} contentFit="cover" />
+                        ) : (
+                          <View style={[styles.boothLogo, styles.boothLogoFallback, { borderColor: colors.surfaceSecondary, backgroundColor: colors.surfaceTertiary }]}>
+                            <MaterialCommunityIcons name="storefront" size={16} color={colors.brand} />
+                          </View>
+                        )}
+                        <View style={styles.boothInfo}>
+                          <Text numberOfLines={1} style={[styles.boothName, { color: colors.onSurface }]}>{b.name}</Text>
+                          <Text style={[styles.boothMeta, { color: colors.muted }]}>{b.listing_count} items</Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
               <View style={styles.empty}>
                 <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceTertiary }]}>
@@ -253,6 +317,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
+  saveSearch: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: spacing.lg, marginTop: spacing.xs, height: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
+  saveSearchText: { fontFamily: fonts.bodyMedium, fontSize: 12.5, flexShrink: 1 },
+  featuredWrap: { marginBottom: spacing.md },
+  featuredHead: { marginBottom: spacing.sm },
+  featuredRow: { gap: spacing.md, paddingRight: spacing.sm },
+  boothCard: { width: 190, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  boothBanner: { width: "100%", height: 82 },
+  boothLogo: { position: "absolute", top: 60, left: 12, width: 44, height: 44, borderRadius: 11, borderWidth: 2 },
+  boothLogoFallback: { alignItems: "center", justifyContent: "center" },
+  boothInfo: { paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md },
+  boothName: { fontFamily: fonts.displaySemi, fontSize: 14 },
+  boothMeta: { fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
 
   list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   listEmpty: { flexGrow: 1 },
