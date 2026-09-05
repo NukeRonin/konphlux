@@ -75,6 +75,10 @@ Download Konphlux and step into the machine.
 ### Privacy Policy URL (required)
 `https://konphlux.app/privacy`
 
+### Account Deletion (required by Google Play)
+- **In-app:** Settings → Account → Delete account (password + "DELETE" confirmation).
+- **Public web resource:** `https://<your-deployed-domain>/api/web/delete-account` — a standalone page where users can permanently delete their Konphlux account and data by entering their email + password. Put this exact URL in Play Console → App content → Data safety → Account deletion, and link it from your privacy policy.
+
 ---
 
 ## Google Play (Android)

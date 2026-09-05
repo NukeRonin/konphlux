@@ -919,6 +919,26 @@ BAZAAR = [
      "description": "A pocket compass cast in warm bronze with a hinged lid and a needle that has, so far, never once lied to us."},
     {"id": "b8", "title": "Steam Pressure Reader", "price_cents": 9800, "seller": "Boiler Room Supply", "rating": 4.5, "reviews": 154, "category": "Aetherworks", "image": IMG_GEARS,
      "description": "A face-mounted pressure reader for home boilers and small forges. Glows a gentle amber in safe range, an alarming red otherwise."},
+    {"id": "b9", "title": "Ornate Brass Telescope", "price_cents": 27500, "seller": "Waypoint Outfitters", "rating": 4.9, "reviews": 87, "category": "Instruments", "image": IMG_WATCH,
+     "description": "A collapsible three-draw telescope in lacquered brass with a hardwood tripod. Crisp optics for stargazing or spotting airships on the horizon."},
+    {"id": "b10", "title": "Leather Aviator Satchel", "price_cents": 8600, "seller": "Copperline Outfitters", "rating": 4.7, "reviews": 233, "category": "Accessories", "image": IMG_ARCH,
+     "description": "Hand-stitched full-grain leather satchel with brass buckles and a padded sleeve. Ages into a beautiful patina with every crossing."},
+    {"id": "b11", "title": "Gaslamp Wall Sconce, Pair", "price_cents": 14200, "seller": "Copperline Collective", "rating": 4.6, "reviews": 61, "category": "Aetherworks", "image": IMG_GEARS,
+     "description": "A matched pair of aether-lit wall sconces with frosted glass shades. Warm, flicker-free glow and a satisfying click-switch."},
+    {"id": "b12", "title": "Cartographer's Standing Globe", "price_cents": 96000, "seller": "Marlowe & Sons", "rating": 5.0, "reviews": 29, "category": "Furniture", "image": IMG_ARCH,
+     "description": "A grand 50cm terrestrial globe on a turned walnut stand, hand-inked with the districts of Konphlux and the trade winds between them."},
+]
+
+# Fresh live auctions — re-stamped to stay active on each startup (see seed()).
+AUCTION_SEED = [
+    {"id": "auc-1", "title": "Antique Orrery, Fully Restored", "seller": "Grast Workshop", "rating": 4.9, "reviews": 44,
+     "category": "Instruments", "image": IMG_GEARS, "starting_price_cents": 25000, "current_bid_cents": 31000,
+     "bid_count": 7, "highest_bidder_name": "I. Vex",
+     "description": "A working brass orrery tracing six planets and two moons in clockwork harmony. Recently serviced; turns like silk."},
+    {"id": "auc-2", "title": "First-Edition Clockwork Atlas", "seller": "The Vault Bindery", "rating": 4.8, "reviews": 33,
+     "category": "Paper Goods", "image": IMG_PARCH, "starting_price_cents": 9000, "current_bid_cents": 12500,
+     "bid_count": 4, "highest_bidder_name": "A. Marlowe",
+     "description": "A rare first printing of the Clockwork Atlas, foldout maps intact, bound in oxblood leather. A collector's centrepiece."},
 ]
 
 # Building materials — surfaced by the Bluepaint Materials Estimator "Purchase in Bazaar" flow.
@@ -1804,6 +1824,28 @@ async def seed():
     for b in MATERIAL_LISTINGS:
         if not await db.bazaar.find_one({"id": b["id"]}):
             await db.bazaar.insert_one(dict(b))
+    # New fixed-price sample listings (idempotent).
+    for b in BAZAAR:
+        if not await db.bazaar.find_one({"id": b["id"]}):
+            await db.bazaar.insert_one(dict(b))
+    # Live auctions — keep them active by re-stamping ends_at ~3 days out each startup.
+    for a in AUCTION_SEED:
+        ends = (datetime.now(timezone.utc) + timedelta(hours=72)).isoformat()
+        doc = {
+            **a,
+            "is_auction": True,
+            "status": "active",
+            "price_cents": a.get("current_bid_cents") or a["starting_price_cents"],
+            "highest_bidder_id": "seed",
+            "winner_id": None,
+            "ends_at": ends,
+            "seller_id": "",
+        }
+        await db.bazaar.update_one(
+            {"id": a["id"]},
+            {"$set": doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
     # Retrospections seeded businesses (idempotent; keep fields synced).
     for b in RETRO_BUSINESSES:
         await db.retro_businesses.update_one({"id": b["id"]}, {"$set": dict(b)}, upsert=True)
@@ -1970,9 +2012,13 @@ async def delete_account(body: DeleteAccountBody, user: dict = Depends(require_u
     # Re-verify the current password server-side; never trust the client.
     if not password_hash.verify(body.current_password, user["password_hash"]):
         raise HTTPException(status_code=400, detail="Your current password is incorrect.")
-    uid = user["id"]
-    # Best-effort sweep of the user's owned data across all collections
-    # (this MongoDB deployment is standalone, so no multi-doc transaction).
+    await _purge_user_account(user["id"])
+    return {"deleted": True}
+
+
+async def _purge_user_account(uid: str) -> None:
+    """Permanently remove a user's account and their owned data across all collections.
+    (This MongoDB deployment is standalone, so we sweep sequentially without a transaction.)"""
     try:
         names = await db.list_collection_names()
     except Exception:  # noqa: BLE001
@@ -1984,10 +2030,79 @@ async def delete_account(body: DeleteAccountBody, user: dict = Depends(require_u
             await db[name].delete_many({"$or": [{f: uid} for f in _ACCOUNT_OWNER_FIELDS]})
         except Exception:  # noqa: BLE001
             logger.warning("account delete: sweep failed for collection %s", name)
-    # Finally remove the account itself. Deleting the user row invalidates every
-    # previously issued JWT because require_user() looks the account up on each call.
+    # Removing the user row invalidates every previously issued JWT because
+    # require_user() looks the account up on each call.
     await db.users.delete_one({"id": uid})
-    return {"deleted": True}
+
+
+# ---- Public web account-deletion resource (required by Google Play) ----
+def _web_page(inner: str) -> str:
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete your Konphlux account</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         background:#121A26; color:#E8E0D0; display:flex; min-height:100vh; align-items:center; justify-content:center; padding:24px; }}
+  .card {{ width:100%; max-width:440px; background:#1B2636; border:1px solid #2E3849; border-radius:18px; padding:28px; }}
+  h1 {{ font-size:22px; margin:0 0 6px; color:#C9A24B; letter-spacing:1px; }}
+  p {{ font-size:14.5px; line-height:1.55; color:#A79A83; margin:0 0 14px; }}
+  label {{ display:block; font-size:13px; font-weight:600; margin:14px 0 6px; color:#E8E0D0; }}
+  input {{ width:100%; height:46px; border-radius:10px; border:1px solid #2E3849; background:#121A26; color:#E8E0D0; padding:0 12px; font-size:15px; }}
+  button {{ width:100%; height:50px; margin-top:20px; border:0; border-radius:10px; background:#B54A4A; color:#fff; font-size:15.5px; font-weight:700; cursor:pointer; }}
+  .ok {{ color:#5D9C70; }} .err {{ color:#E08A8A; }}
+  .brand {{ display:flex; align-items:center; gap:10px; margin-bottom:18px; }}
+  .logo {{ width:40px; height:40px; border-radius:9px; background:#C9A24B; color:#121A26; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:20px; }}
+  ul {{ color:#A79A83; font-size:13.5px; line-height:1.6; padding-left:18px; }}
+  a {{ color:#C9A24B; }}
+</style></head><body><div class="card">
+<div class="brand"><div class="logo">K</div><div><div style="font-weight:700;letter-spacing:1px">KONPHLUX</div><div style="font-size:12px;color:#A79A83">Account deletion</div></div></div>
+{inner}
+</div></body></html>"""
+
+
+def _delete_form_html(message: str = "", ok: bool = False) -> str:
+    banner = f'<p class="{"ok" if ok else "err"}">{message}</p>' if message else ""
+    return _web_page(f"""
+<h1>Delete your account</h1>
+<p>Permanently delete your Konphlux account and all associated data. This action cannot be undone. You will lose your profile, friends, messages, posts, listings, wallet balance, orders and creations.</p>
+{banner}
+<form method="post" action="delete-account">
+  <label>Email address</label>
+  <input type="email" name="email" required placeholder="you@example.com" autocomplete="email">
+  <label>Password</label>
+  <input type="password" name="password" required placeholder="Your password" autocomplete="current-password">
+  <label>Type DELETE to confirm</label>
+  <input type="text" name="confirmation" required placeholder="DELETE" autocomplete="off">
+  <button type="submit">Permanently delete my account</button>
+</form>
+<p style="margin-top:16px;font-size:12.5px">You can also delete your account inside the app: Settings &rarr; Account &rarr; Delete account. Questions? Email <a href="mailto:konphluxoverlord@gmail.com">konphluxoverlord@gmail.com</a>.</p>
+""")
+
+
+@api_router.get("/web/delete-account", response_class=HTMLResponse)
+async def web_delete_account_page():
+    return HTMLResponse(_delete_form_html())
+
+
+@api_router.post("/web/delete-account", response_class=HTMLResponse)
+async def web_delete_account_submit(request: Request):
+    form = await request.form()
+    email = str(form.get("email", "")).lower().strip()
+    password = str(form.get("password", ""))
+    confirm = str(form.get("confirmation", "")).strip()
+    if confirm != "DELETE":
+        return HTMLResponse(_delete_form_html("Please type DELETE (in capitals) to confirm.", ok=False), status_code=400)
+    user = await db.users.find_one({"email": email})
+    if not user or not password_hash.verify(password, user.get("password_hash", "")):
+        return HTMLResponse(_delete_form_html("That email or password is incorrect.", ok=False), status_code=400)
+    await _purge_user_account(user["id"])
+    return HTMLResponse(_web_page(
+        '<h1 class="ok">Account deleted</h1>'
+        '<p>Your Konphlux account and all associated data have been permanently deleted. '
+        'We&rsquo;re sorry to see you go. You may close this page.</p>'
+    ))
+
 
 
 

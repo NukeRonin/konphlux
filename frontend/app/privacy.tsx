@@ -58,6 +58,7 @@ const SECTIONS: { heading: string; body: string[] }[] = [
     heading: "7. Your Choices & Rights",
     body: [
       "You can edit your profile, control location permission in your device settings, and request account or data deletion at any time by contacting us.",
+      "Delete your account in-app anytime: Settings \u2192 Account \u2192 Delete account. You can also request deletion from our web page at /api/web/delete-account on our server.",
     ],
   },
   {

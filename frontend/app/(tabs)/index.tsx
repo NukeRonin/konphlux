@@ -20,6 +20,7 @@ import { Eyebrow, Hairline } from "@/src/components/BrassText";
 import { Panel } from "@/src/components/Panel";
 import { ErrorState, Loading } from "@/src/components/States";
 import { useTheme } from "@/src/theme/ThemeContext";
+import { maybeRequestReview } from "@/src/utils/rateApp";
 import { compactNumber, fonts, formatPrice, radius, spacing } from "@/src/theme/tokens";
 
 function PostCard({ post, onLike, onSave }: { post: Post; onLike: (id: string) => void; onSave: (id: string) => void }) {
@@ -386,6 +387,12 @@ export default function FeedScreen() {
     } finally {
       setRefreshing(false);
     }
+  }, []);
+
+  // Ask for an app-store rating after the user has returned a few times.
+  useEffect(() => {
+    const t = setTimeout(() => { maybeRequestReview(); }, 4000);
+    return () => clearTimeout(t);
   }, []);
 
   useFocusEffect(

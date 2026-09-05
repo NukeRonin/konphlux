@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Image, ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -49,8 +49,18 @@ export default function Onboarding() {
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   const last = index === SLIDES.length - 1;
+
+  // Gently auto-advance through the tour until the last slide, unless paused.
+  useEffect(() => {
+    if (paused || last) return;
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ x: (index + 1) * width, animated: true });
+    }, 3800);
+    return () => clearTimeout(t);
+  }, [index, paused, last, width]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -91,17 +101,27 @@ export default function Onboarding() {
       >
         {SLIDES.map((s) => (
           <View key={s.title} style={[styles.slide, { width }]}>
-            {s.shot ? (
-              <View style={styles.phoneFrame}>
-                <Image source={s.shot} style={styles.shot} resizeMode="cover" />
-              </View>
-            ) : (
-              <View style={styles.iconRing}>
-                <MaterialCommunityIcons name={s.icon} size={78} color={GOLD} />
-              </View>
-            )}
+            <Pressable onPress={() => !last && setPaused((p) => !p)} testID="onboarding-pause">
+              {s.shot ? (
+                <View style={styles.phoneFrame}>
+                  <Image source={s.shot} style={styles.shot} resizeMode="cover" />
+                  {paused && !last ? (
+                    <View style={styles.pauseBadge}>
+                      <MaterialCommunityIcons name="pause" size={16} color={NAVY} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                <View style={styles.iconRing}>
+                  <MaterialCommunityIcons name={s.icon} size={78} color={GOLD} />
+                </View>
+              )}
+            </Pressable>
             <Text style={styles.title}>{s.title}</Text>
             <Text style={styles.body}>{s.body}</Text>
+            {!last ? (
+              <Text style={styles.pauseHint}>{paused ? "Paused · tap to resume" : "Tap image to pause"}</Text>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -129,6 +149,8 @@ const styles = StyleSheet.create({
   slide: { alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl, gap: spacing.lg },
   phoneFrame: { width: 232, height: 454, borderRadius: 30, borderWidth: 5, borderColor: "#2E3849", backgroundColor: NAVY_2, overflow: "hidden", marginBottom: spacing.sm, shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   shot: { width: "100%", height: "100%" },
+  pauseBadge: { position: "absolute", top: 10, right: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" },
+  pauseHint: { fontFamily: fonts.body, fontSize: 12, color: "#5D6472", letterSpacing: 0.4 },
   iconRing: { width: 168, height: 168, borderRadius: 84, alignItems: "center", justifyContent: "center", backgroundColor: NAVY_2, borderWidth: 2, borderColor: "#2E3849", marginBottom: spacing.md },
   title: { fontFamily: fonts.display, fontSize: 27, color: CREAM, textAlign: "center" },
   body: { fontFamily: fonts.body, fontSize: 15.5, lineHeight: 24, color: MUTED, textAlign: "center", maxWidth: 340 },
